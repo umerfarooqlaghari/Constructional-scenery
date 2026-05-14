@@ -1,0 +1,25 @@
+# ─── Environment & secrets ──────────────────────────────────────────────────
+.env
+.env.*
+.env.local
+.env.*.local
+
+# ─── .NET secrets & environment-specific config ─────────────────────────────
+appsettings.Development.json
+appsettings.dev.json
+appsettings.*.json
+!appsettings.json
+
+# ─── .NET build output ───────────────────────────────────────────────────────
+backend/bin/
+backend/obj/
+*.user
+
+# ─── Next.js ─────────────────────────────────────────────────────────────────
+frontend/.next/
+frontend/out/
+frontend/node_modules/
+
+# ─── OS ──────────────────────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
