@@ -9,8 +9,27 @@ const { checkPolicy  } = require('./Middleware/roleCheck');
 const app = express();
 
 // ─── CORS + BODY PARSER ───────────────────────────────────────────────────────
+const allowedOrigins = process.env.CLIENT_URL
+  ? process.env.CLIENT_URL.split(',').map((s) => s.trim())
+  : null; // null = allow all localhost in dev
+
 app.use(cors({
-  origin:      process.env.CLIENT_URL || 'http://localhost:3000',
+  origin: (origin, callback) => {
+    // Allow requests with no origin (Postman, server-to-server)
+    if (!origin) return callback(null, true);
+    // In production CLIENT_URL must be set; in dev accept any localhost
+    if (allowedOrigins) {
+      return callback(
+        allowedOrigins.includes(origin) ? null : new Error('Not allowed by CORS'),
+        allowedOrigins.includes(origin)
+      );
+    }
+    // Dev: allow any localhost or 127.0.0.1 origin
+    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS'), false);
+  },
   credentials: true,
 }));
 app.use(express.json({ limit: '10mb' }));

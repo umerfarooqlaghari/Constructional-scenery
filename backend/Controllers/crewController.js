@@ -92,7 +92,8 @@ const getAllCrew = async (req, res) => {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
-      `SELECT id, crew_number, first_name, last_name, employment_status, crew_trade, crew_rank, is_active
+      `SELECT id, crew_number, first_name, last_name, email, employment_status,
+              crew_trade, crew_rank, company_name, is_active
        FROM crew_members ${where}
        ORDER BY last_name`,
       params

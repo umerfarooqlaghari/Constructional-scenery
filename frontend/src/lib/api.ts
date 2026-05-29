@@ -1,0 +1,605 @@
+// Empty string → same-origin requests; Next.js rewrites proxy to the backend.
+// Set BACKEND_URL in the Next.js server environment for production.
+const BASE_URL = '';
+
+type RequestOptions = {
+  method?: string;
+  body?: unknown;
+  headers?: Record<string, string>;
+  skipAuth?: boolean;
+};
+
+async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
+  const { method = 'GET', body, headers = {}, skipAuth = false } = opts;
+
+  const requestHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+    ...headers,
+  };
+
+  if (!skipAuth) {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+    if (token) requestHeaders['Authorization'] = `Bearer ${token}`;
+  }
+
+  const res = await fetch(`${BASE_URL}${path}`, {
+    method,
+    headers: requestHeaders,
+    body: body !== undefined ? JSON.stringify(body) : undefined,
+  });
+
+  // If 401 try once to refresh token
+  if (res.status === 401 && !skipAuth) {
+    const refreshed = await tryRefresh();
+    if (refreshed) {
+      requestHeaders['Authorization'] = `Bearer ${localStorage.getItem('cs_token')}`;
+      const retryRes = await fetch(`${BASE_URL}${path}`, {
+        method,
+        headers: requestHeaders,
+        body: body !== undefined ? JSON.stringify(body) : undefined,
+      });
+      if (!retryRes.ok) {
+        const err = await retryRes.json().catch(() => ({ error: 'Request failed' }));
+        throw new Error(err.error ?? 'Request failed');
+      }
+      return retryRes.json() as Promise<T>;
+    }
+    // Refresh failed — clear auth and redirect to login
+    clearAuth();
+    if (typeof window !== 'undefined') window.location.href = '/login';
+    throw new Error('Session expired');
+  }
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: 'Request failed' }));
+    throw new Error(err.error ?? 'Request failed');
+  }
+
+  // 204 No Content
+  if (res.status === 204) return undefined as T;
+  return res.json() as Promise<T>;
+}
+
+async function tryRefresh(): Promise<boolean> {
+  const refresh_token = localStorage.getItem('cs_refresh_token');
+  if (!refresh_token) return false;
+  try {
+    const res = await fetch(`${BASE_URL}/api/auth/refresh`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ refresh_token }),
+    });
+    if (!res.ok) return false;
+    const data = await res.json();
+    localStorage.setItem('cs_token', data.access_token);
+    localStorage.setItem('cs_refresh_token', data.refresh_token);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function clearAuth() {
+  localStorage.removeItem('cs_token');
+  localStorage.removeItem('cs_refresh_token');
+  localStorage.removeItem('cs_user');
+}
+
+// ─── Auth endpoints ────────────────────────────────────────────────────────────
+export const authApi = {
+  login: (email: string, password: string) =>
+    request<{ access_token: string; refresh_token: string; user: AuthUser }>('/api/auth/login', {
+      method: 'POST',
+      body: { email, password },
+      skipAuth: true,
+    }),
+
+  signup: (data: { email: string; password: string; full_name: string; role: string }) =>
+    request<{ message: string; user: AuthUser }>('/api/auth/signup', {
+      method: 'POST',
+      body: data,
+      skipAuth: true,
+    }),
+
+  me: () => request<{ user: AuthUser }>('/api/auth/me'),
+
+  logout: (refresh_token: string) =>
+    request<{ message: string }>('/api/auth/logout', {
+      method: 'POST',
+      body: { refresh_token },
+    }),
+
+  forgotPassword: (email: string) =>
+    request<{ message: string }>('/api/auth/forgot-password', {
+      method: 'POST',
+      body: { email },
+      skipAuth: true,
+    }),
+
+  verifyOtp: (email: string, otp: string) =>
+    request<{ message: string }>('/api/auth/verify-otp', {
+      method: 'POST',
+      body: { email, otp },
+      skipAuth: true,
+    }),
+
+  resetPassword: (email: string, otp: string, new_password: string) =>
+    request<{ message: string }>('/api/auth/reset-password', {
+      method: 'POST',
+      body: { email, otp, new_password },
+      skipAuth: true,
+    }),
+};
+
+export type AuthUser = {
+  id: string;
+  email: string;
+  full_name: string;
+  role: 'managing_director' | 'construction_accountant' | 'construction_coordinator';
+};
+
+// ─── Production types ──────────────────────────────────────────────────────────
+export type ProductionStatus = 'pre_production' | 'active_build' | 'strike' | 'complete' | 'archived';
+export type ContractType     = 'on_a_price' | 'cost_plus';
+export type SetStatus        = 'not_started' | 'in_progress' | 'nearing_completion' | 'complete' | 'handed_over';
+
+export type Production = {
+  id: string;
+  name: string;
+  production_company: string | null;
+  production_designer: string | null;
+  production_type: string | null;
+  start_date: string | null;
+  end_date: string | null;
+  contract_type: ContractType;
+  status: ProductionStatus;
+  created_by: string;
+  created_at: string;
+  updated_at: string;
+  total_sets: number;
+  completed_sets: number;
+};
+
+export type ProductionSet = {
+  id: string;
+  production_id: string;
+  set_number: string | null;
+  set_name: string;
+  shoot_week: string | null;
+  handover_date: string | null;
+  completion_status: SetStatus;
+  notes: string | null;
+  days_until_handover: number | null;
+  countdown_colour: 'green' | 'amber' | 'red' | null;
+};
+
+export type ProductionDocument = {
+  id: string;
+  production_id: string;
+  document_type: string;
+  file_url: string;
+  file_name: string;
+  uploaded_by: string;
+  uploaded_at: string;
+};
+
+export type ProductionDetail = Production & {
+  sets: ProductionSet[];
+  production_documents: ProductionDocument[];
+  days_remaining: number | null;
+  sets_outstanding: number;
+};
+
+// ─── Dashboard types ───────────────────────────────────────────────────────────
+export type DashboardData = {
+  generated_at: string;
+  current_week: { start: string; end: string };
+  po_spend: {
+    today_total: number;
+    week_total: number;
+    by_production: Array<{ production: string; total: number }>;
+  };
+  current_week_labour: {
+    week_ending: string;
+    total: number;
+    by_production: Array<{ production: string; total: number; pending: number; approved: number }>;
+  };
+  active_productions: Array<{
+    id: string;
+    name: string;
+    status: ProductionStatus;
+    contract_type: ContractType;
+    total_budget: number | null;
+    total_costs_to_date: number;
+    amount_remaining: number | null;
+    percent_remaining: string | null;
+    rag_status: 'green' | 'amber' | 'red' | 'unknown';
+  }>;
+  crew_headcount: {
+    total: number;
+    by_production: Array<{ production: string; headcount: number }>;
+  };
+  forecasting_variance: Array<{
+    forecast_name: string;
+    production: string;
+    forecast_total: number;
+    actual_cost: number;
+    variance_gbp: number;
+    variance_percentage: string;
+    status: 'over_forecast' | 'under_forecast' | 'on_track';
+  }>;
+  production_pipeline: Array<{
+    id: string;
+    name: string;
+    start_date: string | null;
+    end_date: string | null;
+    current_phase: ProductionStatus;
+    days_remaining: number | null;
+  }>;
+  pending_approvals: {
+    purchase_orders: number;
+    timesheets: number;
+    total: number;
+  };
+  cash_flow: { note: string; data: null };
+};
+
+// ─── Productions API ───────────────────────────────────────────────────────────
+export const productionsApi = {
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<Production[]>(`/api/productions${qs}`);
+  },
+  create: (data: Partial<Production>) =>
+    request<Production>('/api/productions', { method: 'POST', body: data }),
+  getById: (id: string) =>
+    request<ProductionDetail>(`/api/productions/${id}`),
+  update: (id: string, data: Partial<Production>) =>
+    request<Production>(`/api/productions/${id}`, { method: 'PUT', body: data }),
+  archive: (id: string) =>
+    request<{ message: string; production: Production }>(`/api/productions/${id}/archive`, { method: 'POST' }),
+
+  getSets: (id: string) =>
+    request<ProductionSet[]>(`/api/productions/${id}/sets`),
+  createSet: (id: string, data: Partial<ProductionSet>) =>
+    request<ProductionSet>(`/api/productions/${id}/sets`, { method: 'POST', body: data }),
+  updateSet: (id: string, setId: string, data: Partial<ProductionSet>) =>
+    request<ProductionSet>(`/api/productions/${id}/sets/${setId}`, { method: 'PUT', body: data }),
+  deleteSet: (id: string, setId: string) =>
+    request<{ message: string }>(`/api/productions/${id}/sets/${setId}`, { method: 'DELETE' }),
+
+  getDocuments: (id: string) =>
+    request<ProductionDocument[]>(`/api/productions/${id}/documents`),
+  uploadDocument: (id: string, formData: FormData) =>
+    fetch(`/api/productions/${id}/documents`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
+      },
+      body: formData,
+    }).then(r => r.json()) as Promise<ProductionDocument>,
+};
+
+// ─── Dashboard API ─────────────────────────────────────────────────────────────
+export const dashboardApi = {
+  get: () => request<DashboardData>('/api/dashboard'),
+};
+
+// ─── Timesheet types ───────────────────────────────────────────────────────────
+export type TimesheetStatus = 'draft' | 'sent' | 'reviewed' | 'invoice_received' | 'verified';
+
+export type Timesheet = {
+  id: string;
+  crew_member_id: string;
+  production_id: string;
+  week_ending_date: string;
+  status: TimesheetStatus;
+  grand_total: string | null;
+  // joined from crew_members
+  first_name?: string;
+  last_name?: string;
+  crew_number?: string;
+  crew_trade?: string;
+  crew_rank?: string;
+  // joined from productions
+  prod_name?: string;
+};
+
+export const timesheetsApi = {
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<Timesheet[]>(`/api/timesheets${qs}`);
+  },
+  getById: (id: string) => request<Timesheet>(`/api/timesheets/${id}`),
+};
+
+// ─── Purchase Order types ──────────────────────────────────────────────────────
+export type POStatus = 'draft' | 'submitted' | 'issued' | 'invoice_received' | 'approved';
+
+export type PurchaseOrder = {
+  id: string;
+  po_number: string;
+  supplier_name: string;
+  supplier_email: string | null;
+  supplier_address: string | null;
+  date_of_po: string;
+  production_id: string;
+  set_code: string | null;
+  account_code: string | null;
+  description: string | null;
+  net_amount: string;
+  vat: string;
+  gross_amount: string;
+  status: POStatus;
+  paid_from: string;
+  invoice_attachment_url: string | null;
+  approved_by: string | null;
+  approved_at: string | null;
+  created_by: string;
+  created_at: string;
+  // joined
+  prod_name?: string;
+  prod_status?: string;
+};
+
+export const purchaseOrdersApi = {
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<PurchaseOrder[]>(`/api/purchase-orders${qs}`);
+  },
+  getById: (id: string) => request<PurchaseOrder>(`/api/purchase-orders/${id}`),
+  create: (data: Partial<PurchaseOrder>) =>
+    request<PurchaseOrder>('/api/purchase-orders', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<PurchaseOrder>) =>
+    request<PurchaseOrder>(`/api/purchase-orders/${id}`, { method: 'PUT', body: data }),
+  submit: (id: string) =>
+    request<{ message: string; po: PurchaseOrder }>(`/api/purchase-orders/${id}/submit`, {
+      method: 'POST', body: {},
+    }),
+  approve: (id: string) =>
+    request<{ message: string; po: PurchaseOrder }>(`/api/purchase-orders/${id}/approve`, {
+      method: 'POST', body: {},
+    }),
+  attachInvoice: (id: string, formData: FormData) =>
+    fetch(`/api/purchase-orders/${id}/attach-invoice`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
+      },
+      body: formData,
+    }).then(r => r.json()) as Promise<{ message: string; po: PurchaseOrder }>,
+  delete: (id: string) =>
+    request<{ message: string }>(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
+};
+
+// ─── Crew types ────────────────────────────────────────────────────────────────
+export type EmploymentStatus = 'paye' | 'self_employed';
+
+export type CrewMember = {
+  id: string;
+  crew_number: string;
+  first_name: string;
+  last_name: string;
+  date_of_birth: string | null;
+  home_address: string | null;
+  employment_status: EmploymentStatus;
+  crew_trade: string | null;
+  crew_rank: string | null;
+  email: string | null;
+  is_active: boolean;
+  company_name: string | null;
+  company_registration_number: string | null;
+  vat_registration_number: string | null;
+  paye_withholding_rate: number | null;
+  account_name: string | null;
+  account_number: string | null;
+  sort_code: string | null;
+  emergency_contact_name: string | null;
+  emergency_contact_relationship: string | null;
+  emergency_contact_phone: string | null;
+  created_at: string;
+};
+
+export type CrewDocument = {
+  id: string;
+  crew_member_id: string;
+  document_type: 'government_id' | 'contract' | 'other';
+  production_id: string | null;
+  file_url: string;
+  file_name: string;
+  uploaded_at: string;
+};
+
+export type CrewProductionHistory = {
+  id: string;
+  crew_member_id: string;
+  production_id: string;
+  prod_id: string;
+  prod_name: string;
+  prod_status: string;
+  start_date: string | null;
+  end_date: string | null;
+  contract_url: string | null;
+};
+
+export type CrewTimesheetHistory = {
+  id: string;
+  week_ending_date: string;
+  status: string;
+  grand_total: string | null;
+  prod_id: string;
+  prod_name: string;
+};
+
+export type CrewDetail = CrewMember & {
+  production_history: CrewProductionHistory[];
+  timesheet_history: CrewTimesheetHistory[];
+  documents: CrewDocument[];
+};
+
+export const crewApi = {
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<CrewMember[]>(`/api/crew${qs}`);
+  },
+  getById: (id: string) => request<CrewDetail>(`/api/crew/${id}`),
+  create: (data: Partial<CrewMember>) =>
+    request<CrewMember>('/api/crew', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<CrewMember>) =>
+    request<CrewMember>(`/api/crew/${id}`, { method: 'PUT', body: data }),
+  getTrades: () =>
+    request<{ bectu: Record<string, string[]>; non_bectu: string[] }>('/api/crew/trades'),
+  linkToProduction: (id: string, data: { production_id: string; start_date?: string; end_date?: string }) =>
+    request<{ id: string }>(`/api/crew/${id}/productions`, { method: 'POST', body: data }),
+  uploadDocument: (id: string, formData: FormData) =>
+    fetch(`/api/crew/${id}/documents`, {
+      method: 'POST',
+      body: formData,
+      credentials: 'include',
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); }
+      return r.json() as Promise<CrewDocument>;
+    }),
+  deleteDocument: (crewId: string, docId: string) =>
+    request<{ message: string }>(`/api/crew/${crewId}/documents/${docId}`, { method: 'DELETE' }),
+};
+
+// ─── Cost Report types ─────────────────────────────────────────────────────────
+export type CostReportSupplierItem = {
+  date: string;
+  supplier: string;
+  description: string | null;
+  po_number: string;
+  set_code: string | null;
+  account_code: string | null;
+  cost_ex_vat: number;
+  vat: number;
+  total: number;
+  purchase_method: string;
+};
+
+export type CostReportLabourWeek = {
+  week_ending_date: string;
+  total: number;
+  crew: Array<{ crew_number: string; name: string; trade: string | null; rank: string | null; grand_total: number }>;
+};
+
+export type CostReportInvoice = {
+  id: string;
+  production_id: string;
+  invoice_description: string | null;
+  po_number: string | null;
+  date: string;
+  invoice_number: string | null;
+  amount: string;
+  notes: string | null;
+};
+
+export type CostReport = {
+  production: Production;
+  contract_type: ContractType;
+  as_at_date: string;
+  metrics: {
+    total_supplier_costs: number;
+    total_labour_costs: number;
+    total_costs_to_date: number;
+    total_invoiced_to_production: number;
+    current_profit: number;
+    profit_percentage_of_turnover: string;
+  };
+  supplier_costs: CostReportSupplierItem[];
+  labour_weekly: CostReportLabourWeek[];
+  invoices_to_production: CostReportInvoice[];
+};
+
+export const costReportApi = {
+  get: (productionId: string, asAtDate?: string) => {
+    const qs = asAtDate ? `?as_at_date=${asAtDate}` : '';
+    return request<CostReport>(`/api/cost-reports/${productionId}${qs}`);
+  },
+  addInvoice: (productionId: string, data: {
+    invoice_description?: string;
+    po_number?: string;
+    date?: string;
+    invoice_number?: string;
+    amount: number;
+    notes?: string;
+  }) => request<CostReportInvoice>(`/api/cost-reports/${productionId}/invoices`, {
+    method: 'POST', body: data,
+  }),
+};
+
+// ─── Forecasting types ─────────────────────────────────────────────────────────
+export type Forecast = {
+  id: string;
+  name: string;
+  production_id: string | null;
+  prod_name?: string;
+  total_labour_cost: number;
+  total_materials_cost: number;
+  total_forecast_cost: number;
+  percentometer_carpenter_cost: number | null;
+  percentometer_total: number | null;
+  created_at: string;
+  created_by: string;
+};
+
+export type PercentometerRatio = {
+  id?: string;
+  cost_type: string;
+  percentage: number;
+};
+
+export type CatalogueItem = {
+  id: string;
+  supplier_name: string;
+  item_description: string;
+  unit: string | null;
+  unit_price: string;
+  category: string | null;
+  last_used_date: string | null;
+  created_at: string;
+};
+
+export const forecastingApi = {
+  getAllForecasts: (productionId?: string) => {
+    const qs = productionId ? `?production_id=${productionId}` : '';
+    return request<Forecast[]>(`/api/forecasting/forecasts${qs}`);
+  },
+  createForecast: (data: {
+    name: string;
+    production_id?: string | null;
+    percentometer_carpenter_cost?: number | null;
+    labour_items?: unknown[];
+    materials_items?: unknown[];
+  }) => request<Forecast>('/api/forecasting/forecasts', { method: 'POST', body: data }),
+  deleteForecast: (id: string) =>
+    request<{ message: string }>(`/api/forecasting/forecasts/${id}`, { method: 'DELETE' }),
+
+  getRatios: () =>
+    request<PercentometerRatio[]>('/api/forecasting/percentometer/ratios'),
+  updateRatios: (ratios: Array<{ cost_type: string; percentage: number }>) =>
+    request<PercentometerRatio[]>('/api/forecasting/percentometer/ratios', {
+      method: 'PUT', body: { ratios },
+    }),
+  calculate: (carpenter_cost: number) =>
+    request<{
+      result: Array<{ cost_type: string; percentage: number; estimated_cost: number }>;
+      total_estimated_cost: number;
+    }>('/api/forecasting/percentometer/calculate', {
+      method: 'POST', body: { carpenter_cost },
+    }),
+
+  getCatalogue: () => request<CatalogueItem[]>('/api/forecasting/catalogue'),
+  createCatalogueItem: (data: Partial<CatalogueItem>) =>
+    request<CatalogueItem>('/api/forecasting/catalogue', { method: 'POST', body: data }),
+  updateCatalogueItem: (id: string, data: Partial<CatalogueItem>) =>
+    request<CatalogueItem>(`/api/forecasting/catalogue/${id}`, { method: 'PUT', body: data }),
+  deleteCatalogueItem: (id: string) =>
+    request<{ message: string }>(`/api/forecasting/catalogue/${id}`, { method: 'DELETE' }),
+
+  getBectuRates: () =>
+    request<Record<string, Record<string, number>>>('/api/forecasting/bectu-rates'),
+};
+
+export default request;

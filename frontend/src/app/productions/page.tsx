@@ -1,136 +1,297 @@
-import TopBar from '@/components/TopBar';
-import { Plus, Search, Filter, Calendar, MapPin, CheckCircle2, Clock, AlertTriangle, ChevronRight, MoreHorizontal } from 'lucide-react';
+'use client';
 
-const productions = [
-  {
-    id: 1,
-    name: 'Meridian',
-    company: 'Lionsgate UK',
-    designer: 'Helena Portman',
-    type: 'Feature Film',
-    contractType: 'On a Price',
-    status: 'Active Build',
-    start: '14 Jan 2026',
-    end: '28 Jun 2026',
-    sets: { total: 18, complete: 11, inProgress: 5, notStarted: 2 },
-    daysRemaining: 46,
-    coordinator: 'James Morley',
-  },
-  {
-    id: 2,
-    name: 'The Bridge – Series 3',
-    company: 'Wall to Wall Media',
-    designer: 'Sarah Okonkwo',
-    type: 'TV Series',
-    contractType: 'Cost Plus',
-    status: 'Active Build',
-    start: '03 Mar 2026',
-    end: '05 Jul 2026',
-    sets: { total: 24, complete: 20, inProgress: 3, notStarted: 1 },
-    daysRemaining: 53,
-    coordinator: 'Claire Dixon',
-  },
-  {
-    id: 3,
-    name: 'Phantom Light',
-    company: 'eOne Productions',
-    designer: 'Richard Alderton',
-    type: 'Feature Film',
-    contractType: 'On a Price',
-    status: 'Pre-Production',
-    start: '01 Jun 2026',
-    end: '15 Nov 2026',
-    sets: { total: 11, complete: 0, inProgress: 1, notStarted: 10 },
-    daysRemaining: 186,
-    coordinator: 'James Morley',
-  },
-  {
-    id: 4,
-    name: 'Say Nothing – S2',
-    company: 'Hulu / FX',
-    designer: "Aoife O'Sullivan",
-    type: 'SVOD',
-    contractType: 'Cost Plus',
-    status: 'Strike',
-    start: '10 Sep 2025',
-    end: '04 Apr 2026',
-    sets: { total: 31, complete: 31, inProgress: 0, notStarted: 0 },
-    daysRemaining: 0,
-    coordinator: 'Claire Dixon',
-  },
-  {
-    id: 5,
-    name: 'Dark Harvest',
-    company: 'BBC Studios',
-    designer: 'Tom Whitfield',
-    type: 'TV Drama',
-    contractType: 'On a Price',
-    status: 'Complete',
-    start: '05 May 2025',
-    end: '22 Jan 2026',
-    sets: { total: 14, complete: 14, inProgress: 0, notStarted: 0 },
-    daysRemaining: 0,
-    coordinator: 'James Morley',
-  },
+import { useState, useEffect, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
+import TopBar from '@/components/TopBar';
+import {
+  Plus, Search, Calendar, CheckCircle2, Clock, AlertTriangle,
+  ChevronRight, X, Loader2, Archive,
+} from 'lucide-react';
+import { productionsApi, Production, ProductionStatus, ContractType } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const STATUS_CONFIG: Record<ProductionStatus, { label: string; className: string; icon: React.ReactNode }> = {
+  pre_production: { label: 'Pre-Production', className: 'bg-blue-100 text-blue-700', icon: <Clock size={11} className="inline mr-1" /> },
+  active_build:   { label: 'Active Build',   className: 'bg-teal-100 text-teal-700',  icon: <CheckCircle2 size={11} className="inline mr-1" /> },
+  strike:         { label: 'Strike',          className: 'bg-amber-100 text-amber-700', icon: <AlertTriangle size={11} className="inline mr-1" /> },
+  complete:       { label: 'Complete',        className: 'bg-slate-100 text-slate-500', icon: <CheckCircle2 size={11} className="inline mr-1" /> },
+  archived:       { label: 'Archived',        className: 'bg-red-100 text-red-500',    icon: <Archive size={11} className="inline mr-1" /> },
+};
+
+const STATUS_TABS: { value: ProductionStatus | 'all'; label: string }[] = [
+  { value: 'all',            label: 'All' },
+  { value: 'active_build',   label: 'Active Build' },
+  { value: 'pre_production', label: 'Pre-Production' },
+  { value: 'strike',         label: 'Strike' },
+  { value: 'complete',       label: 'Complete' },
 ];
 
-const statusConfig: Record<string, { label: string; className: string; icon: React.ReactNode }> = {
-  'Pre-Production': { label: 'Pre-Production', className: 'bg-blue-100 text-blue-700', icon: <Clock size={11} className="inline mr-1" /> },
-  'Active Build': { label: 'Active Build', className: 'bg-teal-100 text-teal-700', icon: <CheckCircle2 size={11} className="inline mr-1" /> },
-  Strike: { label: 'Strike', className: 'bg-amber-100 text-amber-700', icon: <AlertTriangle size={11} className="inline mr-1" /> },
-  Complete: { label: 'Complete', className: 'bg-slate-100 text-slate-500', icon: <CheckCircle2 size={11} className="inline mr-1" /> },
-};
+const CONTRACT_TYPES: { value: ContractType; label: string }[] = [
+  { value: 'on_a_price', label: 'On a Price' },
+  { value: 'cost_plus',  label: 'Cost Plus' },
+];
 
-const daysColor = (days: number, status: string) => {
-  if (status === 'Complete' || status === 'Strike') return 'text-slate-400';
-  if (days <= 14) return 'text-red-600 font-semibold';
-  if (days <= 30) return 'text-amber-600 font-semibold';
-  return 'text-green-600 font-semibold';
-};
+const fmtDate = (d: string | null) =>
+  d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
+
+// ─── New Production Modal ─────────────────────────────────────────────────────
+
+interface NewProductionModalProps {
+  onClose: () => void;
+  onCreated: () => void;
+}
+
+function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
+  const [form, setForm] = useState({
+    name: '',
+    production_company: '',
+    production_designer: '',
+    production_type: '',
+    start_date: '',
+    end_date: '',
+    contract_type: 'on_a_price' as ContractType,
+    status: 'pre_production' as ProductionStatus,
+  });
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+
+  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!form.name.trim()) { setError('Production name is required.'); return; }
+    setSaving(true); setError('');
+    try {
+      await productionsApi.create({
+        ...form,
+        start_date: form.start_date || null,
+        end_date:   form.end_date   || null,
+        production_company:  form.production_company  || null,
+        production_designer: form.production_designer || null,
+        production_type:     form.production_type     || null,
+      });
+      onCreated();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to create production');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-slate-900 font-semibold text-base">New Production</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={18} /></button>
+        </div>
+        <form onSubmit={submit} className="px-6 py-5 space-y-4">
+          {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
+            <input className={inputCls} placeholder="e.g. Meridian" value={form.name} onChange={set('name')} />
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
+              <input className={inputCls} placeholder="e.g. Lionsgate UK" value={form.production_company} onChange={set('production_company')} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Production Designer</label>
+              <input className={inputCls} placeholder="e.g. Helena Portman" value={form.production_designer} onChange={set('production_designer')} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
+              <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Contract Type *</label>
+              <select className={inputCls} value={form.contract_type} onChange={set('contract_type')}>
+                {CONTRACT_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+              <input type="date" className={inputCls} value={form.start_date} onChange={set('start_date')} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+              <input type="date" className={inputCls} value={form.end_date} onChange={set('end_date')} />
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Initial Status</label>
+            <select className={inputCls} value={form.status} onChange={set('status')}>
+              <option value="pre_production">Pre-Production</option>
+              <option value="active_build">Active Build</option>
+            </select>
+          </div>
+
+          <div className="flex items-center justify-end gap-3 pt-2">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+            >
+              {saving && <Loader2 size={14} className="animate-spin" />}
+              Create Production
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProductionsPage() {
+  const router = useRouter();
+  const { user } = useAuth();
+  const canEdit = user?.role !== 'construction_accountant';
+  const [productions, setProductions] = useState<Production[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [search, setSearch]           = useState('');
+  const [activeTab, setActiveTab]     = useState<ProductionStatus | 'all'>('all');
+  const [showModal, setShowModal]     = useState(false);
+  const [archiving, setArchiving]     = useState<string | null>(null);
+
+  const load = useCallback(async () => {
+    setLoading(true); setError('');
+    try {
+      const data = await productionsApi.list();
+      setProductions(data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load productions');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => { load(); }, [load]);
+
+  const handleArchive = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm('Archive this production? It will be hidden from the default list.')) return;
+    setArchiving(id);
+    try {
+      await productionsApi.archive(id);
+      setProductions(prev => prev.filter(p => p.id !== id));
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Archive failed');
+    } finally {
+      setArchiving(null);
+    }
+  };
+
+  // Filter
+  const filtered = productions.filter(p => {
+    const matchesTab    = activeTab === 'all' || p.status === activeTab;
+    const matchesSearch = !search || [p.name, p.production_company, p.production_designer, p.production_type]
+      .some(v => v?.toLowerCase().includes(search.toLowerCase()));
+    return matchesTab && matchesSearch;
+  });
+
+  // Summary counts (all productions, not filtered)
+  const counts = {
+    active_build:   productions.filter(p => p.status === 'active_build').length,
+    pre_production: productions.filter(p => p.status === 'pre_production').length,
+    strike:         productions.filter(p => p.status === 'strike').length,
+    complete:       productions.filter(p => p.status === 'complete').length,
+  };
+
   return (
     <>
+      {showModal && canEdit && (
+        <NewProductionModal
+          onClose={() => setShowModal(false)}
+          onCreated={() => { setShowModal(false); load(); }}
+        />
+      )}
+
       <TopBar title="Productions" subtitle="Manage active, upcoming and archived productions" />
       <main className="flex-1 p-6 space-y-5">
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Active Build', count: 2, color: 'bg-teal-500' },
-            { label: 'Pre-Production', count: 1, color: 'bg-blue-500' },
-            { label: 'Strike', count: 1, color: 'bg-amber-500' },
-            { label: 'Complete', count: 1, color: 'bg-slate-400' },
-          ].map((s) => (
-            <div key={s.label} className="bg-white rounded-xl border border-slate-200 px-5 py-4 shadow-sm flex items-center gap-3">
+            { label: 'Active Build',   count: counts.active_build,   color: 'bg-teal-500',   tab: 'active_build'   as ProductionStatus },
+            { label: 'Pre-Production', count: counts.pre_production, color: 'bg-blue-500',   tab: 'pre_production' as ProductionStatus },
+            { label: 'Strike',         count: counts.strike,         color: 'bg-amber-500',  tab: 'strike'         as ProductionStatus },
+            { label: 'Complete',       count: counts.complete,       color: 'bg-slate-400',  tab: 'complete'       as ProductionStatus },
+          ].map(s => (
+            <button
+              key={s.label}
+              onClick={() => setActiveTab(t => t === s.tab ? 'all' : s.tab)}
+              className={`bg-white rounded-xl border px-5 py-4 shadow-sm flex items-center gap-3 text-left transition-colors ${activeTab === s.tab ? 'border-teal-400 ring-1 ring-teal-400' : 'border-slate-200 hover:border-slate-300'}`}
+            >
               <div className={`w-2.5 h-2.5 rounded-full ${s.color} flex-shrink-0`} />
               <div>
-                <p className="text-slate-900 text-xl font-bold">{s.count}</p>
+                {loading ? <div className="h-6 w-6 bg-slate-100 rounded animate-pulse mb-1" /> : <p className="text-slate-900 text-xl font-bold">{s.count}</p>}
                 <p className="text-slate-500 text-xs">{s.label}</p>
               </div>
-            </div>
+            </button>
           ))}
         </div>
 
         {/* Table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Toolbar */}
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 gap-4">
-            <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-72">
-              <Search size={14} className="text-slate-400" />
-              <input type="text" placeholder="Search productions..." className="bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none w-full" />
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-5 py-3 border-b border-slate-100 gap-3">
+            {/* Status tabs */}
+            <div className="flex items-center gap-1">
+              {STATUS_TABS.map(tab => (
+                <button
+                  key={tab.value}
+                  onClick={() => setActiveTab(tab.value)}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-teal-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                >
+                  {tab.label}
+                </button>
+              ))}
             </div>
             <div className="flex items-center gap-2">
-              <button className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 rounded-lg px-3 py-2 hover:bg-slate-50 transition-colors">
-                <Filter size={14} />
-                Filter
-              </button>
-              <button className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium">
-                <Plus size={14} />
-                New Production
-              </button>
+              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-56">
+                <Search size={13} className="text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Search productions..."
+                  value={search}
+                  onChange={e => setSearch(e.target.value)}
+                  className="bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none w-full"
+                />
+              </div>
+              {canEdit && (
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium whitespace-nowrap"
+                >
+                  <Plus size={14} />
+                  New Production
+                </button>
+              )}
             </div>
           </div>
+
+          {error && (
+            <div className="px-5 py-4 text-red-600 text-sm bg-red-50 border-b border-red-100">{error}</div>
+          )}
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -142,148 +303,98 @@ export default function ProductionsPage() {
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Dates</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Sets Progress</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Days Left</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Coordinator</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500"></th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {productions.map((p) => {
-                  const donePct = p.sets.total > 0 ? Math.round((p.sets.complete / p.sets.total) * 100) : 0;
-                  const sc = statusConfig[p.status];
-                  return (
-                    <tr key={p.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer">
-                      <td className="px-5 py-4">
-                        <p className="text-slate-900 font-semibold">{p.name}</p>
-                        <p className="text-slate-400 text-xs mt-0.5">{p.company}</p>
-                      </td>
-                      <td className="px-4 py-4 text-slate-600 text-xs whitespace-nowrap">{p.type}</td>
-                      <td className="px-4 py-4">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.contractType === 'Cost Plus' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
-                          {p.contractType}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className={`text-xs px-2 py-1 rounded-full font-medium ${sc.className}`}>
-                          {sc.icon}{sc.label}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-slate-500 text-xs whitespace-nowrap">
-                        <div className="flex items-center gap-1.5">
-                          <Calendar size={11} className="text-slate-400" />
-                          {p.start} – {p.end}
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-2">
-                          <div className="w-20 bg-slate-100 rounded-full h-1.5">
-                            <div className="h-1.5 bg-teal-500 rounded-full" style={{ width: `${donePct}%` }} />
-                          </div>
-                          <span className="text-xs text-slate-500">{p.sets.complete}/{p.sets.total}</span>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className={`text-sm ${daysColor(p.daysRemaining, p.status)}`}>
-                          {p.status === 'Complete' ? '—' : p.status === 'Strike' ? 'Wrapping' : `${p.daysRemaining}d`}
-                        </span>
-                      </td>
-                      <td className="px-4 py-4 text-slate-600 text-xs">{p.coordinator}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-1">
-                          <button className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors">
-                            <ChevronRight size={15} />
-                          </button>
-                          <button className="p-1.5 text-slate-400 hover:bg-slate-100 rounded-lg transition-colors">
-                            <MoreHorizontal size={15} />
-                          </button>
-                        </div>
-                      </td>
+                {loading ? (
+                  Array.from({ length: 4 }).map((_, i) => (
+                    <tr key={i}>
+                      {Array.from({ length: 7 }).map((_, j) => (
+                        <td key={j} className="px-4 py-4">
+                          <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
+                        </td>
+                      ))}
                     </tr>
-                  );
-                })}
+                  ))
+                ) : filtered.length === 0 ? (
+                  <tr>
+                    <td colSpan={7} className="px-5 py-10 text-center text-slate-400 text-sm">
+                      {search ? 'No productions match your search.' : 'No productions found.'}
+                    </td>
+                  </tr>
+                ) : (
+                  filtered.map(p => {
+                    const sc = STATUS_CONFIG[p.status] ?? STATUS_CONFIG.pre_production;
+                    const donePct = p.total_sets > 0 ? Math.round((p.completed_sets / p.total_sets) * 100) : 0;
+                    return (
+                      <tr
+                        key={p.id}
+                        className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                        onClick={() => router.push(`/productions/${p.id}`)}
+                      >
+                        <td className="px-5 py-4">
+                          <p className="text-slate-900 font-semibold">{p.name}</p>
+                          {p.production_company && <p className="text-slate-400 text-xs mt-0.5">{p.production_company}</p>}
+                        </td>
+                        <td className="px-4 py-4 text-slate-600 text-xs whitespace-nowrap">{p.production_type ?? '—'}</td>
+                        <td className="px-4 py-4">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.contract_type === 'cost_plus' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {p.contract_type === 'cost_plus' ? 'Cost Plus' : 'On a Price'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${sc.className}`}>
+                            {sc.icon}{sc.label}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-slate-500 text-xs whitespace-nowrap">
+                          <div className="flex items-center gap-1.5">
+                            <Calendar size={11} className="text-slate-400" />
+                            {fmtDate(p.start_date)} – {fmtDate(p.end_date)}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-2">
+                            <div className="w-20 bg-slate-100 rounded-full h-1.5">
+                              <div className="h-1.5 bg-teal-500 rounded-full" style={{ width: `${donePct}%` }} />
+                            </div>
+                            <span className="text-xs text-slate-500">{p.completed_sets}/{p.total_sets}</span>
+                          </div>
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => router.push(`/productions/${p.id}`)}
+                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                              title="View details"
+                            >
+                              <ChevronRight size={15} />
+                            </button>
+                            {canEdit && p.status !== 'archived' && (
+                              <button
+                                onClick={e => handleArchive(e, p.id)}
+                                disabled={archiving === p.id}
+                                className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors"
+                                title="Archive production"
+                              >
+                                {archiving === p.id ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
           </div>
 
           <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between">
-            <span className="text-slate-400 text-xs">Showing 5 productions · 1 archived</span>
-            <div className="flex items-center gap-1">
-              <button className="px-2.5 py-1 text-xs text-slate-500 border border-slate-200 rounded-md hover:bg-white transition-colors">Previous</button>
-              <button className="px-2.5 py-1 text-xs bg-teal-600 text-white rounded-md">1</button>
-              <button className="px-2.5 py-1 text-xs text-slate-500 border border-slate-200 rounded-md hover:bg-white transition-colors">Next</button>
-            </div>
-          </div>
-        </div>
-
-        {/* Set Tracker Preview */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-slate-900 font-semibold text-sm">Set Tracker — Meridian</h2>
-              <p className="text-slate-400 text-xs mt-0.5">18 sets · 11 complete · 46 days to final handover</p>
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-1.5 text-xs text-slate-500">
-                <span className="w-2.5 h-2.5 rounded-full bg-green-400 inline-block" /> Comfortable
-                <span className="w-2.5 h-2.5 rounded-full bg-amber-400 inline-block ml-2" /> Approaching
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 inline-block ml-2" /> Imminent
-              </div>
-            </div>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-2.5 text-xs font-semibold text-slate-500">Set #</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Set Name</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Shoot Week</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Handover Date</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Status</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-center">Countdown</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {[
-                  { num: 'S001', name: 'Interior Castle Great Hall', week: 'W/E 18 May', handover: '16 May 2026', status: 'Handed Over', days: -2 },
-                  { num: 'S002', name: 'Dungeon Corridor', week: 'W/E 25 May', handover: '22 May 2026', status: 'Nearing Completion', days: 9 },
-                  { num: 'S003', name: 'Village Market Square', week: 'W/E 01 Jun', handover: '29 May 2026', status: 'In Progress', days: 16 },
-                  { num: 'S004', name: 'Tavern Interior', week: 'W/E 08 Jun', handover: '05 Jun 2026', status: 'In Progress', days: 23 },
-                  { num: 'S005', name: 'Forest Clearing', week: 'W/E 15 Jun', handover: '12 Jun 2026', status: 'Not Started', days: 30 },
-                ].map((s) => {
-                  const dotColor = s.days < 0 ? 'bg-slate-300' : s.days <= 7 ? 'bg-red-500' : s.days <= 14 ? 'bg-amber-400' : 'bg-green-400';
-                  const countdownText = s.days < 0 ? 'Done' : `${s.days}d`;
-                  const countdownColor = s.days < 0 ? 'text-slate-400' : s.days <= 7 ? 'text-red-600 font-bold' : s.days <= 14 ? 'text-amber-600 font-semibold' : 'text-green-600';
-                  const statusBadge: Record<string, string> = {
-                    'Handed Over': 'bg-slate-100 text-slate-500',
-                    'Nearing Completion': 'bg-amber-100 text-amber-700',
-                    'In Progress': 'bg-blue-100 text-blue-700',
-                    'Not Started': 'bg-slate-100 text-slate-400',
-                    'Complete': 'bg-green-100 text-green-700',
-                  };
-                  return (
-                    <tr key={s.num} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3 text-slate-500 text-xs font-mono">{s.num}</td>
-                      <td className="px-4 py-3 text-slate-800 font-medium text-sm">{s.name}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">{s.week}</td>
-                      <td className="px-4 py-3 text-slate-500 text-xs">
-                        <div className="flex items-center gap-1.5">
-                          <MapPin size={11} className="text-slate-400" />{s.handover}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${statusBadge[s.status] || 'bg-slate-100 text-slate-500'}`}>{s.status}</span>
-                      </td>
-                      <td className="px-4 py-3 text-center">
-                        <div className="flex items-center justify-center gap-1.5">
-                          <span className={`w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />
-                          <span className={`text-sm ${countdownColor}`}>{countdownText}</span>
-                        </div>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <span className="text-slate-400 text-xs">
+              {loading ? 'Loading…' : `Showing ${filtered.length} of ${productions.length} production${productions.length !== 1 ? 's' : ''}`}
+            </span>
           </div>
         </div>
 

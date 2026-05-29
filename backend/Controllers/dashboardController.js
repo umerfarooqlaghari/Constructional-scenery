@@ -206,6 +206,18 @@ const getProductionPipeline = async () => {
   }));
 };
 
+const getPendingApprovals = async () => {
+  const [{ rows: [pos] }, { rows: [tss] }] = await Promise.all([
+    db.query(`SELECT COUNT(*)::int AS cnt FROM purchase_orders WHERE status = 'submitted'`),
+    db.query(`SELECT COUNT(*)::int AS cnt FROM timesheets       WHERE status = 'invoice_received'`),
+  ]);
+  return {
+    purchase_orders: pos.cnt,
+    timesheets:      tss.cnt,
+    total:           pos.cnt + tss.cnt,
+  };
+};
+
 // ─── GET /api/dashboard ───────────────────────────────────────────────────────
 const getDashboard = async (req, res) => {
   const today     = new Date().toISOString().split('T')[0];
@@ -213,7 +225,7 @@ const getDashboard = async (req, res) => {
   const weekEnd   = getWeekEnd();
 
   try {
-    const [poSpend, labourCosts, activeProductions, crewHeadcount, forecastingVariance, pipeline] =
+    const [poSpend, labourCosts, activeProductions, crewHeadcount, forecastingVariance, pipeline, pendingApprovals] =
       await Promise.all([
         getPOSpend(today, weekStart, weekEnd),
         getCurrentWeekLabour(weekEnd),
@@ -221,6 +233,7 @@ const getDashboard = async (req, res) => {
         getCrewHeadcount(),
         getForecastingVariance(),
         getProductionPipeline(),
+        getPendingApprovals(),
       ]);
 
     res.json({
@@ -232,6 +245,7 @@ const getDashboard = async (req, res) => {
       crew_headcount:       crewHeadcount,
       forecasting_variance: forecastingVariance,
       production_pipeline:  pipeline,
+      pending_approvals:    pendingApprovals,
       cash_flow: {
         note: 'Xero integration pending — to be quoted separately.',
         data: null,

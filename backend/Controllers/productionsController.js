@@ -45,7 +45,19 @@ const getAllProductions = async (req, res) => {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
-      `SELECT * FROM productions ${where} ORDER BY created_at DESC`,
+      `SELECT p.*,
+         COALESCE(sc.total_sets, 0)::int     AS total_sets,
+         COALESCE(sc.completed_sets, 0)::int AS completed_sets
+       FROM productions p
+       LEFT JOIN (
+         SELECT production_id,
+           COUNT(*)::int AS total_sets,
+           COUNT(CASE WHEN completion_status IN ('complete','handed_over') THEN 1 END)::int AS completed_sets
+         FROM sets
+         GROUP BY production_id
+       ) sc ON sc.production_id = p.id
+       ${where}
+       ORDER BY p.created_at DESC`,
       params
     );
     res.json(rows);
