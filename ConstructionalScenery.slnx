@@ -1,5 +1,3 @@
 <Solution>
-  <Folder Name="/backend/">
-    <Project Path="backend/ConstructionalScenery.Api.csproj" />
-  </Folder>
+  <Folder Name="/backend/" />
 </Solution>

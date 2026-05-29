@@ -1,0 +1,112 @@
+{
+  "managing_director": {
+    "description": "Full access to all CS HQ modules including Warren's Dashboard",
+    "routes": ["*"]
+  },
+
+  "construction_accountant": {
+    "description": "Module 2 (Crew DB), Module 3 (Timesheets & Pay Run), Module 4 (Cost Report), read-only on Module 1 & 7",
+    "routes": [
+      "GET /api/auth/me",
+      "POST /api/auth/logout",
+      "POST /api/auth/refresh",
+
+      "GET /api/crew",
+      "GET /api/crew/trades",
+      "GET /api/crew/:id",
+      "POST /api/crew",
+      "PUT /api/crew/:id",
+      "POST /api/crew/:id/documents",
+      "DELETE /api/crew/:id/documents/:docId",
+      "POST /api/crew/:id/productions",
+
+      "GET /api/timesheets",
+      "POST /api/timesheets",
+      "GET /api/timesheets/:id",
+      "PUT /api/timesheets/:id/entries",
+      "POST /api/timesheets/bulk-distribute",
+      "POST /api/timesheets/chase-invoices",
+      "GET /api/timesheets/verification-pack/:weekEndingDate/:productionId",
+      "POST /api/timesheets/:id/attach-invoice",
+      "POST /api/timesheets/:id/verify",
+
+      "GET /api/pay-runs",
+      "POST /api/pay-runs",
+      "GET /api/pay-runs/:id",
+      "POST /api/pay-runs/:id/process",
+      "GET /api/pay-runs/:id/export-csv",
+
+      "GET /api/cost-reports/:productionId",
+      "POST /api/cost-reports/:productionId/invoices",
+      "GET /api/cost-reports/:productionId/cost-plus",
+      "POST /api/cost-reports/:productionId/budget",
+
+      "GET /api/purchase-orders",
+      "GET /api/purchase-orders/:id",
+      "POST /api/purchase-orders/:id/attach-invoice",
+      "POST /api/purchase-orders/:id/approve",
+
+      "GET /api/productions",
+      "GET /api/productions/:id",
+      "GET /api/productions/:id/sets",
+      "GET /api/productions/:id/documents",
+
+      "GET /api/forecasting/forecasts",
+      "POST /api/forecasting/forecasts",
+      "GET /api/forecasting/forecasts/:id",
+      "PUT /api/forecasting/forecasts/:id",
+      "GET /api/forecasting/percentometer/ratios",
+      "POST /api/forecasting/percentometer/calculate",
+      "GET /api/forecasting/catalogue",
+      "GET /api/forecasting/bectu-rates"
+    ]
+  },
+
+  "construction_coordinator": {
+    "description": "Module 7 (Productions + Sets), Module 1 (POs), Module 2 (Crew DB), Module 5 (Supplier Catalogue)",
+    "routes": [
+      "GET /api/auth/me",
+      "POST /api/auth/logout",
+      "POST /api/auth/refresh",
+
+      "GET /api/productions",
+      "POST /api/productions",
+      "GET /api/productions/:id",
+      "PUT /api/productions/:id",
+      "GET /api/productions/:id/sets",
+      "POST /api/productions/:id/sets",
+      "PUT /api/productions/:id/sets/:setId",
+      "DELETE /api/productions/:id/sets/:setId",
+      "GET /api/productions/:id/documents",
+      "POST /api/productions/:id/documents",
+
+      "GET /api/purchase-orders",
+      "POST /api/purchase-orders",
+      "GET /api/purchase-orders/:id",
+      "PUT /api/purchase-orders/:id",
+      "DELETE /api/purchase-orders/:id",
+      "POST /api/purchase-orders/:id/submit",
+      "POST /api/purchase-orders/:id/attach-invoice",
+
+      "GET /api/crew",
+      "GET /api/crew/trades",
+      "GET /api/crew/:id",
+      "POST /api/crew",
+      "PUT /api/crew/:id",
+      "POST /api/crew/:id/documents",
+      "DELETE /api/crew/:id/documents/:docId",
+      "POST /api/crew/:id/productions",
+
+      "GET /api/forecasting/catalogue",
+      "POST /api/forecasting/catalogue",
+      "PUT /api/forecasting/catalogue/:id",
+      "DELETE /api/forecasting/catalogue/:id",
+      "GET /api/forecasting/bectu-rates",
+      "GET /api/forecasting/percentometer/ratios",
+      "POST /api/forecasting/percentometer/calculate",
+
+      "GET /api/timesheets",
+      "GET /api/timesheets/:id"
+    ]
+  }
+}

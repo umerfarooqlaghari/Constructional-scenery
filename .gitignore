@@ -15,6 +15,11 @@ backend/bin/
 backend/obj/
 *.user
 
+# ─── Node.js backend ─────────────────────────────────────────────────────────
+backend/node_modules/
+backend/uploads/
+backend/dist/
+
 # ─── Next.js ─────────────────────────────────────────────────────────────────
 frontend/.next/
 frontend/out/

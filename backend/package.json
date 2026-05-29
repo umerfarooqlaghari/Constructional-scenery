@@ -1,0 +1,45 @@
+{
+  "name": "cshq-api",
+  "version": "1.0.0",
+  "description": "CS HQ Backend API — Construct Scenery Limited",
+  "main": "Server.js",
+  "scripts": {
+    "start": "node Server.js",
+    "dev": "nodemon Server.js",
+    "typeorm": "typeorm-ts-node-commonjs --dataSource src/data-source.ts",
+    "migration:run": "npm run typeorm -- migration:run",
+    "migration:revert": "npm run typeorm -- migration:revert",
+    "migration:show": "npm run typeorm -- migration:show",
+    "migration:generate": "npm run typeorm -- migration:generate src/migrations/",
+    "db:encrypt-existing": "node db/migrate-encrypt.js"
+  },
+  "keywords": [
+    "api",
+    "express",
+    "supabase",
+    "postgresql"
+  ],
+  "author": "",
+  "license": "ISC",
+  "dependencies": {
+    "@types/node": "^25.9.1",
+    "bcryptjs": "^3.0.3",
+    "cors": "^2.8.5",
+    "dotenv": "^16.0.3",
+    "express": "^4.18.2",
+    "express-validator": "^7.0.1",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.1.1",
+    "nodemailer": "^8.0.9",
+    "pg": "^8.21.0",
+    "reflect-metadata": "^0.2.2",
+    "ts-node": "^10.9.2",
+    "typeorm": "^1.0.0",
+    "typescript": "^6.0.3",
+    "uuid": "^14.0.0"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.20.0",
+    "nodemon": "^3.0.0"
+  }
+}
