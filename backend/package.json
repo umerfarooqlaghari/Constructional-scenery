@@ -2,10 +2,10 @@
   "name": "cshq-api",
   "version": "1.0.0",
   "description": "CS HQ Backend API — Construct Scenery Limited",
-  "main": "Server.js",
+  "main": "server.js",
   "scripts": {
-    "start": "node Server.js",
-    "dev": "nodemon Server.js",
+    "start": "node server.js",
+    "dev": "nodemon server.js",
     "typeorm": "typeorm-ts-node-commonjs --dataSource src/data-source.ts",
     "migration:run": "npm run typeorm -- migration:run",
     "migration:revert": "npm run typeorm -- migration:revert",
