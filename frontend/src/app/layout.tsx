@@ -12,6 +12,10 @@ const inter = Inter({
 export const metadata: Metadata = {
   title: "CS HQ — Construct Scenery Limited",
   description: "Business management platform for Construct Scenery Limited",
+  icons: {
+    icon: "/icon.png",
+    apple: "/icon.png",
+  },
 };
 
 export default function RootLayout({
