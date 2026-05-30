@@ -22,6 +22,8 @@ import {
   ChevronRight,
   FileText,
   Pencil,
+  Filter,
+  SlidersHorizontal,
 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
@@ -142,6 +144,22 @@ export default function PurchaseOrdersPage() {
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
 
+  const [showFilters, setShowFilters] = useState(false);
+  const [poFilters, setPoFilters] = useState({
+    production_id: '',
+    date_from: '',
+    date_to: '',
+    net_amount_min: '',
+    net_amount_max: '',
+    gross_amount_min: '',
+    gross_amount_max: '',
+    set_code: '',
+    account_code: '',
+    paid_from: '',
+  });
+
+  const activeFilterCount = Object.values(poFilters).filter((v) => v !== '').length;
+
   const [showNewModal, setShowNewModal] = useState(false);
   const [newForm, setNewForm] = useState<NewPOForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
@@ -162,8 +180,20 @@ export default function PurchaseOrdersPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
+      const params: Record<string, string> = {};
+      if (poFilters.production_id)  params.production_id  = poFilters.production_id;
+      if (poFilters.date_from)      params.date_from      = poFilters.date_from;
+      if (poFilters.date_to)        params.date_to        = poFilters.date_to;
+      if (poFilters.net_amount_min) params.net_amount_min = poFilters.net_amount_min;
+      if (poFilters.net_amount_max) params.net_amount_max = poFilters.net_amount_max;
+      if (poFilters.gross_amount_min) params.amount_min   = poFilters.gross_amount_min;
+      if (poFilters.gross_amount_max) params.amount_max   = poFilters.gross_amount_max;
+      if (poFilters.set_code)       params.set_code       = poFilters.set_code;
+      if (poFilters.account_code)   params.account_code   = poFilters.account_code;
+      if (poFilters.paid_from)      params.paid_from      = poFilters.paid_from;
+
       const [poList, prodList] = await Promise.all([
-        purchaseOrdersApi.list(),
+        purchaseOrdersApi.list(Object.keys(params).length ? params : undefined),
         productionsApi.list(),
       ]);
       setPos(poList);
@@ -172,7 +202,7 @@ export default function PurchaseOrdersPage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [poFilters]);
 
   useEffect(() => {
     loadData();
@@ -416,6 +446,23 @@ export default function PurchaseOrdersPage() {
                   </button>
                 )}
               </div>
+              {/* Filter toggle */}
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-teal-50 border-teal-300 text-teal-700'
+                    : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <SlidersHorizontal size={13} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="ml-0.5 bg-teal-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
             </div>
             {!isAccountant && (
               <button
@@ -427,6 +474,146 @@ export default function PurchaseOrdersPage() {
               </button>
             )}
           </div>
+
+          {/* Advanced Filter Panel */}
+          {showFilters && (
+            <div className="px-5 py-4 border-b border-slate-100 bg-slate-50/60 space-y-3">
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+                {/* Production */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Production</label>
+                  <select
+                    value={poFilters.production_id}
+                    onChange={e => { setPoFilters(f => ({ ...f, production_id: e.target.value })); setPage(1); }}
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  >
+                    <option value="">All productions</option>
+                    {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+                  </select>
+                </div>
+                {/* Date From */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Date From</label>
+                  <input
+                    type="date"
+                    value={poFilters.date_from}
+                    onChange={e => { setPoFilters(f => ({ ...f, date_from: e.target.value })); setPage(1); }}
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Date To */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Date To</label>
+                  <input
+                    type="date"
+                    value={poFilters.date_to}
+                    onChange={e => { setPoFilters(f => ({ ...f, date_to: e.target.value })); setPage(1); }}
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Set Code */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Set Code</label>
+                  <input
+                    type="text"
+                    value={poFilters.set_code}
+                    onChange={e => { setPoFilters(f => ({ ...f, set_code: e.target.value })); setPage(1); }}
+                    placeholder="e.g. S003"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Account Code */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Account Code</label>
+                  <input
+                    type="text"
+                    value={poFilters.account_code}
+                    onChange={e => { setPoFilters(f => ({ ...f, account_code: e.target.value })); setPage(1); }}
+                    placeholder="e.g. MAT-001"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Payment Method */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Payment Method</label>
+                  <select
+                    value={poFilters.paid_from}
+                    onChange={e => { setPoFilters(f => ({ ...f, paid_from: e.target.value })); setPage(1); }}
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  >
+                    <option value="">All methods</option>
+                    <option value="supplier_account">Supplier Account</option>
+                    <option value="arbuthnot_current_account">Arbuthnot Current</option>
+                    <option value="charge_card">Charge Card</option>
+                    <option value="pleo_charge_card">Pleo Charge Card</option>
+                  </select>
+                </div>
+                {/* Net Amount Min */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Net £ Min</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={poFilters.net_amount_min}
+                    onChange={e => { setPoFilters(f => ({ ...f, net_amount_min: e.target.value })); setPage(1); }}
+                    placeholder="0.00"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Net Amount Max */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Net £ Max</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={poFilters.net_amount_max}
+                    onChange={e => { setPoFilters(f => ({ ...f, net_amount_max: e.target.value })); setPage(1); }}
+                    placeholder="0.00"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Gross Amount Min */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Gross £ Min</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={poFilters.gross_amount_min}
+                    onChange={e => { setPoFilters(f => ({ ...f, gross_amount_min: e.target.value })); setPage(1); }}
+                    placeholder="0.00"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+                {/* Gross Amount Max */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Gross £ Max</label>
+                  <input
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={poFilters.gross_amount_max}
+                    onChange={e => { setPoFilters(f => ({ ...f, gross_amount_max: e.target.value })); setPage(1); }}
+                    placeholder="0.00"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                  />
+                </div>
+              </div>
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={() => {
+                    setPoFilters({ production_id: '', date_from: '', date_to: '', net_amount_min: '', net_amount_max: '', gross_amount_min: '', gross_amount_max: '', set_code: '', account_code: '', paid_from: '' });
+                    setPage(1);
+                  }}
+                  className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
+                >
+                  <X size={12} /> Clear all filters
+                </button>
+              )}
+            </div>
+          )}
 
           {/* Action error banner */}
           {actionError && (

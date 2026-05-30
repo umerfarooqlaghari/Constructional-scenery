@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, Fragment } from 'react';
 import TopBar from '@/components/TopBar';
 import {
   Download, ChevronDown, ChevronRight, TrendingUp, TrendingDown,
-  Plus, X, Loader2,
+  Plus, X, Loader2, SlidersHorizontal,
 } from 'lucide-react';
 import {
   productionsApi, costReportApi,
@@ -156,6 +156,16 @@ export default function CostReportPage() {
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [showDatePicker, setShowDatePicker] = useState(false);
 
+  // Client-side filter state for cost report detail tables
+  const [costType, setCostType] = useState<'all' | 'supplier' | 'labour'>('all');
+  const [supplierSearch, setSupplierSearch] = useState('');
+  const [setCodeFilter, setSetCodeFilter] = useState('');
+  const [tradeFilter, setTradeFilter] = useState('');
+  const [crewSearch, setCrewSearch] = useState('');
+  const [weekFrom, setWeekFrom] = useState('');
+  const [weekTo, setWeekTo] = useState('');
+  const [showCostFilters, setShowCostFilters] = useState(false);
+
   useEffect(() => {
     productionsApi.list().then(data => {
       setProductions(data);
@@ -219,16 +229,47 @@ export default function CostReportPage() {
   const totalInvoiced = m?.total_invoiced_to_production ?? 0;
   const progressPct = totalInvoiced > 0 ? Math.min(100, (totalCosts / totalInvoiced) * 100) : 0;
 
+  // Filtered supplier costs
+  const filteredSupplierCosts = (report?.supplier_costs ?? []).filter(r => {
+    if (supplierSearch && !r.supplier.toLowerCase().includes(supplierSearch.toLowerCase())) return false;
+    if (setCodeFilter) {
+      const code = setCodeFilter.toLowerCase();
+      if (!(r.set_code ?? '').toLowerCase().includes(code) && !(r.account_code ?? '').toLowerCase().includes(code)) return false;
+    }
+    return true;
+  });
+
+  // Filtered labour weeks + crew
+  const availableTrades = Array.from(new Set(
+    (report?.labour_weekly ?? []).flatMap(w => w.crew.map(c => c.trade)).filter(Boolean)
+  )) as string[];
+
+  const filteredLabour = (report?.labour_weekly ?? []).map(week => {
+    const filteredCrew = week.crew.filter(c => {
+      if (tradeFilter && c.trade !== tradeFilter) return false;
+      if (crewSearch && !c.name.toLowerCase().includes(crewSearch.toLowerCase())) return false;
+      return true;
+    });
+    return { ...week, crew: filteredCrew };
+  }).filter(week => {
+    if (weekFrom && week.week_ending_date < weekFrom) return false;
+    if (weekTo   && week.week_ending_date > weekTo)   return false;
+    if (tradeFilter || crewSearch) return week.crew.length > 0;
+    return true;
+  });
+
   let labourRunning = 0;
-  const labourWithRunning = (report?.labour_weekly ?? []).map(w => {
+  const labourWithRunning = filteredLabour.map(w => {
     labourRunning += w.total;
     return { ...w, running: labourRunning };
   });
 
-  const supplierTotal = report?.supplier_costs.reduce((s, r) => s + r.total, 0) ?? 0;
-  const supplierExVatTotal = report?.supplier_costs.reduce((s, r) => s + r.cost_ex_vat, 0) ?? 0;
-  const supplierVatTotal = report?.supplier_costs.reduce((s, r) => s + r.vat, 0) ?? 0;
+  const supplierTotal = filteredSupplierCosts.reduce((s, r) => s + r.total, 0);
+  const supplierExVatTotal = filteredSupplierCosts.reduce((s, r) => s + r.cost_ex_vat, 0);
+  const supplierVatTotal = filteredSupplierCosts.reduce((s, r) => s + r.vat, 0);
   const invoiceTotal = report?.invoices_to_production.reduce((s, r) => s + parseFloat(r.amount), 0) ?? 0;
+
+  const activeCostFilterCount = [supplierSearch, setCodeFilter, tradeFilter, crewSearch, weekFrom, weekTo].filter(Boolean).length + (costType !== 'all' ? 1 : 0);
 
   return (
     <>
@@ -307,6 +348,122 @@ export default function CostReportPage() {
 
         {error && (
           <div className="bg-red-50 border border-red-100 rounded-xl px-5 py-4 text-red-600 text-sm">{error}</div>
+        )}
+
+        {/* Cost detail filter panel */}
+        {report && (
+          <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
+            <div className="flex items-center justify-between px-5 py-3">
+              <div className="flex items-center gap-2">
+                <span className="text-slate-600 text-xs font-semibold">Filter cost details</span>
+                {activeCostFilterCount > 0 && (
+                  <span className="bg-teal-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCostFilterCount}</span>
+                )}
+              </div>
+              <button
+                onClick={() => setShowCostFilters(v => !v)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${showCostFilters || activeCostFilterCount > 0 ? 'bg-teal-50 border-teal-300 text-teal-700' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}
+              >
+                <SlidersHorizontal size={12} />
+                {showCostFilters ? 'Hide' : 'Show'} Filters
+              </button>
+            </div>
+
+            {showCostFilters && (
+              <div className="px-5 pb-4 border-t border-slate-100 pt-3 space-y-3">
+                {/* Cost type row */}
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className="text-xs text-slate-500 font-medium">Show:</span>
+                  {(['all', 'supplier', 'labour'] as const).map(v => (
+                    <button
+                      key={v}
+                      onClick={() => setCostType(v)}
+                      className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${costType === v ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                    >
+                      {v === 'all' ? 'All Costs' : v === 'supplier' ? 'Supplier Only' : 'Labour Only'}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3">
+                  {/* Supplier search */}
+                  <div className="col-span-2 sm:col-span-1 lg:col-span-2">
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Supplier</label>
+                    <input
+                      type="text"
+                      value={supplierSearch}
+                      onChange={e => setSupplierSearch(e.target.value)}
+                      placeholder="e.g. Treeline"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                    />
+                  </div>
+                  {/* Set/Account code */}
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Set / Account Code</label>
+                    <input
+                      type="text"
+                      value={setCodeFilter}
+                      onChange={e => setSetCodeFilter(e.target.value)}
+                      placeholder="e.g. S003"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                    />
+                  </div>
+                  {/* Trade */}
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Trade</label>
+                    <select
+                      value={tradeFilter}
+                      onChange={e => setTradeFilter(e.target.value)}
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+                    >
+                      <option value="">All trades</option>
+                      {availableTrades.map(t => <option key={t} value={t}>{t}</option>)}
+                    </select>
+                  </div>
+                  {/* Crew member */}
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Crew Member</label>
+                    <input
+                      type="text"
+                      value={crewSearch}
+                      onChange={e => setCrewSearch(e.target.value)}
+                      placeholder="Name..."
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                    />
+                  </div>
+                  {/* Week from */}
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Week From</label>
+                    <input
+                      type="date"
+                      value={weekFrom}
+                      onChange={e => setWeekFrom(e.target.value)}
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                    />
+                  </div>
+                  {/* Week to */}
+                  <div>
+                    <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Week To</label>
+                    <input
+                      type="date"
+                      value={weekTo}
+                      onChange={e => setWeekTo(e.target.value)}
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                    />
+                  </div>
+                </div>
+
+                {activeCostFilterCount > 0 && (
+                  <button
+                    onClick={() => { setCostType('all'); setSupplierSearch(''); setSetCodeFilter(''); setTradeFilter(''); setCrewSearch(''); setWeekFrom(''); setWeekTo(''); }}
+                    className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium"
+                  >
+                    <X size={11} /> Clear all filters
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {/* Metric cards */}
@@ -451,9 +608,13 @@ export default function CostReportPage() {
         </div>
 
         {/* Supplier Costs */}
+        {costType !== 'labour' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-slate-900 font-semibold text-sm">Supplier Costs</h2>
+            <h2 className="text-slate-900 font-semibold text-sm">
+              Supplier Costs
+              {(supplierSearch || setCodeFilter) && <span className="ml-2 text-[10px] text-teal-600 font-medium">(filtered)</span>}
+            </h2>
             {!loading && <span className="text-teal-600 text-xs font-semibold">Total: {fmtGBP(supplierTotal)}</span>}
           </div>
           <div className="overflow-x-auto">
@@ -481,12 +642,14 @@ export default function CostReportPage() {
                       ))}
                     </tr>
                   ))
-                ) : (report?.supplier_costs.length ?? 0) === 0 ? (
+                ) : filteredSupplierCosts.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">No supplier costs recorded.</td>
+                    <td colSpan={8} className="px-5 py-8 text-center text-slate-400">
+                      {(report?.supplier_costs.length ?? 0) === 0 ? 'No supplier costs recorded.' : 'No supplier costs match the filters.'}
+                    </td>
                   </tr>
                 ) : (
-                  report?.supplier_costs.map((r, i) => (
+                  filteredSupplierCosts.map((r, i) => (
                     <tr key={i} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-4 py-2.5 text-slate-400 whitespace-nowrap">{fmtDate(r.date)}</td>
                       <td className="px-4 py-2.5 text-slate-700 font-medium">{r.supplier}</td>
@@ -499,7 +662,7 @@ export default function CostReportPage() {
                     </tr>
                   ))
                 )}
-                {!loading && (report?.supplier_costs.length ?? 0) > 0 && (
+                {!loading && filteredSupplierCosts.length > 0 && (
                   <tr className="bg-slate-50 border-t-2 border-slate-200">
                     <td className="px-4 py-2.5 font-bold text-slate-700" colSpan={4}>Totals</td>
                     <td className="px-4 py-2.5 font-bold text-slate-800 text-right">{fmtGBP(supplierExVatTotal)}</td>
@@ -512,11 +675,16 @@ export default function CostReportPage() {
             </table>
           </div>
         </div>
+        )}
 
         {/* Labour Summary */}
+        {costType !== 'supplier' && (
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <h2 className="text-slate-900 font-semibold text-sm">Labour Summary — by Week</h2>
+            <h2 className="text-slate-900 font-semibold text-sm">
+              Labour Summary — by Week
+              {(tradeFilter || crewSearch || weekFrom || weekTo) && <span className="ml-2 text-[10px] text-teal-600 font-medium">(filtered)</span>}
+            </h2>
             {!loading && m && (
               <span className="text-teal-600 text-xs font-semibold">Total: {fmtGBP(m.total_labour_costs)}</span>
             )}
@@ -545,7 +713,9 @@ export default function CostReportPage() {
                   ))
                 ) : labourWithRunning.length === 0 ? (
                   <tr>
-                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">No labour recorded.</td>
+                    <td colSpan={5} className="px-5 py-8 text-center text-slate-400">
+                      {(report?.labour_weekly.length ?? 0) === 0 ? 'No labour recorded.' : 'No labour matches the filters.'}
+                    </td>
                   </tr>
                 ) : (
                   labourWithRunning.map(week => {
@@ -599,6 +769,7 @@ export default function CostReportPage() {
             </table>
           </div>
         </div>
+        )}
 
       </main>
     </>

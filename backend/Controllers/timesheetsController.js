@@ -23,6 +23,10 @@ const getAllTimesheets = async (req, res) => {
     if (req.query.status)           { conditions.push(`t.status = $${i++}`);           params.push(req.query.status); }
     if (req.query.date_from)        { conditions.push(`t.week_ending_date >= $${i++}`); params.push(req.query.date_from); }
     if (req.query.date_to)          { conditions.push(`t.week_ending_date <= $${i++}`); params.push(req.query.date_to); }
+    if (req.query.invoice_attached === 'yes') { conditions.push(`t.invoice_attachment_url IS NOT NULL`); }
+    if (req.query.invoice_attached === 'no')  { conditions.push(`t.invoice_attachment_url IS NULL`); }
+    if (req.query.crew_trade) { conditions.push(`cm.crew_trade = $${i++}`); params.push(req.query.crew_trade); }
+    if (req.query.crew_rank)  { conditions.push(`cm.crew_rank = $${i++}`);  params.push(req.query.crew_rank); }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
