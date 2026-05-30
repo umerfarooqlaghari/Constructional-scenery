@@ -333,6 +333,7 @@ export type PurchaseOrder = {
   status: POStatus;
   paid_from: string;
   invoice_attachment_url: string | null;
+  invoice_attachment_name: string | null;
   approved_by: string | null;
   approved_at: string | null;
   created_by: string;

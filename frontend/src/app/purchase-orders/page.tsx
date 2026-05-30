@@ -157,6 +157,8 @@ export default function PurchaseOrdersPage() {
   const [editError, setEditError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
+  const [fileViewer, setFileViewer] = useState<{ url: string; name: string } | null>(null);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
@@ -508,18 +510,32 @@ export default function PurchaseOrdersPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5 text-center">
-                          {po.invoice_attachment_url ? (
-                            <a
-                              href={po.invoice_attachment_url}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="View invoice"
-                              className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-800 hover:underline"
-                            >
-                              <CheckCircle2 size={15} className="text-green-500" />
-                              <span className="text-xs font-medium">View</span>
-                            </a>
-                          ) : (
+                          {po.invoice_attachment_url ? (() => {
+                            const url = po.invoice_attachment_url.startsWith('http')
+                              ? `/uploads/${po.invoice_attachment_url.split('/uploads/')[1]}`
+                              : po.invoice_attachment_url;
+                            const name = po.invoice_attachment_name ?? url.split('/').pop() ?? 'invoice';
+                            const ext = name.split('.').pop()?.toLowerCase() ?? '';
+                            const viewable = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+                            return viewable ? (
+                              <button
+                                onClick={() => setFileViewer({ url, name })}
+                                className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-800 hover:underline"
+                              >
+                                <CheckCircle2 size={15} className="text-green-500" />
+                                <span className="text-xs font-medium">View</span>
+                              </button>
+                            ) : (
+                              <a
+                                href={url}
+                                download={name}
+                                className="inline-flex items-center gap-1 text-teal-600 hover:text-teal-800 hover:underline"
+                              >
+                                <CheckCircle2 size={15} className="text-green-500" />
+                                <span className="text-xs font-medium">Download</span>
+                              </a>
+                            );
+                          })() : (
                             <span title="No invoice attached"><AlertCircle size={16} className="text-orange-400 mx-auto" /></span>
                           )}
                         </td>
@@ -878,7 +894,7 @@ export default function PurchaseOrdersPage() {
                 <span className="text-slate-500 text-sm font-medium">
                   {invoiceFile ? invoiceFile.name : 'Click to upload invoice'}
                 </span>
-                <span className="text-slate-400 text-xs mt-1">PDF, PNG, JPG up to 10MB</span>
+                <span className="text-slate-400 text-xs mt-1">PDF, PNG, JPG up to 25MB</span>
                 <input
                   type="file"
                   accept=".pdf,.png,.jpg,.jpeg"
@@ -1028,6 +1044,56 @@ export default function PurchaseOrdersPage() {
           </div>
         </div>
       )}
+
+      {/* File Viewer Modal */}
+      {fileViewer && (() => {
+        const ext = fileViewer.name.split('.').pop()?.toLowerCase() ?? '';
+        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+            <div className="absolute inset-0 bg-black/70" onClick={() => setFileViewer(null)} />
+            <div className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
+                 style={{ width: '90vw', maxWidth: 900, maxHeight: '90vh' }}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-white flex-shrink-0">
+                <span className="text-sm font-medium text-slate-700 truncate max-w-lg">{fileViewer.name}</span>
+                <div className="flex items-center gap-2">
+                  <a
+                    href={fileViewer.url}
+                    download={fileViewer.name}
+                    className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium"
+                  >
+                    Download
+                  </a>
+                  <button
+                    onClick={() => setFileViewer(null)}
+                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
+                  >
+                    <X size={18} />
+                  </button>
+                </div>
+              </div>
+              {/* Content */}
+              <div className="flex-1 overflow-auto flex items-center justify-center bg-slate-50 min-h-0">
+                {isImage ? (
+                  <img
+                    src={fileViewer.url}
+                    alt={fileViewer.name}
+                    className="max-w-full max-h-full object-contain p-4"
+                  />
+                ) : (
+                  <iframe
+                    src={fileViewer.url}
+                    title={fileViewer.name}
+                    className="w-full h-full border-none"
+                    style={{ minHeight: '70vh' }}
+                  />
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </>
   );
 }

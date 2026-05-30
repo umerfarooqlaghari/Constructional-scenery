@@ -42,7 +42,7 @@ const fileFilter = (_req, file, cb) => {
 
 const upload = multer({
   storage,
-  limits: { fileSize: 20 * 1024 * 1024 },  // 20 MB max
+  limits: { fileSize: 25 * 1024 * 1024 },  // 25 MB max
   fileFilter,
 });
 
@@ -50,7 +50,6 @@ const upload = multer({
  * Build the publicly accessible URL for an uploaded file.
  * e.g.  http://localhost:5000/uploads/16000000-123-myfile.pdf
  */
-const fileUrl = (filename) =>
-  `${process.env.APP_URL || 'http://localhost:5000'}/uploads/${filename}`;
+const fileUrl = (filename) => `/uploads/${filename}`;
 
 module.exports = { upload, fileUrl };
