@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback, useRef } from 'react';
 import TopBar from '@/components/TopBar';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
-  Mail, Paperclip, ShieldCheck,
+  Mail, Paperclip, ShieldCheck, X,
 } from 'lucide-react';
 import { timesheetsApi, productionsApi, Timesheet, TimesheetStatus, Production } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -181,6 +181,12 @@ export default function TimesheetsPage() {
   const [chaseMsg, setChaseMsg]     = useState('');
   const [attachModal, setAttachModal] = useState<{ id: string; name: string } | null>(null);
 
+  // Filter state (client-side, applied to the fetched week's data)
+  const [statusFilter, setStatusFilter] = useState<TimesheetStatus | 'all'>('all');
+  const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'yes' | 'no'>('all');
+  const [tradeFilter, setTradeFilter] = useState('');
+  const [crewSearch, setCrewSearch] = useState('');
+
   // Load productions once
   useEffect(() => {
     productionsApi.list()
@@ -216,12 +222,29 @@ export default function TimesheetsPage() {
   const prevWeek = () => setWeekEnding(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; });
   const nextWeek = () => setWeekEnding(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; });
 
-  // Stats
+  // Available trades for this week's sheets
+  const availableTrades = Array.from(new Set(sheets.map(s => s.crew_trade).filter(Boolean))) as string[];
+
+  // Client-side filtered view
+  const filteredSheets = sheets.filter(s => {
+    if (statusFilter !== 'all' && s.status !== statusFilter) return false;
+    if (invoiceFilter === 'yes' && !hasInvoice(s.status)) return false;
+    if (invoiceFilter === 'no' && hasInvoice(s.status)) return false;
+    if (tradeFilter && s.crew_trade !== tradeFilter) return false;
+    if (crewSearch) {
+      const q = crewSearch.toLowerCase();
+      const name = `${s.first_name ?? ''} ${s.last_name ?? ''}`.toLowerCase();
+      if (!name.includes(q) && !(s.crew_number ?? '').toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
+
+  // Stats from full unfiltered week data
   const crewOnSheet      = sheets.length;
   const invoicesReceived = sheets.filter(s => hasInvoice(s.status)).length;
   const nonDraftSheets   = sheets.filter(s => s.status !== 'draft');
   const totalNet  = nonDraftSheets.reduce((acc, s) => acc + (s.grand_total ? parseFloat(s.grand_total) : 0), 0);
-  const totalGross = totalNet; // grand_total already represents the billed amount
+  const totalGross = totalNet;
 
   // Verify handler
   const handleVerify = async (id: string) => {
@@ -344,10 +367,74 @@ export default function TimesheetsPage() {
 
         {/* Timesheet table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <h2 className="text-slate-900 font-semibold text-sm">
-              Timesheets — Week Ending {fmtWeek(weekEnding)}
-            </h2>
+          <div className="px-5 py-3 border-b border-slate-100 space-y-3">
+            <div className="flex items-center justify-between">
+              <h2 className="text-slate-900 font-semibold text-sm">
+                Timesheets — Week Ending {fmtWeek(weekEnding)}
+              </h2>
+            </div>
+
+            {/* Filter controls */}
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Status tabs */}
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                {(['all', 'draft', 'sent', 'invoice_received', 'verified'] as const).map(s => (
+                  <button
+                    key={s}
+                    onClick={() => setStatusFilter(s)}
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors capitalize ${
+                      statusFilter === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {s === 'all' ? 'All' : s === 'invoice_received' ? 'Invoice Rcvd' : s.charAt(0).toUpperCase() + s.slice(1)}
+                  </button>
+                ))}
+              </div>
+              {/* Invoice toggle */}
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
+                {(['all', 'yes', 'no'] as const).map(v => (
+                  <button
+                    key={v}
+                    onClick={() => setInvoiceFilter(v)}
+                    className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors ${
+                      invoiceFilter === v ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+                    }`}
+                  >
+                    {v === 'all' ? 'Any Invoice' : v === 'yes' ? 'Invoice ✓' : 'No Invoice'}
+                  </button>
+                ))}
+              </div>
+              {/* Trade dropdown */}
+              <select
+                value={tradeFilter}
+                onChange={e => setTradeFilter(e.target.value)}
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+              >
+                <option value="">All trades</option>
+                {availableTrades.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              {/* Crew search */}
+              <div className="flex items-center gap-1.5 bg-slate-100 rounded-lg px-2.5 py-1.5 w-44">
+                <svg className="w-3 h-3 text-slate-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" /></svg>
+                <input
+                  type="text"
+                  value={crewSearch}
+                  onChange={e => setCrewSearch(e.target.value)}
+                  placeholder="Crew name..."
+                  className="bg-transparent text-xs text-slate-700 placeholder-slate-400 outline-none w-full"
+                />
+                {crewSearch && <button onClick={() => setCrewSearch('')} className="text-slate-400 hover:text-slate-600"><X size={11} /></button>}
+              </div>
+              {/* Clear filters */}
+              {(statusFilter !== 'all' || invoiceFilter !== 'all' || tradeFilter || crewSearch) && (
+                <button
+                  onClick={() => { setStatusFilter('all'); setInvoiceFilter('all'); setTradeFilter(''); setCrewSearch(''); }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium"
+                >
+                  <X size={11} /> Clear
+                </button>
+              )}
+            </div>
           </div>
 
           {error && (
@@ -359,7 +446,7 @@ export default function TimesheetsPage() {
               <thead>
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500">Crew Member</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Employment</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Trade / Rank</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Net</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
@@ -377,14 +464,14 @@ export default function TimesheetsPage() {
                       ))}
                     </tr>
                   ))
-                ) : sheets.length === 0 ? (
+                ) : filteredSheets.length === 0 ? (
                   <tr>
                     <td colSpan={canAct ? 6 : 5} className="px-5 py-10 text-center text-slate-400 text-sm">
-                      No timesheets found for this week and production.
+                      {sheets.length === 0 ? 'No timesheets found for this week and production.' : 'No timesheets match the current filters.'}
                     </td>
                   </tr>
                 ) : (
-                  sheets.map((ts, idx) => {
+                  filteredSheets.map((ts, idx) => {
                     const colorClass = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                     const badge = STATUS_BADGE[ts.status] ?? STATUS_BADGE.draft;
                     const invoiced = hasInvoice(ts.status);
@@ -413,8 +500,8 @@ export default function TimesheetsPage() {
                           </div>
                         </td>
                         <td className="px-4 py-3.5">
-                          {/* Employment status not on timesheet type — show trade as proxy */}
-                          <span className="text-slate-500 text-xs">{ts.crew_trade ?? '—'}</span>
+                          <p className="text-slate-600 text-xs">{ts.crew_trade ?? '—'}</p>
+                          {ts.crew_rank && <p className="text-slate-400 text-xs">{ts.crew_rank}</p>}
                         </td>
                         <td className="px-4 py-3.5 text-slate-700 text-sm text-right font-medium">
                           {net !== null ? `£${net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
@@ -468,7 +555,11 @@ export default function TimesheetsPage() {
 
           <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
             <span className="text-slate-400 text-xs">
-              {loading ? 'Loading…' : `${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} for this week`}
+              {loading
+                ? 'Loading…'
+                : filteredSheets.length === sheets.length
+                  ? `${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} this week`
+                  : `${filteredSheets.length} of ${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} (filtered)`}
             </span>
           </div>
         </div>

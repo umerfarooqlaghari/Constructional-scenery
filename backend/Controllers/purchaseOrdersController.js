@@ -25,8 +25,10 @@ const getAllPOs = async (req, res) => {
     if (req.query.paid_from)     { conditions.push(`po.paid_from = $${i++}`);        params.push(req.query.paid_from); }
     if (req.query.date_from)     { conditions.push(`po.date_of_po >= $${i++}`);      params.push(req.query.date_from); }
     if (req.query.date_to)       { conditions.push(`po.date_of_po <= $${i++}`);      params.push(req.query.date_to); }
-    if (req.query.amount_min)    { conditions.push(`po.gross_amount >= $${i++}`);    params.push(req.query.amount_min); }
-    if (req.query.amount_max)    { conditions.push(`po.gross_amount <= $${i++}`);    params.push(req.query.amount_max); }
+    if (req.query.amount_min)       { conditions.push(`po.gross_amount >= $${i++}`);  params.push(req.query.amount_min); }
+    if (req.query.amount_max)       { conditions.push(`po.gross_amount <= $${i++}`);  params.push(req.query.amount_max); }
+    if (req.query.net_amount_min)   { conditions.push(`po.net_amount >= $${i++}`);    params.push(req.query.net_amount_min); }
+    if (req.query.net_amount_max)   { conditions.push(`po.net_amount <= $${i++}`);    params.push(req.query.net_amount_max); }
 
     if (req.query.include_archived !== 'true') {
       conditions.push(`p.status != $${i++}`);

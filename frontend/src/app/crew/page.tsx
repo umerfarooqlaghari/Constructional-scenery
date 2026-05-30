@@ -6,7 +6,7 @@ import TopBar from '@/components/TopBar';
 import {
   Plus, Search, ChevronRight, X, Loader2, Users, UserCheck, Briefcase, Building2,
 } from 'lucide-react';
-import { crewApi, CrewMember, EmploymentStatus } from '@/lib/api';
+import { crewApi, productionsApi, CrewMember, EmploymentStatus, Production } from '@/lib/api';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -332,49 +332,62 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
 
 export default function CrewPage() {
   const router = useRouter();
-  const [crew, setCrew]           = useState<CrewMember[]>([]);
-  const [loading, setLoading]     = useState(true);
-  const [error, setError]         = useState('');
-  const [search, setSearch]       = useState('');
-  const [activeTab, setActiveTab] = useState<FilterTab>('all');
-  const [showModal, setShowModal] = useState(false);
+  const [crew, setCrew]               = useState<CrewMember[]>([]);
+  const [loading, setLoading]         = useState(true);
+  const [error, setError]             = useState('');
+  const [search, setSearch]           = useState('');
+  const [activeTab, setActiveTab]     = useState<FilterTab>('all');
+  const [showModal, setShowModal]     = useState(false);
+
+  const [productions, setProductions]       = useState<Production[]>([]);
+  const [productionFilter, setProductionFilter] = useState('');
+  const [tradeFilter, setTradeFilter]       = useState('');
+  const [rankFilter, setRankFilter]         = useState('');
+  const [tradesData, setTradesData]         = useState<{ bectu: Record<string, string[]>; non_bectu: string[] } | null>(null);
+
+  const allTrades = tradesData
+    ? [...Object.keys(tradesData.bectu), ...tradesData.non_bectu]
+    : [];
+  const rankOptions = tradesData && tradeFilter ? (tradesData.bectu[tradeFilter] ?? []) : [];
+
+  useEffect(() => {
+    productionsApi.list().then(setProductions).catch(() => {});
+    crewApi.getTrades().then(setTradesData).catch(() => {});
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
     setError('');
     try {
-      const data = await crewApi.list();
+      const params: Record<string, string> = {};
+      if (activeTab === 'paye')          params.employment_status = 'paye';
+      if (activeTab === 'self_employed') params.employment_status = 'self_employed';
+      if (activeTab === 'active')        params.is_active = 'true';
+      if (activeTab === 'inactive')      params.is_active = 'false';
+      if (search)           params.search       = search;
+      if (productionFilter) params.production_id = productionFilter;
+      if (tradeFilter)      params.crew_trade   = tradeFilter;
+      if (rankFilter)       params.crew_rank    = rankFilter;
+
+      const data = await crewApi.list(Object.keys(params).length ? params : undefined);
       setCrew(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load crew');
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [activeTab, search, productionFilter, tradeFilter, rankFilter]);
 
   useEffect(() => { load(); }, [load]);
 
-  // Computed stats
+  // Stats derived from whatever the server returned
   const totalCrew  = crew.length;
   const activeCrew = crew.filter(c => c.is_active).length;
   const payeCount  = crew.filter(c => c.employment_status === 'paye').length;
   const seCount    = crew.filter(c => c.employment_status === 'self_employed').length;
 
-  // Filter
-  const filtered = crew.filter(c => {
-    const matchesTab =
-      activeTab === 'all'           ? true :
-      activeTab === 'paye'          ? c.employment_status === 'paye' :
-      activeTab === 'self_employed' ? c.employment_status === 'self_employed' :
-      activeTab === 'active'        ? c.is_active :
-      /* inactive */                  !c.is_active;
-
-    const q = search.toLowerCase();
-    const matchesSearch = !q || [c.first_name, c.last_name, c.crew_trade, c.crew_number]
-      .some(v => v?.toLowerCase().includes(q));
-
-    return matchesTab && matchesSearch;
-  });
+  // All filtering is now server-side; just use crew directly
+  const filtered = crew;
 
   const stats = [
     { label: 'Total Crew',    value: totalCrew,  icon: <Users size={18} className="text-teal-600" />,      bg: 'bg-teal-50' },
@@ -415,36 +428,77 @@ export default function CrewPage() {
         {/* Table card */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           {/* Toolbar */}
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-5 py-3 border-b border-slate-100 gap-3">
-            <div className="flex items-center gap-1 flex-wrap">
-              {FILTER_TABS.map(tab => (
-                <button
-                  key={tab.value}
-                  onClick={() => setActiveTab(tab.value)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-teal-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
-                >
-                  {tab.label}
-                </button>
-              ))}
-            </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-56">
-                <Search size={13} className="text-slate-400" />
-                <input
-                  type="text"
-                  placeholder="Search crew..."
-                  value={search}
-                  onChange={e => setSearch(e.target.value)}
-                  className="bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none w-full"
-                />
+          <div className="px-5 py-3 border-b border-slate-100 space-y-3">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+              <div className="flex items-center gap-1 flex-wrap">
+                {FILTER_TABS.map(tab => (
+                  <button
+                    key={tab.value}
+                    onClick={() => setActiveTab(tab.value)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-teal-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                  >
+                    {tab.label}
+                  </button>
+                ))}
               </div>
-              <button
-                onClick={() => setShowModal(true)}
-                className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium whitespace-nowrap"
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-52">
+                  <Search size={13} className="text-slate-400" />
+                  <input
+                    type="text"
+                    placeholder="Search crew..."
+                    value={search}
+                    onChange={e => setSearch(e.target.value)}
+                    className="bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none w-full"
+                  />
+                  {search && (
+                    <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
+                  )}
+                </div>
+                <button
+                  onClick={() => setShowModal(true)}
+                  className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium whitespace-nowrap"
+                >
+                  <Plus size={14} />
+                  Register Crew Member
+                </button>
+              </div>
+            </div>
+            {/* Secondary filter row */}
+            <div className="flex flex-wrap items-center gap-2">
+              <select
+                value={productionFilter}
+                onChange={e => setProductionFilter(e.target.value)}
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
               >
-                <Plus size={14} />
-                Register Crew Member
-              </button>
+                <option value="">All productions</option>
+                {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+              <select
+                value={tradeFilter}
+                onChange={e => { setTradeFilter(e.target.value); setRankFilter(''); }}
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+              >
+                <option value="">All trades</option>
+                {allTrades.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select
+                value={rankFilter}
+                onChange={e => setRankFilter(e.target.value)}
+                disabled={rankOptions.length === 0}
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
+              >
+                <option value="">All ranks</option>
+                {rankOptions.map(r => <option key={r} value={r}>{r}</option>)}
+              </select>
+              {(productionFilter || tradeFilter || rankFilter) && (
+                <button
+                  onClick={() => { setProductionFilter(''); setTradeFilter(''); setRankFilter(''); }}
+                  className="flex items-center gap-1 text-xs text-red-500 hover:text-red-700 font-medium"
+                >
+                  <X size={11} /> Clear
+                </button>
+              )}
             </div>
           </div>
 
@@ -542,7 +596,7 @@ export default function CrewPage() {
             <span className="text-slate-400 text-xs">
               {loading
                 ? 'Loading…'
-                : `Showing ${filtered.length} of ${crew.length} crew member${crew.length !== 1 ? 's' : ''}`}
+                : `${crew.length} crew member${crew.length !== 1 ? 's' : ''} found`}
             </span>
           </div>
         </div>

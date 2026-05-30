@@ -89,6 +89,12 @@ const getAllCrew = async (req, res) => {
       params.push(`%${req.query.search}%`);
       i++;
     }
+    if (req.query.production_id) {
+      conditions.push(
+        `EXISTS (SELECT 1 FROM production_crew pc WHERE pc.crew_member_id = id AND pc.production_id = $${i++})`
+      );
+      params.push(req.query.production_id);
+    }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
