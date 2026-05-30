@@ -9,7 +9,7 @@ router.get('/:id',                 ctrl.getPOById);
 router.put('/:id',                 ctrl.updatePO);
 router.delete('/:id',              ctrl.deletePO);
 router.post('/:id/submit',         ctrl.submitPO);
-router.post('/:id/attach-invoice', upload.single('file'), ctrl.attachInvoice);
+router.post('/:id/attach-invoice', upload.single('invoice'), ctrl.attachInvoice);
 router.post('/:id/approve',        ctrl.approvePO);
 
 module.exports = router;

@@ -1,273 +1,475 @@
+'use client';
+
+import { useState, useEffect, useCallback, useRef } from 'react';
 import TopBar from '@/components/TopBar';
-import { Send, Download, FileText, AlertCircle, CheckCircle2, ChevronLeft, ChevronRight, Mail, ChevronDown, Plus } from 'lucide-react';
+import {
+  ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
+  Mail, Paperclip, ShieldCheck,
+} from 'lucide-react';
+import { timesheetsApi, productionsApi, Timesheet, TimesheetStatus, Production } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
-const days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
-const dates = ['11 May', '12 May', '13 May', '14 May', '15 May', '16 May', '17 May'];
+// ─── Inline API helpers ───────────────────────────────────────────────────────
 
-type DayEntry = { worked: boolean; ot: number; set: string; travel: boolean; meals: string[] };
+const verifyTimesheet = (id: string) =>
+  fetch(`/api/timesheets/${id}/verify`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+    },
+  }).then(r => r.json());
 
-const crewTimesheets: Array<{
-  id: string; name: string; initials: string; color: string; rank: string; trade: string;
-  employment: string; company: string | null;
-  dailyRate: number; entries: DayEntry[]; invoiceAttached: boolean; status: string;
-}> = [
-  {
-    id: 'C-0041', name: 'Marcus Webb', initials: 'MW', color: 'bg-teal-500', rank: 'HOD', trade: 'Carpenters', employment: 'PAYE', company: null, dailyRate: 448,
-    entries: [
-      { worked: true, ot: 2, set: 'S003', travel: false, meals: ['L'] },
-      { worked: true, ot: 0, set: 'S003', travel: false, meals: ['L'] },
-      { worked: true, ot: 1.5, set: 'S004', travel: false, meals: ['B', 'L'] },
-      { worked: true, ot: 0, set: 'S004', travel: true, meals: ['L'] },
-      { worked: true, ot: 0, set: 'S003', travel: false, meals: ['L'] },
-      { worked: false, ot: 0, set: '', travel: false, meals: [] },
-      { worked: false, ot: 0, set: '', travel: false, meals: [] },
-    ],
-    invoiceAttached: false, status: 'Distributed',
-  },
-  {
-    id: 'C-0042', name: 'Siobhan Carr', initials: 'SC', color: 'bg-purple-500', rank: 'HOD', trade: 'Scenic Painters', employment: 'Self-Employed', company: 'SC Creative Ltd', dailyRate: 448,
-    entries: [
-      { worked: true, ot: 0, set: 'S002', travel: false, meals: ['L'] },
-      { worked: true, ot: 0, set: 'S002', travel: false, meals: ['L'] },
-      { worked: true, ot: 0, set: 'S002', travel: false, meals: ['L'] },
-      { worked: true, ot: 3, set: 'S002', travel: false, meals: ['L', 'S'] },
-      { worked: true, ot: 0, set: 'S002', travel: false, meals: ['L'] },
-      { worked: false, ot: 0, set: '', travel: false, meals: [] },
-      { worked: false, ot: 0, set: '', travel: false, meals: [] },
-    ],
-    invoiceAttached: true, status: 'Invoice Received',
-  },
-  {
-    id: 'C-0043', name: 'Danny Obi', initials: 'DO', color: 'bg-blue-500', rank: 'Chargehand', trade: 'Carpenters', employment: 'PAYE', company: null, dailyRate: 388,
-    entries: [
-      { worked: true, ot: 0, set: 'S003', travel: true, meals: ['L'] },
-      { worked: true, ot: 0, set: 'S003', travel: true, meals: ['L'] },
-      { worked: false, ot: 0, set: '', travel: false, meals: [] },
-      { worked: true, ot: 0, set: 'S003', travel: true, meals: ['L'] },
-      { worked: true, ot: 2, set: 'S003', travel: true, meals: ['L', 'S'] },
-      { worked: true, ot: 0, set: 'S003', travel: false, meals: [] },
-      { worked: false, ot: 0, set: '', travel: false, meals: [] },
-    ],
-    invoiceAttached: false, status: 'Distributed',
-  },
+const attachInvoice = (id: string, formData: FormData) =>
+  fetch(`/api/timesheets/${id}/attach-invoice`, {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+    },
+    body: formData,
+  }).then(r => r.json());
+
+const chaseInvoices = (production_id: string, week_ending_date: string) =>
+  fetch('/api/timesheets/chase-invoices', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+    },
+    body: JSON.stringify({ production_id, week_ending_date }),
+  }).then(r => r.json());
+
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+const AVATAR_COLORS = [
+  'bg-teal-500', 'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500',
+  'bg-green-500', 'bg-indigo-500', 'bg-rose-500', 'bg-cyan-500', 'bg-amber-500',
 ];
 
-function calcGross(ts: typeof crewTimesheets[0]) {
-  const daysWorked = ts.entries.filter((e) => e.worked).length;
-  const totalOt = ts.entries.reduce((s, e) => s + e.ot, 0);
-  const labourNet = daysWorked * ts.dailyRate + totalOt * (ts.dailyRate / 7.5);
-  const vat = ts.employment === 'Self-Employed' ? labourNet * 0.2 : 0;
-  return { daysWorked, totalOt, labourNet: Math.round(labourNet), vat: Math.round(vat), gross: Math.round(labourNet + vat) };
-}
-
-const statusColor: Record<string, string> = {
-  'Draft': 'bg-slate-100 text-slate-500',
-  'Distributed': 'bg-blue-100 text-blue-700',
-  'Invoice Received': 'bg-green-100 text-green-700',
-  'Verified': 'bg-teal-100 text-teal-700',
+type TSBadgeDef = { label: string; className: string };
+const STATUS_BADGE: Record<TimesheetStatus, TSBadgeDef> = {
+  draft:            { label: 'Draft',            className: 'bg-slate-100 text-slate-500' },
+  sent:             { label: 'Sent',             className: 'bg-blue-100 text-blue-700' },
+  reviewed:         { label: 'Reviewed',         className: 'bg-amber-100 text-amber-700' },
+  invoice_received: { label: 'Invoice Received', className: 'bg-purple-100 text-purple-700' },
+  verified:         { label: 'Verified',         className: 'bg-green-100 text-green-700' },
 };
 
+/** Returns the Sunday on or after the given date */
+function nextSunday(d: Date): Date {
+  const copy = new Date(d);
+  const day = copy.getDay(); // 0 = Sunday
+  const diff = day === 0 ? 0 : 7 - day;
+  copy.setDate(copy.getDate() + diff);
+  copy.setHours(0, 0, 0, 0);
+  return copy;
+}
+
+function toISODate(d: Date): string {
+  return d.toISOString().split('T')[0];
+}
+
+function fmtWeek(d: Date): string {
+  return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function getInitials(first = '', last = '') {
+  return `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
+}
+
+const hasInvoice = (status: TimesheetStatus) =>
+  status === 'invoice_received' || status === 'verified';
+
+// ─── Attach Invoice Modal ─────────────────────────────────────────────────────
+
+interface AttachInvoiceModalProps {
+  timesheetId: string;
+  crewName: string;
+  onClose: () => void;
+  onAttached: () => void;
+}
+
+function AttachInvoiceModal({ timesheetId, crewName, onClose, onAttached }: AttachInvoiceModalProps) {
+  const [file, setFile] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [error, setError] = useState('');
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!file) { setError('Please select a file.'); return; }
+    setUploading(true);
+    setError('');
+    try {
+      const fd = new FormData();
+      fd.append('invoice', file);
+      await attachInvoice(timesheetId, fd);
+      onAttached();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Upload failed');
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <h2 className="text-slate-900 font-semibold text-base">Attach Invoice</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors text-lg leading-none">&times;</button>
+        </div>
+        <form onSubmit={submit} className="px-6 py-5 space-y-4">
+          <p className="text-slate-500 text-sm">Attaching invoice for <span className="font-medium text-slate-800">{crewName}</span></p>
+          {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Invoice File</label>
+            <div
+              onClick={() => inputRef.current?.click()}
+              className="border-2 border-dashed border-slate-200 rounded-lg px-4 py-6 text-center cursor-pointer hover:border-teal-400 transition-colors"
+            >
+              {file
+                ? <p className="text-slate-700 text-sm font-medium">{file.name}</p>
+                : <><Paperclip size={20} className="text-slate-300 mx-auto mb-2" /><p className="text-slate-400 text-sm">Click to select PDF or image</p></>}
+            </div>
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="hidden"
+              onChange={e => setFile(e.target.files?.[0] ?? null)}
+            />
+          </div>
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+            <button
+              type="submit"
+              disabled={uploading}
+              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+            >
+              {uploading && <Loader2 size={14} className="animate-spin" />}
+              Upload Invoice
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
+
 export default function TimesheetsPage() {
+  const { user } = useAuth();
+  const canAct = user?.role === 'managing_director' || user?.role === 'construction_accountant';
+
+  // Week state — start on current week-ending Sunday
+  const [weekEnding, setWeekEnding] = useState<Date>(() => nextSunday(new Date()));
+
+  // Productions
+  const [productions, setProductions]   = useState<Production[]>([]);
+  const [selectedProd, setSelectedProd] = useState<string>('');
+
+  // Timesheets
+  const [sheets, setSheets]   = useState<Timesheet[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError]     = useState('');
+
+  // Action states
+  const [verifying, setVerifying]   = useState<string | null>(null);
+  const [chasing, setChasing]       = useState(false);
+  const [chaseMsg, setChaseMsg]     = useState('');
+  const [attachModal, setAttachModal] = useState<{ id: string; name: string } | null>(null);
+
+  // Load productions once
+  useEffect(() => {
+    productionsApi.list()
+      .then(data => {
+        setProductions(data);
+        if (data.length > 0) setSelectedProd(data[0].id);
+      })
+      .catch(() => { /* silently ignore */ });
+  }, []);
+
+  const weekEndingISO = toISODate(weekEnding);
+
+  const loadSheets = useCallback(async () => {
+    if (!selectedProd) return;
+    setLoading(true);
+    setError('');
+    try {
+      const data = await timesheetsApi.list({
+        production_id:    selectedProd,
+        week_ending_date: weekEndingISO,
+      });
+      setSheets(data);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to load timesheets');
+    } finally {
+      setLoading(false);
+    }
+  }, [selectedProd, weekEndingISO]);
+
+  useEffect(() => { loadSheets(); }, [loadSheets]);
+
+  // Week navigation
+  const prevWeek = () => setWeekEnding(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; });
+  const nextWeek = () => setWeekEnding(d => { const n = new Date(d); n.setDate(n.getDate() + 7); return n; });
+
+  // Stats
+  const crewOnSheet      = sheets.length;
+  const invoicesReceived = sheets.filter(s => hasInvoice(s.status)).length;
+  const nonDraftSheets   = sheets.filter(s => s.status !== 'draft');
+  const totalNet  = nonDraftSheets.reduce((acc, s) => acc + (s.grand_total ? parseFloat(s.grand_total) : 0), 0);
+  const totalGross = totalNet; // grand_total already represents the billed amount
+
+  // Verify handler
+  const handleVerify = async (id: string) => {
+    setVerifying(id);
+    try {
+      await verifyTimesheet(id);
+      await loadSheets();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Verify failed');
+    } finally {
+      setVerifying(null);
+    }
+  };
+
+  // Chase invoices handler
+  const handleChase = async () => {
+    if (!selectedProd) return;
+    setChasing(true);
+    setChaseMsg('');
+    try {
+      const res = await chaseInvoices(selectedProd, weekEndingISO);
+      setChaseMsg(res?.message ?? 'Chase emails sent.');
+    } catch (err: unknown) {
+      setChaseMsg(err instanceof Error ? err.message : 'Failed to send chase emails');
+    } finally {
+      setChasing(false);
+    }
+  };
+
+  const selectedProdName = productions.find(p => p.id === selectedProd)?.name ?? '';
+
   return (
     <>
-      <TopBar title="Timesheets & Pay Run" subtitle="Weekly timesheet preparation and pay run management" />
+      {attachModal && (
+        <AttachInvoiceModal
+          timesheetId={attachModal.id}
+          crewName={attachModal.name}
+          onClose={() => setAttachModal(null)}
+          onAttached={() => { setAttachModal(null); loadSheets(); }}
+        />
+      )}
+
+      <TopBar title="Timesheets & Pay Run" subtitle="Weekly timesheet review and pay run management" />
       <main className="flex-1 p-6 space-y-5">
 
-        {/* Week Selector + Actions */}
+        {/* Week + Production selectors */}
         <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-4 py-2.5 shadow-sm">
-              <button className="p-0.5 text-slate-400 hover:text-slate-700"><ChevronLeft size={16} /></button>
-              <span className="text-slate-900 font-semibold text-sm px-2">Week Ending: Sunday 18 May 2026</span>
-              <button className="p-0.5 text-slate-400 hover:text-slate-700"><ChevronRight size={16} /></button>
-            </div>
-            <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2.5 shadow-sm">
-              <span className="text-slate-600 text-sm">Production:</span>
-              <button className="flex items-center gap-1.5 text-slate-900 text-sm font-medium">
-                Meridian <ChevronDown size={14} />
+          <div className="flex items-center gap-3 flex-wrap">
+            {/* Week selector */}
+            <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-2.5 shadow-sm">
+              <button
+                onClick={prevWeek}
+                className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors"
+                aria-label="Previous week"
+              >
+                <ChevronLeft size={16} />
+              </button>
+              <span className="text-slate-900 font-semibold text-sm px-2 whitespace-nowrap">
+                Week ending: {fmtWeek(weekEnding)}
+              </span>
+              <button
+                onClick={nextWeek}
+                className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors"
+                aria-label="Next week"
+              >
+                <ChevronRight size={16} />
               </button>
             </div>
+
+            {/* Production selector */}
+            <div className="bg-white border border-slate-200 rounded-lg px-3 py-2.5 shadow-sm">
+              <select
+                value={selectedProd}
+                onChange={e => setSelectedProd(e.target.value)}
+                className="text-slate-900 text-sm font-medium bg-transparent outline-none cursor-pointer pr-2"
+              >
+                {productions.length === 0 && <option value="">Loading…</option>}
+                {productions.map(p => (
+                  <option key={p.id} value={p.id}>{p.name}</option>
+                ))}
+              </select>
+            </div>
           </div>
-          <div className="flex items-center gap-2">
-            <button className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm">
-              <Mail size={14} />
-              Chase Invoices
-            </button>
-            <button className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm">
-              <FileText size={14} />
-              Verification Pack
-            </button>
-            <button className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm">
-              <Download size={14} />
-              Pay Run CSV
-            </button>
-            <button className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 font-medium">
-              <Send size={14} />
-              Bulk Send
-            </button>
-          </div>
+
+          {/* Actions */}
+          {canAct && (
+            <div className="flex items-center gap-2">
+              {chaseMsg && (
+                <span className="text-teal-700 text-xs bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">{chaseMsg}</span>
+              )}
+              <button
+                onClick={handleChase}
+                disabled={chasing || !selectedProd}
+                className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-60 transition-colors"
+              >
+                {chasing ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
+                Chase Invoices
+              </button>
+            </div>
+          )}
         </div>
 
-        {/* Week Stats */}
+        {/* Stats row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Crew on Sheet', value: '22', sub: 'this production' },
-            { label: 'Invoices Received', value: '14 / 22', sub: '8 outstanding' },
-            { label: 'Total Labour (Net)', value: '£14,280', sub: 'ex. VAT' },
-            { label: 'Total Gross', value: '£15,906', sub: 'inc. self-employed VAT' },
-          ].map((s) => (
+            { label: 'Crew on Sheet',      value: loading ? null : crewOnSheet,                   sub: selectedProdName || 'this production' },
+            { label: 'Invoices Received',  value: loading ? null : `${invoicesReceived} / ${crewOnSheet}`, sub: `${crewOnSheet - invoicesReceived} outstanding` },
+            { label: 'Total Net',          value: loading ? null : `£${totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'non-draft timesheets' },
+            { label: 'Total Gross',        value: loading ? null : `£${totalGross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'non-draft timesheets' },
+          ].map(s => (
             <div key={s.label} className="bg-white rounded-xl border border-slate-200 px-5 py-4 shadow-sm">
               <p className="text-slate-500 text-xs font-medium">{s.label}</p>
-              <p className="text-slate-900 text-xl font-bold mt-1">{s.value}</p>
+              {s.value === null
+                ? <div className="h-7 w-16 bg-slate-100 rounded animate-pulse mt-1 mb-0.5" />
+                : <p className="text-slate-900 text-xl font-bold mt-1">{s.value}</p>}
               <p className="text-slate-400 text-xs mt-0.5">{s.sub}</p>
             </div>
           ))}
         </div>
 
-        {/* Timesheet Table */}
+        {/* Timesheet table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <h2 className="text-slate-900 font-semibold text-sm">Timesheet Grid — Week Ending 18 May 2026</h2>
-            <button className="flex items-center gap-2 text-teal-600 text-sm font-medium hover:underline">
-              <Plus size={14} /> Add Crew Member
-            </button>
+            <h2 className="text-slate-900 font-semibold text-sm">
+              Timesheets — Week Ending {fmtWeek(weekEnding)}
+            </h2>
           </div>
 
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm border-collapse">
-              {/* Header */}
-              <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 text-left min-w-[180px]">Crew Member</th>
-                  {days.map((d, i) => (
-                    <th key={d} className="px-3 py-3 text-xs font-semibold text-slate-500 text-center min-w-[80px]">
-                      <span className="block">{d}</span>
-                      <span className="text-[10px] text-slate-400 font-normal">{dates[i]}</span>
-                    </th>
-                  ))}
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Days</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">OT Hrs</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Net</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Gross</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {crewTimesheets.map((ts) => {
-                  const { daysWorked, totalOt, labourNet, vat, gross } = calcGross(ts);
-                  return (
-                    <tr key={ts.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="px-5 py-3">
-                        <div className="flex items-center gap-2.5">
-                          <div className={`w-7 h-7 rounded-full ${ts.color} flex items-center justify-center flex-shrink-0`}>
-                            <span className="text-white text-[10px] font-bold">{ts.initials}</span>
-                          </div>
-                          <div>
-                            <p className="text-slate-900 font-semibold text-xs">{ts.name}</p>
-                            <p className="text-slate-400 text-[10px]">{ts.rank} · {ts.trade}</p>
-                          </div>
-                        </div>
-                      </td>
-                      {ts.entries.map((entry, i) => (
-                        <td key={i} className="px-3 py-3 text-center">
-                          {entry.worked ? (
-                            <div>
-                              <div className="w-5 h-5 bg-teal-500 rounded mx-auto flex items-center justify-center">
-                                <CheckCircle2 size={11} className="text-white" />
-                              </div>
-                              {entry.ot > 0 && <span className="text-[9px] text-orange-500 font-bold block mt-0.5">+{entry.ot}h</span>}
-                              {entry.set && <span className="text-[9px] text-slate-400 block">{entry.set}</span>}
-                            </div>
-                          ) : (
-                            <div className="w-5 h-5 border-2 border-slate-200 rounded mx-auto" />
-                          )}
-                        </td>
-                      ))}
-                      <td className="px-4 py-3 text-slate-700 text-sm text-right font-medium">{daysWorked}</td>
-                      <td className="px-4 py-3 text-slate-600 text-sm text-right">{totalOt > 0 ? totalOt : '—'}</td>
-                      <td className="px-4 py-3 text-slate-700 text-sm text-right font-medium">£{labourNet.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-slate-900 text-sm text-right font-semibold">£{gross.toLocaleString()}</td>
-                      <td className="px-4 py-3 text-center">
-                        {ts.invoiceAttached
-                          ? <CheckCircle2 size={15} className="text-green-500 mx-auto" />
-                          : <AlertCircle size={15} className="text-orange-400 mx-auto" />}
-                      </td>
-                      <td className="px-4 py-3">
-                        <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium ${statusColor[ts.status]}`}>{ts.status}</span>
-                      </td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-              {/* Totals row */}
-              <tfoot>
-                <tr className="bg-slate-50 border-t-2 border-slate-200">
-                  <td className="px-5 py-3 text-slate-700 text-xs font-bold" colSpan={8}>Weekly Totals</td>
-                  <td className="px-4 py-3 text-slate-900 text-sm font-bold text-right">
-                    {crewTimesheets.reduce((s, ts) => s + calcGross(ts).daysWorked, 0)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-600 text-sm text-right">
-                    {crewTimesheets.reduce((s, ts) => s + calcGross(ts).totalOt, 0)}
-                  </td>
-                  <td className="px-4 py-3 text-slate-900 text-sm font-bold text-right">
-                    £{crewTimesheets.reduce((s, ts) => s + calcGross(ts).labourNet, 0).toLocaleString()}
-                  </td>
-                  <td className="px-4 py-3 text-slate-900 text-sm font-bold text-right">
-                    £{crewTimesheets.reduce((s, ts) => s + calcGross(ts).gross, 0).toLocaleString()}
-                  </td>
-                  <td colSpan={2} />
-                </tr>
-              </tfoot>
-            </table>
-          </div>
-        </div>
+          {error && (
+            <div className="px-5 py-4 text-red-600 text-sm bg-red-50 border-b border-red-100">{error}</div>
+          )}
 
-        {/* Pay Run Tab Preview */}
-        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
-            <div>
-              <h2 className="text-slate-900 font-semibold text-sm">Pay Run — Week Ending 18 May 2026</h2>
-              <p className="text-slate-400 text-xs mt-0.5">CSV export ready for banking platform upload</p>
-            </div>
-            <button className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 font-medium">
-              <Download size={14} />
-              Export CSV
-            </button>
-          </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="bg-slate-50">
-                  <th className="px-5 py-2.5 text-xs font-semibold text-slate-500 text-left">Crew Member</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-left">Account Name</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Sort Code</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Account No.</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-right">Gross</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-right">Withholding</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-right font-bold">Pay Amount</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Reference</th>
+                <tr className="bg-slate-50 text-left">
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">Crew Member</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Employment</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Net</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
+                  {canAct && <th className="px-4 py-3 text-xs font-semibold text-slate-500">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {[
-                  { name: 'Marcus Webb', account: 'M Webb', sort: '20-44-81', acNo: '****4421', gross: 2654, withholding: 531, pay: 2123, ref: 'MERIDIAN-WE18MAY26', type: 'PAYE' },
-                  { name: 'Siobhan Carr', account: 'SC Creative Ltd', sort: '60-12-53', acNo: '****7789', gross: 2984, withholding: 0, pay: 2984, ref: 'MERIDIAN-WE18MAY26', type: 'SE' },
-                  { name: 'Danny Obi', account: 'D Obi', sort: '09-01-26', acNo: '****3312', gross: 1940, withholding: 388, pay: 1552, ref: 'MERIDIAN-WE18MAY26', type: 'PAYE' },
-                ].map((r) => (
-                  <tr key={r.name} className="hover:bg-slate-50/50">
-                    <td className="px-5 py-3 text-slate-800 font-medium">{r.name}</td>
-                    <td className="px-4 py-3 text-slate-600 text-xs">{r.account}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs font-mono text-center">{r.sort}</td>
-                    <td className="px-4 py-3 text-slate-500 text-xs font-mono text-center">{r.acNo}</td>
-                    <td className="px-4 py-3 text-slate-600 text-sm text-right">£{r.gross.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-red-500 text-sm text-right">{r.withholding > 0 ? `-£${r.withholding.toLocaleString()}` : '—'}</td>
-                    <td className="px-4 py-3 text-slate-900 text-sm text-right font-bold">£{r.pay.toLocaleString()}</td>
-                    <td className="px-4 py-3 text-slate-400 text-xs font-mono">{r.ref}</td>
+                {loading ? (
+                  Array.from({ length: 5 }).map((_, i) => (
+                    <tr key={i}>
+                      {Array.from({ length: canAct ? 6 : 5 }).map((_, j) => (
+                        <td key={j} className="px-4 py-4">
+                          <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
+                        </td>
+                      ))}
+                    </tr>
+                  ))
+                ) : sheets.length === 0 ? (
+                  <tr>
+                    <td colSpan={canAct ? 6 : 5} className="px-5 py-10 text-center text-slate-400 text-sm">
+                      No timesheets found for this week and production.
+                    </td>
                   </tr>
-                ))}
+                ) : (
+                  sheets.map((ts, idx) => {
+                    const colorClass = AVATAR_COLORS[idx % AVATAR_COLORS.length];
+                    const badge = STATUS_BADGE[ts.status] ?? STATUS_BADGE.draft;
+                    const invoiced = hasInvoice(ts.status);
+                    const net = ts.grand_total ? parseFloat(ts.grand_total) : null;
+                    const firstName = ts.first_name ?? '';
+                    const lastName  = ts.last_name  ?? '';
+                    const fullName  = `${firstName} ${lastName}`.trim() || 'Unknown';
+
+                    return (
+                      <tr key={ts.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="px-5 py-3.5">
+                          <div className="flex items-center gap-3">
+                            <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center flex-shrink-0`}>
+                              <span className="text-white text-xs font-bold">
+                                {getInitials(firstName, lastName)}
+                              </span>
+                            </div>
+                            <div>
+                              <p className="text-slate-900 font-medium text-sm">{fullName}</p>
+                              <p className="text-slate-400 text-xs">
+                                {ts.crew_trade ?? ''}
+                                {ts.crew_rank ? ` · ${ts.crew_rank}` : ''}
+                                {ts.crew_number ? ` · ${ts.crew_number}` : ''}
+                              </p>
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3.5">
+                          {/* Employment status not on timesheet type — show trade as proxy */}
+                          <span className="text-slate-500 text-xs">{ts.crew_trade ?? '—'}</span>
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-700 text-sm text-right font-medium">
+                          {net !== null ? `£${net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
+                        </td>
+                        <td className="px-4 py-3.5 text-center">
+                          {invoiced
+                            ? <CheckCircle2 size={16} className="text-green-500 mx-auto" />
+                            : <AlertCircle size={16} className="text-orange-400 mx-auto" />}
+                        </td>
+                        <td className="px-4 py-3.5">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badge.className}`}>
+                            {badge.label}
+                          </span>
+                        </td>
+                        {canAct && (
+                          <td className="px-4 py-3.5">
+                            <div className="flex items-center gap-2">
+                              {/* Verify — only if invoice_received */}
+                              {ts.status === 'invoice_received' && (
+                                <button
+                                  onClick={() => handleVerify(ts.id)}
+                                  disabled={verifying === ts.id}
+                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors font-medium"
+                                >
+                                  {verifying === ts.id
+                                    ? <Loader2 size={12} className="animate-spin" />
+                                    : <ShieldCheck size={12} />}
+                                  Verify
+                                </button>
+                              )}
+                              {/* Attach Invoice — only if sent or reviewed */}
+                              {(ts.status === 'sent' || ts.status === 'reviewed') && (
+                                <button
+                                  onClick={() => setAttachModal({ id: ts.id, name: fullName })}
+                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                                >
+                                  <Paperclip size={12} />
+                                  Attach Invoice
+                                </button>
+                              )}
+                            </div>
+                          </td>
+                        )}
+                      </tr>
+                    );
+                  })
+                )}
               </tbody>
             </table>
+          </div>
+
+          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
+            <span className="text-slate-400 text-xs">
+              {loading ? 'Loading…' : `${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} for this week`}
+            </span>
           </div>
         </div>
 

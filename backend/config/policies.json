@@ -11,6 +11,8 @@
       "POST /api/auth/logout",
       "POST /api/auth/refresh",
 
+      "GET /api/dashboard",
+
       "GET /api/crew",
       "GET /api/crew/trades",
       "GET /api/crew/:id",
@@ -68,6 +70,8 @@
       "GET /api/auth/me",
       "POST /api/auth/logout",
       "POST /api/auth/refresh",
+
+      "GET /api/dashboard",
 
       "GET /api/productions",
       "POST /api/productions",

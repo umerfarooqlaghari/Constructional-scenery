@@ -182,9 +182,12 @@ const attachInvoice = async (req, res) => {
     return res.status(400).json({ error: 'Provide a file upload or invoice_attachment_url' });
 
   try {
+    // Don't downgrade status if already approved
     const { rows } = await db.query(
       `UPDATE purchase_orders
-       SET invoice_attachment_url = $1, invoice_attachment_name = $2, status = 'invoice_received'
+       SET invoice_attachment_url = $1,
+           invoice_attachment_name = $2,
+           status = CASE WHEN status = 'approved' THEN 'approved' ELSE 'invoice_received' END
        WHERE id = $3
        RETURNING *`,
       [invoice_attachment_url, invoice_attachment_name, req.params.id]
@@ -204,9 +207,9 @@ const approvePO = async (req, res) => {
       [req.params.id]
     );
 
-    if (!po)                         return res.status(404).json({ error: 'Purchase order not found' });
-    if (!po.invoice_attachment_url)  return res.status(400).json({ error: 'Cannot approve: no invoice attached. Attach invoice first.' });
-    if (po.status === 'approved')    return res.status(400).json({ error: 'Purchase order is already approved' });
+    if (!po)                       return res.status(404).json({ error: 'Purchase order not found' });
+    if (po.status === 'draft')     return res.status(400).json({ error: 'Cannot approve a draft PO. Submit it first.' });
+    if (po.status === 'approved')  return res.status(400).json({ error: 'Purchase order is already approved' });
 
     const { rows } = await db.query(
       `UPDATE purchase_orders

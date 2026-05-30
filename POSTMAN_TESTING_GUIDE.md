@@ -12,9 +12,10 @@ cd backend
 npm run migration:run
 ```
 
-This runs both migrations against the Render PostgreSQL database:
+This runs all migrations against the Render PostgreSQL database:
 - **Migration 1** — Creates all tables, indexes, and triggers
 - **Migration 2** — Creates the normalised `cost_plus_budget_lines` table
+- **Migration 3** — Creates the `password_reset_otps` table (OTP-based password reset)
 
 If you need to check which migrations have run:
 ```bash
@@ -251,6 +252,72 @@ if (r.access_token) {
     pm.environment.set("mdToken", r.access_token);
 }
 ```
+
+---
+
+### 1.9 — Forgot Password (Send OTP)
+
+> ⚠️ Requires SMTP configured in `.env` (`SMTP_USER`, `SMTP_PASS`)
+
+**POST** `{{baseUrl}}/api/auth/forgot-password`  
+**Headers:** `Content-Type: application/json`  
+**Body:**
+```json
+{
+  "email": "warren@constructionalscenery.co.uk"
+}
+```
+
+**Expected — 200:**
+```json
+{ "message": "If that email is registered, an OTP has been sent." }
+```
+> Returns the same message whether email exists or not (prevents user enumeration).  
+> OTP is a 6-digit number, valid for **15 minutes**. Check the email inbox.
+
+---
+
+### 1.10 — Verify OTP
+
+**POST** `{{baseUrl}}/api/auth/verify-otp`  
+**Body:**
+```json
+{
+  "email": "warren@constructionalscenery.co.uk",
+  "otp": "123456"
+}
+```
+
+**Expected — 200:**
+```json
+{ "message": "OTP verified" }
+```
+
+**Failure (wrong/expired OTP) — 400:**
+```json
+{ "error": "Invalid or expired OTP" }
+```
+
+---
+
+### 1.11 — Reset Password
+
+**POST** `{{baseUrl}}/api/auth/reset-password`  
+**Body:**
+```json
+{
+  "email": "warren@constructionalscenery.co.uk",
+  "otp": "123456",
+  "new_password": "NewSecurePass456!"
+}
+```
+
+**Expected — 200:**
+```json
+{ "message": "Password reset successfully" }
+```
+
+> On success: password is updated, all existing refresh tokens for this user are invalidated. Login again with the new password.
 
 ---
 
