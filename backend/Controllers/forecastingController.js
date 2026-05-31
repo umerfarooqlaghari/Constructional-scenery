@@ -21,7 +21,11 @@ const getAllForecasts = async (req, res) => {
   try {
     const conditions = [];
     const params     = [];
-    if (req.query.production_id) { conditions.push(`f.production_id = $1`); params.push(req.query.production_id); }
+    let   i          = 1;
+    if (req.query.production_id) { conditions.push(`f.production_id = $${i++}`); params.push(req.query.production_id); }
+    if (req.query.include_archived !== 'true') {
+      conditions.push(`(p.id IS NULL OR p.status != 'archived')`);
+    }
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(

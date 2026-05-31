@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
   Plus, Search, Calendar, CheckCircle2, Clock, AlertTriangle,
-  ChevronRight, X, Loader2, Archive,
+  ChevronRight, X, Loader2, Archive, ArchiveRestore,
 } from 'lucide-react';
 import { productionsApi, Production, ProductionStatus, ContractType } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
@@ -13,11 +13,11 @@ import { useAuth } from '@/contexts/AuthContext';
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const STATUS_CONFIG: Record<ProductionStatus, { label: string; className: string; icon: React.ReactNode }> = {
-  pre_production: { label: 'Pre-Production', className: 'bg-blue-100 text-blue-700', icon: <Clock size={11} className="inline mr-1" /> },
-  active_build:   { label: 'Active Build',   className: 'bg-teal-100 text-teal-700',  icon: <CheckCircle2 size={11} className="inline mr-1" /> },
+  pre_production: { label: 'Pre-Production', className: 'bg-blue-100 text-blue-700',   icon: <Clock size={11} className="inline mr-1" /> },
+  active_build:   { label: 'Active Build',   className: 'bg-teal-100 text-teal-700',   icon: <CheckCircle2 size={11} className="inline mr-1" /> },
   strike:         { label: 'Strike',          className: 'bg-amber-100 text-amber-700', icon: <AlertTriangle size={11} className="inline mr-1" /> },
   complete:       { label: 'Complete',        className: 'bg-slate-100 text-slate-500', icon: <CheckCircle2 size={11} className="inline mr-1" /> },
-  archived:       { label: 'Archived',        className: 'bg-red-100 text-red-500',    icon: <Archive size={11} className="inline mr-1" /> },
+  archived:       { label: 'Archived',        className: 'bg-red-100 text-red-500',     icon: <Archive size={11} className="inline mr-1" /> },
 };
 
 const STATUS_TABS: { value: ProductionStatus | 'all'; label: string }[] = [
@@ -38,24 +38,17 @@ const fmtDate = (d: string | null) =>
 
 // ─── New Production Modal ─────────────────────────────────────────────────────
 
-interface NewProductionModalProps {
-  onClose: () => void;
-  onCreated: () => void;
-}
+interface NewProductionModalProps { onClose: () => void; onCreated: () => void; }
 
 function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
   const [form, setForm] = useState({
-    name: '',
-    production_company: '',
-    production_designer: '',
-    production_type: '',
-    start_date: '',
-    end_date: '',
+    name: '', production_company: '', production_designer: '', production_type: '',
+    start_date: '', end_date: '',
     contract_type: 'on_a_price' as ContractType,
     status: 'pre_production' as ProductionStatus,
   });
   const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+  const [error, setError]   = useState('');
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
@@ -92,12 +85,10 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
         </div>
         <form onSubmit={submit} className="px-6 py-5 space-y-4">
           {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
             <input className={inputCls} placeholder="e.g. Meridian" value={form.name} onChange={set('name')} />
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
@@ -108,7 +99,6 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <input className={inputCls} placeholder="e.g. Helena Portman" value={form.production_designer} onChange={set('production_designer')} />
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
@@ -121,7 +111,6 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               </select>
             </div>
           </div>
-
           <div className="grid grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
@@ -132,7 +121,6 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <input type="date" className={inputCls} value={form.end_date} onChange={set('end_date')} />
             </div>
           </div>
-
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Initial Status</label>
             <select className={inputCls} value={form.status} onChange={set('status')}>
@@ -140,12 +128,9 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <option value="active_build">Active Build</option>
             </select>
           </div>
-
           <div className="flex items-center justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
-            <button
-              type="submit"
-              disabled={saving}
+            <button type="submit" disabled={saving}
               className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
@@ -158,25 +143,104 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
   );
 }
 
+// ─── Archive Confirm Modal ────────────────────────────────────────────────────
+
+type ArchivePreview = { production_name: string; po_count: number; timesheet_count: number; crew_count: number };
+
+interface ArchiveModalProps {
+  preview: ArchivePreview;
+  onConfirm: () => void;
+  onClose: () => void;
+  loading: boolean;
+}
+
+function ArchiveModal({ preview, onConfirm, onClose, loading }: ArchiveModalProps) {
+  const [typed, setTyped] = useState('');
+  const confirmed = typed === preview.production_name;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <Archive size={16} className="text-amber-500" />
+            <h2 className="text-slate-900 font-semibold text-base">Archive Production</h2>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+        </div>
+        <div className="px-6 py-5 space-y-4">
+          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
+            <p className="font-semibold mb-2">The following will be hidden from all active views:</p>
+            <ul className="space-y-1 list-disc list-inside text-amber-700">
+              <li><span className="font-medium">{preview.po_count}</span> purchase order{preview.po_count !== 1 ? 's' : ''}</li>
+              <li><span className="font-medium">{preview.timesheet_count}</span> timesheet{preview.timesheet_count !== 1 ? 's' : ''}</li>
+              <li><span className="font-medium">{preview.crew_count}</span> crew engagement{preview.crew_count !== 1 ? 's' : ''}</li>
+            </ul>
+            <p className="mt-2 text-xs text-amber-600">All data remains intact and accessible from the Archived Productions view. This is reversible.</p>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Type <span className="font-bold text-slate-800">{preview.production_name}</span> to confirm
+            </label>
+            <input
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
+              placeholder={preview.production_name}
+              value={typed}
+              onChange={e => setTyped(e.target.value)}
+              autoFocus
+            />
+          </div>
+          <div className="flex items-center justify-end gap-3 pt-1">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
+            <button
+              onClick={onConfirm}
+              disabled={!confirmed || loading}
+              className="flex items-center gap-2 px-5 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 font-medium transition-colors"
+            >
+              {loading ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+              Archive Production
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProductionsPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const canEdit = user?.role !== 'construction_accountant';
-  const [productions, setProductions] = useState<Production[]>([]);
-  const [loading, setLoading]         = useState(true);
-  const [error, setError]             = useState('');
-  const [search, setSearch]           = useState('');
-  const [activeTab, setActiveTab]     = useState<ProductionStatus | 'all'>('all');
-  const [showModal, setShowModal]     = useState(false);
-  const [archiving, setArchiving]     = useState<string | null>(null);
+  const isMD          = user?.role === 'managing_director';
+  const isAccountant  = user?.role === 'construction_accountant';
+  const canArchive    = isMD || isAccountant;
+  const canEdit       = user?.role !== 'construction_accountant';
+
+  const [productions, setProductions]     = useState<Production[]>([]);
+  const [archived, setArchived]           = useState<Production[]>([]);
+  const [loading, setLoading]             = useState(true);
+  const [error, setError]                 = useState('');
+  const [search, setSearch]               = useState('');
+  const [activeTab, setActiveTab]         = useState<ProductionStatus | 'all'>('all');
+  const [showArchived, setShowArchived]   = useState(false);
+  const [showModal, setShowModal]         = useState(false);
+
+  // Archive flow state
+  const [archivePreview, setArchivePreview]   = useState<ArchivePreview | null>(null);
+  const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
+  const [archiveLoading, setArchiveLoading]   = useState(false);
+  const [unarchiveLoading, setUnarchiveLoading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
     try {
-      const data = await productionsApi.list();
-      setProductions(data);
+      const [active, all] = await Promise.all([
+        productionsApi.list(),
+        productionsApi.listArchived(),
+      ]);
+      setProductions(active);
+      setArchived(all);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load productions');
     } finally {
@@ -186,21 +250,48 @@ export default function ProductionsPage() {
 
   useEffect(() => { load(); }, [load]);
 
-  const handleArchive = async (e: React.MouseEvent, id: string) => {
+  const openArchiveModal = async (e: React.MouseEvent, id: string) => {
     e.stopPropagation();
-    if (!confirm('Archive this production? It will be hidden from the default list.')) return;
-    setArchiving(id);
     try {
-      await productionsApi.archive(id);
-      setProductions(prev => prev.filter(p => p.id !== id));
+      const preview = await productionsApi.archivePreview(id);
+      setArchivePreview(preview);
+      setArchiveTargetId(id);
     } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Archive failed');
-    } finally {
-      setArchiving(null);
+      alert(err instanceof Error ? err.message : 'Cannot archive this production');
     }
   };
 
-  // Filter
+  const handleArchiveConfirm = async () => {
+    if (!archiveTargetId) return;
+    setArchiveLoading(true);
+    try {
+      const { production } = await productionsApi.archive(archiveTargetId);
+      setProductions(prev => prev.filter(p => p.id !== archiveTargetId));
+      setArchived(prev => [production, ...prev]);
+      setArchivePreview(null);
+      setArchiveTargetId(null);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Archive failed');
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const handleUnarchive = async (e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    if (!confirm('Unarchive this production? It will reappear across all active views.')) return;
+    setUnarchiveLoading(id);
+    try {
+      const { production } = await productionsApi.unarchive(id);
+      setArchived(prev => prev.filter(p => p.id !== id));
+      setProductions(prev => [production, ...prev]);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Unarchive failed');
+    } finally {
+      setUnarchiveLoading(null);
+    }
+  };
+
   const filtered = productions.filter(p => {
     const matchesTab    = activeTab === 'all' || p.status === activeTab;
     const matchesSearch = !search || [p.name, p.production_company, p.production_designer, p.production_type]
@@ -208,7 +299,6 @@ export default function ProductionsPage() {
     return matchesTab && matchesSearch;
   });
 
-  // Summary counts (all productions, not filtered)
   const counts = {
     active_build:   productions.filter(p => p.status === 'active_build').length,
     pre_production: productions.filter(p => p.status === 'pre_production').length,
@@ -216,12 +306,23 @@ export default function ProductionsPage() {
     complete:       productions.filter(p => p.status === 'complete').length,
   };
 
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+
   return (
     <>
       {showModal && canEdit && (
         <NewProductionModal
           onClose={() => setShowModal(false)}
           onCreated={() => { setShowModal(false); load(); }}
+        />
+      )}
+
+      {archivePreview && (
+        <ArchiveModal
+          preview={archivePreview}
+          onConfirm={handleArchiveConfirm}
+          onClose={() => { setArchivePreview(null); setArchiveTargetId(null); }}
+          loading={archiveLoading}
         />
       )}
 
@@ -250,11 +351,9 @@ export default function ProductionsPage() {
           ))}
         </div>
 
-        {/* Table */}
+        {/* Active Productions Table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          {/* Toolbar */}
           <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between px-5 py-3 border-b border-slate-100 gap-3">
-            {/* Status tabs */}
             <div className="flex items-center gap-1">
               {STATUS_TABS.map(tab => (
                 <button
@@ -289,9 +388,7 @@ export default function ProductionsPage() {
             </div>
           </div>
 
-          {error && (
-            <div className="px-5 py-4 text-red-600 text-sm bg-red-50 border-b border-red-100">{error}</div>
-          )}
+          {error && <div className="px-5 py-4 text-red-600 text-sm bg-red-50 border-b border-red-100">{error}</div>}
 
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -311,9 +408,7 @@ export default function ProductionsPage() {
                   Array.from({ length: 4 }).map((_, i) => (
                     <tr key={i}>
                       {Array.from({ length: 7 }).map((_, j) => (
-                        <td key={j} className="px-4 py-4">
-                          <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
-                        </td>
+                        <td key={j} className="px-4 py-4"><div className="h-4 bg-slate-100 rounded animate-pulse w-24" /></td>
                       ))}
                     </tr>
                   ))
@@ -367,18 +462,16 @@ export default function ProductionsPage() {
                             <button
                               onClick={() => router.push(`/productions/${p.id}`)}
                               className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                              title="View details"
                             >
                               <ChevronRight size={15} />
                             </button>
-                            {canEdit && p.status !== 'archived' && (
+                            {canArchive && p.status === 'complete' && (
                               <button
-                                onClick={e => handleArchive(e, p.id)}
-                                disabled={archiving === p.id}
-                                className="p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600 rounded-lg transition-colors"
+                                onClick={e => openArchiveModal(e, p.id)}
+                                className="p-1.5 text-slate-400 hover:bg-amber-50 hover:text-amber-600 rounded-lg transition-colors"
                                 title="Archive production"
                               >
-                                {archiving === p.id ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                                <Archive size={14} />
                               </button>
                             )}
                           </div>
@@ -396,6 +489,89 @@ export default function ProductionsPage() {
               {loading ? 'Loading…' : `Showing ${filtered.length} of ${productions.length} production${productions.length !== 1 ? 's' : ''}`}
             </span>
           </div>
+        </div>
+
+        {/* Archived Productions Section */}
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+          <button
+            onClick={() => setShowArchived(v => !v)}
+            className="w-full flex items-center justify-between px-5 py-4 text-left hover:bg-slate-50 transition-colors"
+          >
+            <div className="flex items-center gap-2">
+              <Archive size={15} className="text-slate-400" />
+              <span className="text-sm font-semibold text-slate-700">Archived Productions</span>
+              <span className="text-xs bg-slate-100 text-slate-500 px-2 py-0.5 rounded-full font-medium">{archived.length}</span>
+            </div>
+            <ChevronRight size={15} className={`text-slate-400 transition-transform ${showArchived ? 'rotate-90' : ''}`} />
+          </button>
+
+          {showArchived && (
+            <div className="border-t border-slate-100">
+              {archived.length === 0 ? (
+                <p className="px-5 py-8 text-center text-slate-400 text-sm">No archived productions.</p>
+              ) : (
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-slate-50 text-left">
+                      <th className="px-5 py-3 text-xs font-semibold text-slate-500">Production</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Contract</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Dates</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Archived</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500"></th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {archived.map(p => (
+                      <tr
+                        key={p.id}
+                        className="hover:bg-slate-50/50 transition-colors cursor-pointer"
+                        onClick={() => router.push(`/productions/${p.id}`)}
+                      >
+                        <td className="px-5 py-4">
+                          <p className="text-slate-700 font-medium">{p.name}</p>
+                          {p.production_company && <p className="text-slate-400 text-xs mt-0.5">{p.production_company}</p>}
+                        </td>
+                        <td className="px-4 py-4">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${p.contract_type === 'cost_plus' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                            {p.contract_type === 'cost_plus' ? 'Cost Plus' : 'On a Price'}
+                          </span>
+                        </td>
+                        <td className="px-4 py-4 text-slate-500 text-xs whitespace-nowrap">
+                          {fmtDate(p.start_date)} – {fmtDate(p.end_date)}
+                        </td>
+                        <td className="px-4 py-4 text-slate-400 text-xs whitespace-nowrap">
+                          {p.archived_at ? fmtDate(p.archived_at) : '—'}
+                        </td>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
+                            <button
+                              onClick={() => router.push(`/productions/${p.id}`)}
+                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                            >
+                              <ChevronRight size={15} />
+                            </button>
+                            {isMD && (
+                              <button
+                                onClick={e => handleUnarchive(e, p.id)}
+                                disabled={unarchiveLoading === p.id}
+                                className="flex items-center gap-1 px-2 py-1 text-xs text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                title="Unarchive production"
+                              >
+                                {unarchiveLoading === p.id
+                                  ? <Loader2 size={12} className="animate-spin" />
+                                  : <ArchiveRestore size={12} />}
+                                Unarchive
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          )}
         </div>
 
       </main>

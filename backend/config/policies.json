@@ -52,6 +52,8 @@
       "GET /api/productions/:id",
       "GET /api/productions/:id/sets",
       "GET /api/productions/:id/documents",
+      "GET /api/productions/:id/archive-preview",
+      "POST /api/productions/:id/archive",
 
       "GET /api/forecasting/forecasts",
       "POST /api/forecasting/forecasts",

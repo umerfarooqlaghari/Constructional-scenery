@@ -4,11 +4,13 @@ const ctrl           = require('../Controllers/productionsController');
 const { upload }     = require('../Middleware/upload');
 
 // Productions
-router.get('/',                    ctrl.getAllProductions);
-router.post('/',                   ctrl.createProduction);
-router.get('/:id',                 ctrl.getProductionById);
-router.put('/:id',                 ctrl.updateProduction);
-router.post('/:id/archive',        ctrl.archiveProduction);
+router.get('/',                         ctrl.getAllProductions);
+router.post('/',                        ctrl.createProduction);
+router.get('/:id',                      ctrl.getProductionById);
+router.put('/:id',                      ctrl.updateProduction);
+router.get('/:id/archive-preview',      ctrl.getArchivePreview);
+router.post('/:id/archive',             ctrl.archiveProduction);
+router.post('/:id/unarchive',           ctrl.unarchiveProduction);
 
 // Sets
 router.get('/:id/sets',            ctrl.getSets);

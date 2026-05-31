@@ -160,17 +160,109 @@ const updateProduction = async (req, res) => {
   }
 };
 
-// POST /api/productions/:id/archive
-const archiveProduction = async (req, res) => {
+// GET /api/productions/:id/archive-preview
+const getArchivePreview = async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `UPDATE productions SET status = 'archived' WHERE id = $1 RETURNING *`,
+    const { rows: [production] } = await db.query(
+      'SELECT id, name, status FROM productions WHERE id = $1',
       [req.params.id]
     );
-    if (!rows[0]) return res.status(404).json({ error: 'Production not found' });
-    res.json({ message: 'Production archived successfully', production: rows[0] });
+    if (!production) return res.status(404).json({ error: 'Production not found' });
+    if (production.status !== 'complete')
+      return res.status(400).json({ error: 'Only complete productions can be archived' });
+
+    const [
+      { rows: poRows },
+      { rows: tsRows },
+      { rows: crewRows },
+    ] = await Promise.all([
+      db.query('SELECT COUNT(*) AS cnt FROM purchase_orders WHERE production_id = $1', [req.params.id]),
+      db.query('SELECT COUNT(*) AS cnt FROM timesheets WHERE production_id = $1', [req.params.id]),
+      db.query(
+        `SELECT COUNT(DISTINCT crew_member_id) AS cnt FROM timesheets WHERE production_id = $1`,
+        [req.params.id]
+      ),
+    ]);
+
+    res.json({
+      production_name: production.name,
+      po_count:        parseInt(poRows[0].cnt, 10),
+      timesheet_count: parseInt(tsRows[0].cnt, 10),
+      crew_count:      parseInt(crewRows[0].cnt, 10),
+    });
+  } catch (err) {
+    console.error('getArchivePreview:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/productions/:id/archive
+const archiveProduction = async (req, res) => {
+  const role = req.user?.role;
+  if (role !== 'managing_director' && role !== 'construction_accountant')
+    return res.status(403).json({ error: 'Only MD or Accountant can archive productions' });
+
+  try {
+    const { rows: [existing] } = await db.query(
+      'SELECT id, name, status FROM productions WHERE id = $1',
+      [req.params.id]
+    );
+    if (!existing) return res.status(404).json({ error: 'Production not found' });
+    if (existing.status !== 'complete')
+      return res.status(400).json({ error: 'Only complete productions can be archived' });
+
+    const { rows: [production] } = await db.query(
+      `UPDATE productions
+         SET status = 'archived', archived_at = NOW()
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    await db.query(
+      `INSERT INTO audit_log (user_id, production_id, action, metadata)
+       VALUES ($1, $2, 'archived', $3)`,
+      [req.user.id, req.params.id, JSON.stringify({ production_name: existing.name })]
+    );
+
+    res.json({ message: 'Production archived successfully', production });
   } catch (err) {
     console.error('archiveProduction:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// POST /api/productions/:id/unarchive
+const unarchiveProduction = async (req, res) => {
+  if (req.user?.role !== 'managing_director')
+    return res.status(403).json({ error: 'Only MD can unarchive productions' });
+
+  try {
+    const { rows: [existing] } = await db.query(
+      'SELECT id, name, status FROM productions WHERE id = $1',
+      [req.params.id]
+    );
+    if (!existing) return res.status(404).json({ error: 'Production not found' });
+    if (existing.status !== 'archived')
+      return res.status(400).json({ error: 'Production is not archived' });
+
+    const { rows: [production] } = await db.query(
+      `UPDATE productions
+         SET status = 'complete', archived_at = NULL
+       WHERE id = $1
+       RETURNING *`,
+      [req.params.id]
+    );
+
+    await db.query(
+      `INSERT INTO audit_log (user_id, production_id, action, metadata)
+       VALUES ($1, $2, 'unarchived', $3)`,
+      [req.user.id, req.params.id, JSON.stringify({ production_name: existing.name })]
+    );
+
+    res.json({ message: 'Production unarchived successfully', production });
+  } catch (err) {
+    console.error('unarchiveProduction:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -296,7 +388,8 @@ const uploadDocument = async (req, res) => {
 };
 
 module.exports = {
-  getAllProductions, createProduction, getProductionById, updateProduction, archiveProduction,
+  getAllProductions, createProduction, getProductionById, updateProduction,
+  getArchivePreview, archiveProduction, unarchiveProduction,
   getSets, createSet, updateSet, deleteSet,
   getDocuments, uploadDocument,
 };
