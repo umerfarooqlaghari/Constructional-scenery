@@ -28,6 +28,10 @@ const getAllTimesheets = async (req, res) => {
     if (req.query.crew_trade) { conditions.push(`cm.crew_trade = $${i++}`); params.push(req.query.crew_trade); }
     if (req.query.crew_rank)  { conditions.push(`cm.crew_rank = $${i++}`);  params.push(req.query.crew_rank); }
 
+    if (req.query.include_archived !== 'true') {
+      conditions.push(`p.status != 'archived'`);
+    }
+
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
       `SELECT t.*,

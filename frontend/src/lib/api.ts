@@ -158,6 +158,7 @@ export type Production = {
   updated_at: string;
   total_sets: number;
   completed_sets: number;
+  archived_at: string | null;
 };
 
 export type ProductionSet = {
@@ -256,8 +257,18 @@ export const productionsApi = {
     request<ProductionDetail>(`/api/productions/${id}`),
   update: (id: string, data: Partial<Production>) =>
     request<Production>(`/api/productions/${id}`, { method: 'PUT', body: data }),
+  archivePreview: (id: string) =>
+    request<{ production_name: string; po_count: number; timesheet_count: number; crew_count: number }>(
+      `/api/productions/${id}/archive-preview`
+    ),
   archive: (id: string) =>
     request<{ message: string; production: Production }>(`/api/productions/${id}/archive`, { method: 'POST' }),
+  unarchive: (id: string) =>
+    request<{ message: string; production: Production }>(`/api/productions/${id}/unarchive`, { method: 'POST' }),
+  listArchived: () =>
+    request<Production[]>(`/api/productions?include_archived=true`).then(all =>
+      all.filter(p => p.status === 'archived')
+    ),
 
   getSets: (id: string) =>
     request<ProductionSet[]>(`/api/productions/${id}/sets`),
