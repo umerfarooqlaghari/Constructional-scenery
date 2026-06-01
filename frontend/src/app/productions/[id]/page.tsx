@@ -399,7 +399,7 @@ export default function ProductionDetailPage() {
     return (
       <>
         <TopBar title="Production" subtitle="Error" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 md:p-6">
           <p className="text-red-600">{error || 'Production not found.'}</p>
           <button onClick={() => router.back()} className="mt-4 text-teal-600 text-sm hover:underline">← Go back</button>
         </main>
@@ -433,7 +433,7 @@ export default function ProductionDetailPage() {
       )}
 
       <TopBar title={production.name} subtitle={`${production.production_company ?? ''} · ${sc.label}`} />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">

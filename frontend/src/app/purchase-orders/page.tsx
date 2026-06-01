@@ -382,7 +382,7 @@ export default function PurchaseOrdersPage() {
   return (
     <>
       <TopBar title="Purchase Orders" subtitle="Raise, track and approve supplier purchase orders" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Stats Row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -625,10 +625,10 @@ export default function PurchaseOrdersPage() {
 
           {/* Table */}
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[900px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">PO Number</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap sticky left-0 bg-slate-50 z-10">PO Number</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Production</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Set / Account</th>
@@ -657,7 +657,7 @@ export default function PurchaseOrdersPage() {
                     const busy = actionLoading?.startsWith(po.id + ':');
                     return (
                       <tr key={po.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5 sticky left-0 bg-white z-10 group-hover:bg-slate-50/50">
                           <p className="text-teal-700 font-semibold text-xs font-mono whitespace-nowrap">{po.po_number}</p>
                           <p className="text-slate-400 text-[10px] mt-0.5">{fmtDate(po.date_of_po)}</p>
                         </td>
@@ -882,7 +882,7 @@ export default function PurchaseOrdersPage() {
               {/* Supplier */}
               <div className="space-y-3">
                 <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Supplier Details</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div className="col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
                     <input
@@ -919,7 +919,7 @@ export default function PurchaseOrdersPage() {
               {/* PO Details */}
               <div className="space-y-3">
                 <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">PO Details</h3>
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Date of PO</label>
                     <input

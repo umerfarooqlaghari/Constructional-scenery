@@ -288,7 +288,7 @@ export default function TimesheetsPage() {
       )}
 
       <TopBar title="Timesheets & Pay Run" subtitle="Weekly timesheet review and pay run management" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Week + Production selectors */}
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -442,10 +442,10 @@ export default function TimesheetsPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">Crew Member</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Crew Member</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Trade / Rank</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Net</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
@@ -482,7 +482,7 @@ export default function TimesheetsPage() {
 
                     return (
                       <tr key={ts.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5 sticky left-0 bg-white z-10">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center flex-shrink-0`}>
                               <span className="text-white text-xs font-bold">

@@ -97,7 +97,7 @@ export default function CoordinatorDashboard() {
     return (
       <>
         <TopBar title="Coordinator Dashboard" subtitle={today} />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 md:p-6">
           <p className="text-red-600 text-sm">{error}</p>
         </main>
       </>
@@ -107,7 +107,7 @@ export default function CoordinatorDashboard() {
   return (
     <>
       <TopBar title="Coordinator Dashboard" subtitle={today} />
-      <main className="flex-1 p-6 space-y-6">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-6">
 
         {/* Stat Cards */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

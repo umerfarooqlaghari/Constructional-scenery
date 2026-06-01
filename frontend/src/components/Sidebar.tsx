@@ -61,7 +61,7 @@ export default function Sidebar() {
   })).filter(group => group.items.length > 0);
 
   return (
-    <aside className="fixed inset-y-0 left-0 w-60 bg-slate-900 flex flex-col z-30">
+    <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 bg-slate-900 flex-col z-30">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-700/60">
         <div className="w-8 h-8 rounded-lg bg-teal-500 flex items-center justify-center flex-shrink-0">

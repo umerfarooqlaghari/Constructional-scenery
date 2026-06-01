@@ -89,7 +89,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
             <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
             <input className={inputCls} placeholder="e.g. Meridian" value={form.name} onChange={set('name')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
               <input className={inputCls} placeholder="e.g. Lionsgate UK" value={form.production_company} onChange={set('production_company')} />
@@ -99,7 +99,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <input className={inputCls} placeholder="e.g. Helena Portman" value={form.production_designer} onChange={set('production_designer')} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
               <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
@@ -111,7 +111,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
               <input type="date" className={inputCls} value={form.start_date} onChange={set('start_date')} />
@@ -327,7 +327,7 @@ export default function ProductionsPage() {
       )}
 
       <TopBar title="Productions" subtitle="Manage active, upcoming and archived productions" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -391,10 +391,10 @@ export default function ProductionsPage() {
           {error && <div className="px-5 py-4 text-red-600 text-sm bg-red-50 border-b border-red-100">{error}</div>}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[700px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">Production</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Production</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Type</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Contract</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>

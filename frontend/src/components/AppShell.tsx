@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
 import Sidebar from './Sidebar';
+import BottomNav from './BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
 
 const AUTH_PATHS = ['/login', '/signup', '/forgot-password', '/verify-otp', '/reset-password'];
@@ -16,12 +17,8 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (loading) return;
-    if (!isAuthPage && !user) {
-      router.replace('/login');
-    }
-    if (isAuthPage && user) {
-      router.replace('/dashboard');
-    }
+    if (!isAuthPage && !user) router.replace('/login');
+    if (isAuthPage && user)   router.replace('/dashboard');
   }, [loading, user, isAuthPage, router]);
 
   if (loading) {
@@ -44,8 +41,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <>
+      {/* Desktop sidebar — hidden on mobile */}
       <Sidebar />
-      <div className="pl-60 min-h-screen flex flex-col">{children}</div>
+
+      {/* Main content: no left pad on mobile, pl-60 on desktop */}
+      <div className="md:pl-60 min-h-screen flex flex-col pb-16 md:pb-0">
+        {children}
+      </div>
+
+      {/* Mobile bottom nav — hidden on desktop */}
+      <BottomNav />
     </>
   );
 }
