@@ -172,7 +172,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
           {/* Personal */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Personal Details</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>First Name *</label>
                 <input className={inputCls} placeholder="e.g. James" value={form.first_name} onChange={set('first_name')} />
@@ -197,7 +197,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
           {/* Employment */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Employment</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Employment Status *</label>
                 <select className={inputCls} value={form.employment_status} onChange={set('employment_status')}>
@@ -214,7 +214,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
             {tradesLoading ? (
               <div className="mt-4 h-9 bg-slate-100 rounded-lg animate-pulse" />
             ) : (
-              <div className="grid grid-cols-2 gap-4 mt-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
                 <div>
                   <label className={labelCls}>Trade</label>
                   <select className={inputCls} value={form.crew_trade} onChange={set('crew_trade')}>
@@ -250,7 +250,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
           {isSE && (
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Company Details</p>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div className="col-span-2">
                   <label className={labelCls}>Company Name</label>
                   <input className={inputCls} placeholder="e.g. Hargreaves Scenery Ltd" value={form.company_name} onChange={set('company_name')} />
@@ -289,7 +289,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
           {/* Emergency Contact */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Emergency Contact</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={labelCls}>Contact Name</label>
                 <input className={inputCls} placeholder="e.g. Sarah Hargreaves" value={form.emergency_contact_name} onChange={set('emergency_contact_name')} />
@@ -406,7 +406,7 @@ export default function CrewPage() {
       )}
 
       <TopBar title="Crew Database" subtitle="Register and manage your construction crew" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Stats row */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -507,10 +507,10 @@ export default function CrewPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[640px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">Crew Member</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Crew Member</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Trade &amp; Rank</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Employment</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Company</th>
@@ -541,7 +541,7 @@ export default function CrewPage() {
                     const colorClass = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                     return (
                       <tr key={c.id} className="hover:bg-slate-50/50 transition-colors cursor-pointer" onClick={() => router.push(`/crew/${c.id}`)}>
-                        <td className="px-5 py-3.5">
+                        <td className="px-5 py-3.5 sticky left-0 bg-white z-10">
                           <div className="flex items-center gap-3">
                             <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center flex-shrink-0`}>
                               <span className="text-white text-xs font-bold">

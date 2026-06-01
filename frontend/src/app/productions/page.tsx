@@ -89,7 +89,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
             <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
             <input className={inputCls} placeholder="e.g. Meridian" value={form.name} onChange={set('name')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
               <input className={inputCls} placeholder="e.g. Lionsgate UK" value={form.production_company} onChange={set('production_company')} />
@@ -99,7 +99,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <input className={inputCls} placeholder="e.g. Helena Portman" value={form.production_designer} onChange={set('production_designer')} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
               <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
@@ -111,7 +111,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               </select>
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
               <input type="date" className={inputCls} value={form.start_date} onChange={set('start_date')} />
@@ -145,62 +145,77 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
 
 // ─── Archive Confirm Modal ────────────────────────────────────────────────────
 
-type ArchivePreview = { production_name: string; po_count: number; timesheet_count: number; crew_count: number };
+type ArchivePreview = { production_name: string; po_count: number; timesheet_weeks: number; crew_count: number };
 
 interface ArchiveModalProps {
   preview: ArchivePreview;
   onConfirm: () => void;
   onClose: () => void;
   loading: boolean;
+  error?: string;
 }
 
-function ArchiveModal({ preview, onConfirm, onClose, loading }: ArchiveModalProps) {
+function ArchiveModal({ preview, onConfirm, onClose, loading, error }: ArchiveModalProps) {
   const [typed, setTyped] = useState('');
-  const confirmed = typed === preview.production_name;
+  const confirmed = typed.toLowerCase() === preview.production_name.toLowerCase();
 
   return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <Archive size={16} className="text-amber-500" />
-            <h2 className="text-slate-900 font-semibold text-base">Archive Production</h2>
-          </div>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
-        </div>
-        <div className="px-6 py-5 space-y-4">
-          <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 text-sm text-amber-800">
-            <p className="font-semibold mb-2">The following will be hidden from all active views:</p>
-            <ul className="space-y-1 list-disc list-inside text-amber-700">
-              <li><span className="font-medium">{preview.po_count}</span> purchase order{preview.po_count !== 1 ? 's' : ''}</li>
-              <li><span className="font-medium">{preview.timesheet_count}</span> timesheet{preview.timesheet_count !== 1 ? 's' : ''}</li>
-              <li><span className="font-medium">{preview.crew_count}</span> crew engagement{preview.crew_count !== 1 ? 's' : ''}</li>
-            </ul>
-            <p className="mt-2 text-xs text-amber-600">All data remains intact and accessible from the Archived Productions view. This is reversible.</p>
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="px-6 pt-6 pb-2 flex items-start gap-3">
+          <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+            <Archive size={18} className="text-red-600" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">
-              Type <span className="font-bold text-slate-800">{preview.production_name}</span> to confirm
-            </label>
-            <input
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400"
-              placeholder={preview.production_name}
-              value={typed}
-              onChange={e => setTyped(e.target.value)}
-              autoFocus
-            />
+            <h2 className="text-slate-900 font-semibold text-base">Archive this production?</h2>
+            <p className="text-slate-500 text-sm mt-1">
+              Archiving <span className="font-bold text-slate-800">{preview.production_name}</span> will
+              hide it from all active views. All data, documents, and reports will be preserved in full and
+              accessible from the archived productions list.
+            </p>
           </div>
-          <div className="flex items-center justify-end gap-3 pt-1">
-            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
+        </div>
+
+        <div className="mx-6 my-4 bg-slate-50 rounded-xl p-4">
+          <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">This production has</p>
+          <div className="grid grid-cols-3 gap-3 text-center">
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{preview.po_count}</p>
+              <p className="text-xs text-slate-500 mt-0.5">purchase orders</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{preview.crew_count}</p>
+              <p className="text-xs text-slate-500 mt-0.5">crew members</p>
+            </div>
+            <div>
+              <p className="text-2xl font-bold text-slate-800">{preview.timesheet_weeks}</p>
+              <p className="text-xs text-slate-500 mt-0.5">weeks of timesheets</p>
+            </div>
+          </div>
+        </div>
+
+        <div className="px-6 pb-2">
+          <label className="block text-xs font-medium text-slate-600 mb-1">Type the production name to confirm:</label>
+          <input
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+            placeholder={preview.production_name}
+            value={typed}
+            onChange={e => setTyped(e.target.value)}
+            autoFocus
+          />
+          {error && <p className="text-red-600 text-xs mt-1.5">{error}</p>}
+        </div>
+
+        <div className="flex items-center justify-end gap-3 px-6 py-4">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-lg transition-colors">Cancel</button>
             <button
               onClick={onConfirm}
               disabled={!confirmed || loading}
-              className="flex items-center gap-2 px-5 py-2 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 disabled:opacity-50 font-medium transition-colors"
+              className="flex items-center gap-2 px-5 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium transition-colors"
             >
               {loading ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
-              Archive Production
+              Archive production
             </button>
-          </div>
         </div>
       </div>
     </div>
@@ -230,6 +245,7 @@ export default function ProductionsPage() {
   const [archivePreview, setArchivePreview]   = useState<ArchivePreview | null>(null);
   const [archiveTargetId, setArchiveTargetId] = useState<string | null>(null);
   const [archiveLoading, setArchiveLoading]   = useState(false);
+  const [archiveError, setArchiveError]       = useState('');
   const [unarchiveLoading, setUnarchiveLoading] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -263,15 +279,15 @@ export default function ProductionsPage() {
 
   const handleArchiveConfirm = async () => {
     if (!archiveTargetId) return;
-    setArchiveLoading(true);
+    setArchiveLoading(true); setArchiveError('');
     try {
       const { production } = await productionsApi.archive(archiveTargetId);
       setProductions(prev => prev.filter(p => p.id !== archiveTargetId));
       setArchived(prev => [production, ...prev]);
       setArchivePreview(null);
       setArchiveTargetId(null);
-    } catch (err: unknown) {
-      alert(err instanceof Error ? err.message : 'Archive failed');
+    } catch {
+      setArchiveError('Archive failed. Please try again.');
     } finally {
       setArchiveLoading(false);
     }
@@ -321,13 +337,14 @@ export default function ProductionsPage() {
         <ArchiveModal
           preview={archivePreview}
           onConfirm={handleArchiveConfirm}
-          onClose={() => { setArchivePreview(null); setArchiveTargetId(null); }}
+          onClose={() => { setArchivePreview(null); setArchiveTargetId(null); setArchiveError(''); }}
           loading={archiveLoading}
+          error={archiveError}
         />
       )}
 
       <TopBar title="Productions" subtitle="Manage active, upcoming and archived productions" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -391,10 +408,10 @@ export default function ProductionsPage() {
           {error && <div className="px-5 py-4 text-red-600 text-sm bg-red-50 border-b border-red-100">{error}</div>}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
+            <table className="w-full text-sm min-w-[700px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500">Production</th>
+                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Production</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Type</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Contract</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>

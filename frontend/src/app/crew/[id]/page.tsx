@@ -462,7 +462,7 @@ export default function CrewDetailPage() {
     return (
       <>
         <TopBar title="Crew Member" subtitle="" />
-        <main className="flex-1 p-6">
+        <main className="flex-1 p-4 md:p-6">
           <p className="text-red-600 text-sm">{error}</p>
         </main>
       </>
@@ -493,7 +493,7 @@ export default function CrewDetailPage() {
         subtitle={subtitle}
       />
 
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Back + actions */}
         <div className="flex items-center justify-between">

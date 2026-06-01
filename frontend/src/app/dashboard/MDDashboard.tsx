@@ -84,7 +84,7 @@ export default function MDDashboard() {
   if (error) return (
     <>
       <TopBar title="Managing Director Dashboard" subtitle={today} />
-      <main className="flex-1 p-6">
+      <main className="flex-1 p-4 md:p-6">
         <div className="bg-red-50 border border-red-200 rounded-xl p-5 text-red-700 text-sm">
           Failed to load dashboard: {error}
         </div>
@@ -111,7 +111,7 @@ export default function MDDashboard() {
   return (
     <>
       <TopBar title="Managing Director Dashboard" subtitle={today} />
-      <main className="flex-1 p-6 space-y-6">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-6">
 
         {/* ── Stat Cards ─────────────────────────────────────────────── */}
         <div className="grid grid-cols-2 xl:grid-cols-4 gap-4">

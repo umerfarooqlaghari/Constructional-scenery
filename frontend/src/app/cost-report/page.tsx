@@ -282,7 +282,7 @@ export default function CostReportPage() {
       )}
 
       <TopBar title="Cost Report" subtitle="Live financial reporting across all active productions" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Controls bar */}
         <div className="flex flex-wrap items-center gap-3">

@@ -195,7 +195,7 @@ export default function ForecastingPage() {
       )}
 
       <TopBar title="Forecasting & Job Costing" subtitle="Labour and materials forecasting with scenario comparison" />
-      <main className="flex-1 p-6 space-y-5">
+      <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
         {/* Tab bar */}
         <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-xl p-1 shadow-sm w-fit">
