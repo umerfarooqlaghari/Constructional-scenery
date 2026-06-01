@@ -160,6 +160,64 @@ const updateProduction = async (req, res) => {
   }
 };
 
+// ─── Percentometer background job ─────────────────────────────────────────────
+const runPostProductionPercentometer = async (productionId, attempt = 1) => {
+  try {
+    // Mark as processing
+    await db.query(
+      `UPDATE productions SET post_production_percentometer = $1 WHERE id = $2`,
+      [JSON.stringify({ status: 'processing' }), productionId]
+    );
+
+    // Pull approved POs grouped by account_code and verified timesheets total
+    const [{ rows: poRows }, { rows: tsRows }] = await Promise.all([
+      db.query(
+        `SELECT account_code, SUM(gross_amount::numeric) AS total
+         FROM purchase_orders
+         WHERE production_id = $1 AND status = 'approved'
+         GROUP BY account_code`,
+        [productionId]
+      ),
+      db.query(
+        `SELECT SUM(grand_total::numeric) AS total
+         FROM timesheets
+         WHERE production_id = $1 AND status = 'verified'`,
+        [productionId]
+      ),
+    ]);
+
+    const materialsTotal = poRows.reduce((s, r) => s + parseFloat(r.total || 0), 0);
+    const labourTotal    = parseFloat(tsRows[0]?.total || 0);
+    const grandTotal     = materialsTotal + labourTotal;
+
+    await db.query(
+      `UPDATE productions SET post_production_percentometer = $1 WHERE id = $2`,
+      [
+        JSON.stringify({
+          status:           'complete',
+          labour_total:     labourTotal,
+          materials_total:  materialsTotal,
+          grand_total:      grandTotal,
+          labour_pct:       grandTotal > 0 ? ((labourTotal / grandTotal) * 100).toFixed(1) : '0',
+          materials_pct:    grandTotal > 0 ? ((materialsTotal / grandTotal) * 100).toFixed(1) : '0',
+          computed_at:      new Date().toISOString(),
+        }),
+        productionId,
+      ]
+    );
+  } catch (err) {
+    console.error(`Percentometer job attempt ${attempt} failed for ${productionId}:`, err.message);
+    if (attempt < 3) {
+      setTimeout(() => runPostProductionPercentometer(productionId, attempt + 1), 5000 * attempt);
+    } else {
+      await db.query(
+        `UPDATE productions SET post_production_percentometer = $1 WHERE id = $2`,
+        [JSON.stringify({ status: 'failed', error: err.message }), productionId]
+      ).catch(() => {});
+    }
+  }
+};
+
 // GET /api/productions/:id/archive-preview
 const getArchivePreview = async (req, res) => {
   try {
@@ -173,11 +231,17 @@ const getArchivePreview = async (req, res) => {
 
     const [
       { rows: poRows },
-      { rows: tsRows },
+      { rows: weekRows },
       { rows: crewRows },
     ] = await Promise.all([
-      db.query('SELECT COUNT(*) AS cnt FROM purchase_orders WHERE production_id = $1', [req.params.id]),
-      db.query('SELECT COUNT(*) AS cnt FROM timesheets WHERE production_id = $1', [req.params.id]),
+      db.query(
+        'SELECT COUNT(*) AS cnt FROM purchase_orders WHERE production_id = $1',
+        [req.params.id]
+      ),
+      db.query(
+        `SELECT COUNT(DISTINCT week_ending_date) AS cnt FROM timesheets WHERE production_id = $1`,
+        [req.params.id]
+      ),
       db.query(
         `SELECT COUNT(DISTINCT crew_member_id) AS cnt FROM timesheets WHERE production_id = $1`,
         [req.params.id]
@@ -185,10 +249,10 @@ const getArchivePreview = async (req, res) => {
     ]);
 
     res.json({
-      production_name: production.name,
-      po_count:        parseInt(poRows[0].cnt, 10),
-      timesheet_count: parseInt(tsRows[0].cnt, 10),
-      crew_count:      parseInt(crewRows[0].cnt, 10),
+      production_name:  production.name,
+      po_count:         parseInt(poRows[0].cnt, 10),
+      timesheet_weeks:  parseInt(weekRows[0].cnt, 10),
+      crew_count:       parseInt(crewRows[0].cnt, 10),
     });
   } catch (err) {
     console.error('getArchivePreview:', err);
@@ -213,10 +277,10 @@ const archiveProduction = async (req, res) => {
 
     const { rows: [production] } = await db.query(
       `UPDATE productions
-         SET status = 'archived', archived_at = NOW()
+         SET status = 'archived', archived_at = NOW(), archived_by = $2
        WHERE id = $1
        RETURNING *`,
-      [req.params.id]
+      [req.params.id, req.user.id]
     );
 
     await db.query(
@@ -224,6 +288,9 @@ const archiveProduction = async (req, res) => {
        VALUES ($1, $2, 'archived', $3)`,
       [req.user.id, req.params.id, JSON.stringify({ production_name: existing.name })]
     );
+
+    // Fire Percentometer review asynchronously — does not block response
+    setImmediate(() => runPostProductionPercentometer(req.params.id));
 
     res.json({ message: 'Production archived successfully', production });
   } catch (err) {
@@ -387,9 +454,34 @@ const uploadDocument = async (req, res) => {
   }
 };
 
+// GET /api/productions/audit-log  (MD only)
+const getAuditLog = async (req, res) => {
+  if (req.user?.role !== 'managing_director')
+    return res.status(403).json({ error: 'Only MD can view the audit log' });
+  try {
+    const { rows } = await db.query(
+      `SELECT al.id, al.action, al.created_at,
+              al.metadata,
+              u.full_name AS performed_by,
+              p.name AS production_name
+       FROM audit_log al
+       JOIN users u ON al.user_id = u.id
+       LEFT JOIN productions p ON al.production_id = p.id
+       WHERE al.action IN ('archived', 'unarchived')
+       ORDER BY al.created_at DESC
+       LIMIT 200`,
+      []
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getAuditLog:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getAllProductions, createProduction, getProductionById, updateProduction,
-  getArchivePreview, archiveProduction, unarchiveProduction,
+  getArchivePreview, archiveProduction, unarchiveProduction, getAuditLog,
   getSets, createSet, updateSet, deleteSet,
   getDocuments, uploadDocument,
 };

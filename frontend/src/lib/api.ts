@@ -159,6 +159,26 @@ export type Production = {
   total_sets: number;
   completed_sets: number;
   archived_at: string | null;
+  archived_by: string | null;
+  post_production_percentometer: {
+    status: 'processing' | 'complete' | 'failed';
+    labour_total?: number;
+    materials_total?: number;
+    grand_total?: number;
+    labour_pct?: string;
+    materials_pct?: string;
+    computed_at?: string;
+    error?: string;
+  } | null;
+};
+
+export type AuditLogEntry = {
+  id: string;
+  action: 'archived' | 'unarchived';
+  created_at: string;
+  performed_by: string;
+  production_name: string | null;
+  metadata: Record<string, unknown>;
 };
 
 export type ProductionSet = {
@@ -258,9 +278,11 @@ export const productionsApi = {
   update: (id: string, data: Partial<Production>) =>
     request<Production>(`/api/productions/${id}`, { method: 'PUT', body: data }),
   archivePreview: (id: string) =>
-    request<{ production_name: string; po_count: number; timesheet_count: number; crew_count: number }>(
+    request<{ production_name: string; po_count: number; timesheet_weeks: number; crew_count: number }>(
       `/api/productions/${id}/archive-preview`
     ),
+  getAuditLog: () =>
+    request<AuditLogEntry[]>('/api/productions/audit-log'),
   archive: (id: string) =>
     request<{ message: string; production: Production }>(`/api/productions/${id}/archive`, { method: 'POST' }),
   unarchive: (id: string) =>

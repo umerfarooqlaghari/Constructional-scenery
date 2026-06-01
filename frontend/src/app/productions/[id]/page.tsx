@@ -5,8 +5,7 @@ import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
   ArrowLeft, Plus, Pencil, Trash2, X, Loader2, Upload,
-  FileText, Calendar, MapPin,
-  Save,
+  FileText, Calendar, MapPin, Save, Archive, ArchiveRestore, CheckCircle2,
 } from 'lucide-react';
 import {
   productionsApi,
@@ -333,8 +332,11 @@ export default function ProductionDetailPage() {
   const params  = useParams<{ id: string }>();
   const router  = useRouter();
   const { user } = useAuth();
-  const canEdit = user?.role !== 'construction_accountant';
-  const id      = params.id;
+  const isMD         = user?.role === 'managing_director';
+  const isAccountant = user?.role === 'construction_accountant';
+  const canEdit      = !isAccountant;
+  const canArchive   = isMD || isAccountant;
+  const id           = params.id;
 
   const [production, setProduction]   = useState<ProductionDetail | null>(null);
   const [loading, setLoading]         = useState(true);
@@ -344,6 +346,59 @@ export default function ProductionDetailPage() {
   const [showAddSet, setShowAddSet]   = useState(false);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
+
+  // Archive flow
+  type ArchivePreview = { production_name: string; po_count: number; timesheet_weeks: number; crew_count: number };
+  const [archivePreview, setArchivePreview]   = useState<ArchivePreview | null>(null);
+  const [archiveTyped, setArchiveTyped]       = useState('');
+  const [archiveLoading, setArchiveLoading]   = useState(false);
+  const [archiveError, setArchiveError]       = useState('');
+  const [unarchiveLoading, setUnarchiveLoading] = useState(false);
+  const [toast, setToast]                     = useState<string | null>(null);
+
+  const showToast = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3500);
+  };
+
+  const openArchiveModal = async () => {
+    try {
+      const preview = await productionsApi.archivePreview(id);
+      setArchivePreview(preview);
+      setArchiveTyped('');
+      setArchiveError('');
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Cannot archive this production');
+    }
+  };
+
+  const handleArchiveConfirm = async () => {
+    setArchiveLoading(true); setArchiveError('');
+    try {
+      await productionsApi.archive(id);
+      setArchivePreview(null);
+      showToast(`${production?.name} has been archived`);
+      setTimeout(() => router.push('/productions'), 1500);
+    } catch (err: unknown) {
+      setArchiveError('Archive failed. Please try again.');
+    } finally {
+      setArchiveLoading(false);
+    }
+  };
+
+  const handleUnarchive = async () => {
+    if (!confirm(`Restore "${production?.name}" to active productions?`)) return;
+    setUnarchiveLoading(true);
+    try {
+      const { production: updated } = await productionsApi.unarchive(id);
+      setProduction(p => p ? { ...p, ...updated } : p);
+      showToast(`${updated.name} has been restored`);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Unarchive failed');
+    } finally {
+      setUnarchiveLoading(false);
+    }
+  };
 
   const load = useCallback(async () => {
     setLoading(true); setError('');
@@ -407,21 +462,23 @@ export default function ProductionDetailPage() {
     );
   }
 
-  const sc       = STATUS_CONFIG[production.status] ?? STATUS_CONFIG.pre_production;
-  const donePct  = production.total_sets > 0
+  const sc         = STATUS_CONFIG[production.status] ?? STATUS_CONFIG.pre_production;
+  const isArchived = production.status === 'archived';
+  const donePct    = production.total_sets > 0
     ? Math.round((production.completed_sets / production.total_sets) * 100)
     : 0;
+  const archiveConfirmed = archiveTyped.toLowerCase() === (archivePreview?.production_name ?? '').toLowerCase();
 
   return (
     <>
-      {showEditModal && canEdit && (
+      {showEditModal && canEdit && !isArchived && (
         <EditProductionModal
           production={production}
           onClose={() => setShowEditModal(false)}
           onSaved={updated => { setProduction(updated); setShowEditModal(false); }}
         />
       )}
-      {showUploadModal && (
+      {showUploadModal && !isArchived && (
         <UploadDocModal
           productionId={id}
           onClose={() => setShowUploadModal(false)}
@@ -432,8 +489,95 @@ export default function ProductionDetailPage() {
         />
       )}
 
+      {/* Archive Confirmation Modal */}
+      {archivePreview && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+            <div className="px-6 pt-6 pb-2 flex items-start gap-3">
+              <div className="w-10 h-10 rounded-xl bg-red-100 flex items-center justify-center flex-shrink-0">
+                <Archive size={18} className="text-red-600" />
+              </div>
+              <div>
+                <h2 className="text-slate-900 font-semibold text-base">Archive this production?</h2>
+                <p className="text-slate-500 text-sm mt-1">
+                  Archiving <span className="font-bold text-slate-800">{archivePreview.production_name}</span> will
+                  hide it from all active views. All data, documents, and reports will be preserved in full and
+                  accessible from the archived productions list.
+                </p>
+              </div>
+            </div>
+
+            {/* Stats */}
+            <div className="mx-6 my-4 bg-slate-50 rounded-xl p-4">
+              <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-3">This production has</p>
+              <div className="grid grid-cols-3 gap-3 text-center">
+                <div>
+                  <p className="text-2xl font-bold text-slate-800">{archivePreview.po_count}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">purchase orders</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-slate-800">{archivePreview.crew_count}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">crew members</p>
+                </div>
+                <div>
+                  <p className="text-2xl font-bold text-slate-800">{archivePreview.timesheet_weeks}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">weeks of timesheets</p>
+                </div>
+              </div>
+            </div>
+
+            <div className="px-6 pb-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Type the production name to confirm:</label>
+              <input
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-red-400"
+                placeholder={archivePreview.production_name}
+                value={archiveTyped}
+                onChange={e => setArchiveTyped(e.target.value)}
+                autoFocus
+              />
+              {archiveError && <p className="text-red-600 text-xs mt-1.5">{archiveError}</p>}
+            </div>
+
+            <div className="flex items-center justify-end gap-3 px-6 py-4">
+              <button
+                onClick={() => { setArchivePreview(null); setArchiveError(''); }}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 border border-slate-200 rounded-lg transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleArchiveConfirm}
+                disabled={!archiveConfirmed || archiveLoading}
+                className="flex items-center gap-2 px-5 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50 font-medium transition-colors"
+              >
+                {archiveLoading ? <Loader2 size={14} className="animate-spin" /> : <Archive size={14} />}
+                Archive production
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toast */}
+      {toast && (
+        <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">
+          <CheckCircle2 size={15} className="text-teal-400" />
+          {toast}
+        </div>
+      )}
+
       <TopBar title={production.name} subtitle={`${production.production_company ?? ''} · ${sc.label}`} />
       <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
+
+        {/* Archived read-only banner */}
+        {isArchived && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-center gap-3">
+            <Archive size={16} className="text-amber-600 flex-shrink-0" />
+            <p className="text-amber-800 text-sm font-medium flex-1">
+              This production is archived. All data is read-only.
+            </p>
+          </div>
+        )}
 
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
@@ -444,15 +588,36 @@ export default function ProductionDetailPage() {
             <ArrowLeft size={15} />
             All Productions
           </button>
-          {canEdit && (
-            <button
-              onClick={() => setShowEditModal(true)}
-              className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50 transition-colors"
-            >
-              <Pencil size={13} />
-              Edit
-            </button>
-          )}
+          <div className="flex items-center gap-2">
+            {canEdit && !isArchived && (
+              <button
+                onClick={() => setShowEditModal(true)}
+                className="flex items-center gap-2 px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                <Pencil size={13} />
+                Edit
+              </button>
+            )}
+            {canArchive && production.status === 'complete' && (
+              <button
+                onClick={openArchiveModal}
+                className="flex items-center gap-2 px-4 py-2 border border-amber-200 text-amber-700 bg-amber-50 text-sm rounded-lg hover:bg-amber-100 transition-colors"
+              >
+                <Archive size={13} />
+                Archive
+              </button>
+            )}
+            {isMD && isArchived && (
+              <button
+                onClick={handleUnarchive}
+                disabled={unarchiveLoading}
+                className="flex items-center gap-2 px-4 py-2 border border-teal-200 text-teal-700 bg-teal-50 text-sm rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-60"
+              >
+                {unarchiveLoading ? <Loader2 size={13} className="animate-spin" /> : <ArchiveRestore size={13} />}
+                Unarchive
+              </button>
+            )}
+          </div>
         </div>
 
         {/* Info card */}
@@ -526,7 +691,7 @@ export default function ProductionDetailPage() {
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />1–14d</span>
                 <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Overdue</span>
               </div>
-              {canEdit && (
+              {canEdit && !isArchived && (
                 <button
                   onClick={() => { setShowAddSet(s => !s); setEditingSetId(null); }}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors"
@@ -616,7 +781,7 @@ export default function ProductionDetailPage() {
                             <span className={`text-sm ${countdownColor}`}>{countdownText}</span>
                           </div>
                         </td>
-                        {canEdit && (
+                        {canEdit && !isArchived && (
                           <td className="px-4 py-3">
                             <div className="flex items-center gap-1">
                               <button
@@ -653,7 +818,7 @@ export default function ProductionDetailPage() {
               <h2 className="text-slate-900 font-semibold text-sm">Production Documents</h2>
               <p className="text-slate-400 text-xs mt-0.5">{production.production_documents.length} document{production.production_documents.length !== 1 ? 's' : ''}</p>
             </div>
-            {canEdit && (
+            {canEdit && !isArchived && (
               <button
                 onClick={() => setShowUploadModal(true)}
                 className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors"

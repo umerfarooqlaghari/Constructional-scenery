@@ -3,6 +3,9 @@ const router         = express.Router();
 const ctrl           = require('../Controllers/productionsController');
 const { upload }     = require('../Middleware/upload');
 
+// Audit log — before /:id to avoid route conflict
+router.get('/audit-log',                ctrl.getAuditLog);
+
 // Productions
 router.get('/',                         ctrl.getAllProductions);
 router.post('/',                        ctrl.createProduction);
