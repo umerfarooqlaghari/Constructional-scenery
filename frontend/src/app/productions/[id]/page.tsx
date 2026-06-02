@@ -54,7 +54,6 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
     start_date:          production.start_date ? production.start_date.split('T')[0] : '',
     end_date:            production.end_date   ? production.end_date.split('T')[0]   : '',
     contract_type:       production.contract_type,
-    status:              production.status,
   });
   const [saving, setSaving] = useState(false);
   const [error, setError]   = useState('');
@@ -127,15 +126,6 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
               <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
               <input type="date" className={inputCls} value={form.end_date} onChange={set('end_date')} />
             </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
-            <select className={inputCls} value={form.status} onChange={set('status')}>
-              <option value="pre_production">Pre-Production</option>
-              <option value="active_build">Active Build</option>
-              <option value="strike">Strike</option>
-              <option value="complete">Complete</option>
-            </select>
           </div>
           <div className="flex items-center justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
@@ -346,6 +336,65 @@ export default function ProductionDetailPage() {
   const [showAddSet, setShowAddSet]   = useState(false);
   const [editingSetId, setEditingSetId] = useState<string | null>(null);
   const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
+
+  // Status transition flow
+  const STATUS_ORDER = ['pre_production', 'active_build', 'strike', 'complete'] as const;
+  type ActiveStatus = typeof STATUS_ORDER[number];
+  const NEXT_LABEL: Record<string, string> = {
+    pre_production: 'Mark as Active Build',
+    active_build:   'Move to Strike',
+    strike:         'Mark as Complete',
+  };
+  const PREV_LABEL: Record<string, string> = {
+    active_build: 'Roll back to Pre-Production',
+    strike:       'Roll back to Active Build',
+    complete:     'Roll back to Strike',
+  };
+  const nextStatus  = STATUS_ORDER[STATUS_ORDER.indexOf(production?.status as ActiveStatus) + 1];
+  const prevStatus  = STATUS_ORDER[STATUS_ORDER.indexOf(production?.status as ActiveStatus) - 1];
+
+  const [showTransitionModal, setShowTransitionModal] = useState<'forward' | 'rollback' | null>(null);
+  const [transitionLoading, setTransitionLoading]     = useState(false);
+  const [transitionError, setTransitionError]         = useState('');
+  // Strike → Complete checklist
+  const [checkInvoices, setCheckInvoices]   = useState(false);
+  const [checkPayRun, setCheckPayRun]       = useState(false);
+  const [checkCostReport, setCheckCostReport] = useState(false);
+  // Rollback
+  const [rollbackReason, setRollbackReason] = useState('');
+
+  const openTransition = (dir: 'forward' | 'rollback') => {
+    setTransitionError('');
+    setCheckInvoices(false); setCheckPayRun(false); setCheckCostReport(false);
+    setRollbackReason('');
+    setShowTransitionModal(dir);
+  };
+
+  const handleTransition = async () => {
+    if (!production) return;
+    const isRollback = showTransitionModal === 'rollback';
+    const toStatus   = isRollback ? prevStatus : nextStatus;
+    if (!toStatus) return;
+
+    setTransitionLoading(true); setTransitionError('');
+    try {
+      const { production: updated } = await productionsApi.transitionStatus(id, {
+        to_status:             toStatus,
+        is_rollback:           isRollback,
+        reason:                isRollback ? rollbackReason : undefined,
+        checklist_confirmed:   !isRollback && production.status === 'strike' && toStatus === 'complete'
+          ? (checkInvoices && checkPayRun && checkCostReport)
+          : undefined,
+      });
+      setProduction(p => p ? { ...p, ...updated } : p);
+      setShowTransitionModal(null);
+      showToast(isRollback ? `Status rolled back to ${toStatus.replace(/_/g, ' ')}` : `Status advanced to ${toStatus.replace(/_/g, ' ')}`);
+    } catch (err: unknown) {
+      setTransitionError(err instanceof Error ? err.message : 'Transition failed');
+    } finally {
+      setTransitionLoading(false);
+    }
+  };
 
   // Archive flow
   type ArchivePreview = { production_name: string; po_count: number; timesheet_weeks: number; crew_count: number };
@@ -566,6 +615,106 @@ export default function ProductionDetailPage() {
         </div>
       )}
 
+      {/* Status Transition Modal */}
+      {showTransitionModal && production && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <h2 className="text-slate-900 font-semibold text-base">
+                {showTransitionModal === 'rollback'
+                  ? PREV_LABEL[production.status]
+                  : NEXT_LABEL[production.status]}
+              </h2>
+              <button onClick={() => setShowTransitionModal(null)} className="text-slate-400 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="px-6 py-5 space-y-4">
+              {/* Strike → Complete checklist */}
+              {showTransitionModal === 'forward' && production.status === 'strike' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-slate-600 font-medium">Confirm all items before marking as Complete:</p>
+                  {[
+                    { state: checkInvoices, set: setCheckInvoices, label: 'All invoices received and reconciled' },
+                    { state: checkPayRun,   set: setCheckPayRun,   label: 'Final pay run processed' },
+                    { state: checkCostReport, set: setCheckCostReport, label: 'Cost report reviewed and signed off' },
+                  ].map(({ state, set, label }) => (
+                    <label key={label} className="flex items-center gap-3 cursor-pointer group">
+                      <div
+                        onClick={() => set(s => !s)}
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${state ? 'bg-teal-600 border-teal-600' : 'border-slate-300 group-hover:border-teal-400'}`}
+                      >
+                        {state && <CheckCircle2 size={12} className="text-white" />}
+                      </div>
+                      <span className="text-sm text-slate-700">{label}</span>
+                    </label>
+                  ))}
+                </div>
+              )}
+
+              {/* Simple forward confirmation */}
+              {showTransitionModal === 'forward' && production.status !== 'strike' && (
+                <p className="text-sm text-slate-600">
+                  Move <span className="font-semibold text-slate-800">{production.name}</span> to{' '}
+                  <span className="font-semibold text-slate-800">{nextStatus?.replace(/_/g, ' ')}</span>?
+                </p>
+              )}
+
+              {/* Rollback reason */}
+              {showTransitionModal === 'rollback' && (
+                <div className="space-y-3">
+                  <p className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+                    Rolling back status is irreversible in spirit — all linked records for the period remain. A clear reason is required.
+                  </p>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">
+                      Reason <span className="text-slate-400">(min 20 characters)</span>
+                    </label>
+                    <textarea
+                      rows={3}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-400 resize-none"
+                      placeholder="Explain why the status is being rolled back..."
+                      value={rollbackReason}
+                      onChange={e => setRollbackReason(e.target.value)}
+                      autoFocus
+                    />
+                    <p className={`text-xs mt-1 ${rollbackReason.length >= 20 ? 'text-teal-600' : 'text-slate-400'}`}>
+                      {rollbackReason.length}/20 characters
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {transitionError && (
+                <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{transitionError}</p>
+              )}
+
+              <div className="flex items-center justify-end gap-3 pt-1">
+                <button
+                  onClick={() => setShowTransitionModal(null)}
+                  className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleTransition}
+                  disabled={
+                    transitionLoading ||
+                    (showTransitionModal === 'forward' && production.status === 'strike' && !(checkInvoices && checkPayRun && checkCostReport)) ||
+                    (showTransitionModal === 'rollback' && rollbackReason.trim().length < 20)
+                  }
+                  className={`flex items-center gap-2 px-5 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 transition-colors ${showTransitionModal === 'rollback' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+                >
+                  {transitionLoading && <Loader2 size={14} className="animate-spin" />}
+                  {showTransitionModal === 'rollback' ? 'Confirm Rollback' : 'Confirm'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       <TopBar title={production.name} subtitle={`${production.production_company ?? ''} · ${sc.label}`} />
       <main className="flex-1 p-4 md:p-6 space-y-4 md:space-y-5">
 
@@ -579,6 +728,17 @@ export default function ProductionDetailPage() {
           </div>
         )}
 
+        {/* Rollback notice banner */}
+        {production.rollback_notice && !isArchived && (
+          <div className="bg-orange-50 border border-orange-200 rounded-xl px-4 py-3 flex items-start gap-3">
+            <span className="text-orange-500 text-lg leading-none mt-0.5">⚠</span>
+            <div>
+              <p className="text-orange-800 text-sm font-medium">This production&apos;s status was rolled back</p>
+              <p className="text-orange-700 text-xs mt-0.5">{production.rollback_notice}</p>
+            </div>
+          </div>
+        )}
+
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <button
@@ -588,7 +748,7 @@ export default function ProductionDetailPage() {
             <ArrowLeft size={15} />
             All Productions
           </button>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {canEdit && !isArchived && (
               <button
                 onClick={() => setShowEditModal(true)}
@@ -598,6 +758,25 @@ export default function ProductionDetailPage() {
                 Edit
               </button>
             )}
+            {/* Advance status */}
+            {!isArchived && nextStatus && NEXT_LABEL[production.status] && (
+              <button
+                onClick={() => openTransition('forward')}
+                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors font-medium"
+              >
+                {NEXT_LABEL[production.status]}
+              </button>
+            )}
+            {/* Roll back (MD only) */}
+            {isMD && !isArchived && prevStatus && PREV_LABEL[production.status] && (
+              <button
+                onClick={() => openTransition('rollback')}
+                className="flex items-center gap-2 px-4 py-2 border border-orange-200 text-orange-700 bg-orange-50 text-sm rounded-lg hover:bg-orange-100 transition-colors text-xs"
+              >
+                Roll back
+              </button>
+            )}
+            {/* Archive */}
             {canArchive && production.status === 'complete' && (
               <button
                 onClick={openArchiveModal}
@@ -607,6 +786,7 @@ export default function ProductionDetailPage() {
                 Archive
               </button>
             )}
+            {/* Unarchive */}
             {isMD && isArchived && (
               <button
                 onClick={handleUnarchive}
