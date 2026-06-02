@@ -102,7 +102,11 @@ const createProduction = async (req, res) => {
 const getProductionById = async (req, res) => {
   try {
     const { rows: [production] } = await db.query(
-      'SELECT * FROM productions WHERE id = $1',
+      `SELECT p.*,
+              EXISTS(SELECT 1 FROM purchase_orders WHERE production_id = p.id) AS has_linked_pos,
+              EXISTS(SELECT 1 FROM timesheets      WHERE production_id = p.id) AS has_linked_timesheets
+       FROM   productions p
+       WHERE  p.id = $1`,
       [req.params.id]
     );
     if (!production) return res.status(404).json({ error: 'Production not found' });
@@ -143,11 +147,33 @@ const updateProduction = async (req, res) => {
   if (!Object.keys(updates).length)
     return res.status(400).json({ error: 'No updatable fields provided' });
 
-  const fields     = Object.keys(updates);
-  const values     = Object.values(updates);
-  const setClause  = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
-
   try {
+    // Contract type lock: block change if linked POs or timesheets exist
+    if (updates.contract_type !== undefined) {
+      const { rows: [curr] } = await db.query(
+        'SELECT contract_type FROM productions WHERE id = $1', [req.params.id]
+      );
+      if (curr && curr.contract_type !== updates.contract_type) {
+        const { rows: [linked] } = await db.query(
+          `SELECT EXISTS(
+             SELECT 1 FROM purchase_orders WHERE production_id = $1
+             UNION ALL
+             SELECT 1 FROM timesheets WHERE production_id = $1
+             LIMIT 1
+           ) AS has_linked`,
+          [req.params.id]
+        );
+        if (linked?.has_linked)
+          return res.status(400).json({
+            error: 'Contract type cannot be changed once a purchase order or timesheet has been linked to this production.'
+          });
+      }
+    }
+
+    const fields     = Object.keys(updates);
+    const values     = Object.values(updates);
+    const setClause  = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
+
     const { rows } = await db.query(
       `UPDATE productions SET ${setClause} WHERE id = $${fields.length + 1} RETURNING *`,
       [...values, req.params.id]
