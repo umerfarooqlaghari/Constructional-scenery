@@ -9,6 +9,7 @@ import {
   type PurchaseOrder,
   type POStatus,
   type Production,
+  type ProductionSet,
 } from '@/lib/api';
 import {
   Plus,
@@ -176,6 +177,17 @@ export default function PurchaseOrdersPage() {
   const [editLoading, setEditLoading] = useState(false);
 
   const [fileViewer, setFileViewer] = useState<{ url: string; name: string } | null>(null);
+
+  // Sets cache: production_id → sets
+  const [setsCache, setSetsCache] = useState<Record<string, ProductionSet[]>>({});
+
+  const loadSetsForProduction = async (productionId: string) => {
+    if (!productionId || setsCache[productionId]) return;
+    try {
+      const sets = await productionsApi.getSets(productionId);
+      setSetsCache(c => ({ ...c, [productionId]: sets }));
+    } catch { /* non-critical */ }
+  };
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -933,7 +945,7 @@ export default function PurchaseOrdersPage() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Production <span className="text-red-500">*</span></label>
                     <select
                       value={newForm.production_id}
-                      onChange={(e) => updateField('production_id', e.target.value)}
+                      onChange={(e) => { updateField('production_id', e.target.value); updateField('set_code', ''); loadSetsForProduction(e.target.value); }}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-100 bg-white"
                     >
                       <option value="">Select production…</option>
@@ -944,6 +956,18 @@ export default function PurchaseOrdersPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
+                    {setsCache[newForm.production_id]?.length ? (
+                      <select
+                        value={newForm.set_code}
+                        onChange={(e) => updateField('set_code', e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-100 bg-white"
+                      >
+                        <option value="">— No set —</option>
+                        {setsCache[newForm.production_id].filter(s => s.set_number).map(s => (
+                          <option key={s.id} value={s.set_number!}>{s.set_number} — {s.set_name}</option>
+                        ))}
+                      </select>
+                    ) : (
                     <input
                       type="text"
                       value={newForm.set_code}
@@ -951,6 +975,7 @@ export default function PurchaseOrdersPage() {
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-teal-400 focus:ring-1 focus:ring-teal-100"
                       placeholder="e.g. S003"
                     />
+                    )}
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Account Code</label>

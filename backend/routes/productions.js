@@ -3,8 +3,9 @@ const router         = express.Router();
 const ctrl           = require('../Controllers/productionsController');
 const { upload }     = require('../Middleware/upload');
 
-// Audit log — before /:id to avoid route conflict
+// Static routes before /:id to avoid route conflict
 router.get('/audit-log',                ctrl.getAuditLog);
+router.post('/handover-alerts',         ctrl.sendHandoverAlerts);
 
 // Productions
 router.get('/',                         ctrl.getAllProductions);
@@ -20,6 +21,7 @@ router.post('/:id/unarchive',           ctrl.unarchiveProduction);
 router.get('/:id/sets',            ctrl.getSets);
 router.post('/:id/sets',           ctrl.createSet);
 router.put('/:id/sets/:setId',     ctrl.updateSet);
+router.patch('/:id/sets/:setId',   ctrl.patchSet);
 router.delete('/:id/sets/:setId',  ctrl.deleteSet);
 
 // Documents

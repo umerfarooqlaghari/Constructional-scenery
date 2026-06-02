@@ -193,6 +193,7 @@ export type ProductionSet = {
   notes: string | null;
   days_until_handover: number | null;
   countdown_colour: 'green' | 'amber' | 'red' | null;
+  linked_po_count: number;
 };
 
 export type ProductionDocument = {
@@ -308,6 +309,8 @@ export const productionsApi = {
     request<ProductionSet>(`/api/productions/${id}/sets`, { method: 'POST', body: data }),
   updateSet: (id: string, setId: string, data: Partial<ProductionSet>) =>
     request<ProductionSet>(`/api/productions/${id}/sets/${setId}`, { method: 'PUT', body: data }),
+  patchSet: (id: string, setId: string, completion_status: string) =>
+    request<ProductionSet>(`/api/productions/${id}/sets/${setId}`, { method: 'PATCH', body: { completion_status } }),
   deleteSet: (id: string, setId: string) =>
     request<{ message: string }>(`/api/productions/${id}/sets/${setId}`, { method: 'DELETE' }),
 
