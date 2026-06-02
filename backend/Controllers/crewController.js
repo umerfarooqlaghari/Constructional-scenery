@@ -67,31 +67,31 @@ const getAllCrew = async (req, res) => {
     let   i          = 1;
 
     if (req.query.is_active !== undefined) {
-      conditions.push(`is_active = $${i++}`);
+      conditions.push(`cm.is_active = $${i++}`);
       params.push(req.query.is_active === 'true');
     }
     if (req.query.employment_status) {
-      conditions.push(`employment_status = $${i++}`);
+      conditions.push(`cm.employment_status = $${i++}`);
       params.push(req.query.employment_status);
     }
     if (req.query.crew_trade) {
-      conditions.push(`crew_trade = $${i++}`);
+      conditions.push(`cm.crew_trade = $${i++}`);
       params.push(req.query.crew_trade);
     }
     if (req.query.crew_rank) {
-      conditions.push(`crew_rank = $${i++}`);
+      conditions.push(`cm.crew_rank = $${i++}`);
       params.push(req.query.crew_rank);
     }
     if (req.query.search) {
       conditions.push(
-        `(first_name ILIKE $${i} OR last_name ILIKE $${i} OR crew_number ILIKE $${i})`
+        `(cm.first_name ILIKE $${i} OR cm.last_name ILIKE $${i} OR cm.crew_number ILIKE $${i})`
       );
       params.push(`%${req.query.search}%`);
       i++;
     }
     if (req.query.production_id) {
       conditions.push(
-        `EXISTS (SELECT 1 FROM production_crew pc WHERE pc.crew_member_id = id AND pc.production_id = $${i++})`
+        `EXISTS (SELECT 1 FROM production_crew pc WHERE pc.crew_member_id = cm.id AND pc.production_id = $${i++})`
       );
       params.push(req.query.production_id);
     }
