@@ -455,15 +455,21 @@ export type CrewMember = {
   emergency_contact_relationship: string | null;
   emergency_contact_phone: string | null;
   created_at: string;
+  active_productions?: string[];
 };
 
 export type CrewDocument = {
   id: string;
   crew_member_id: string;
   document_type: 'government_id' | 'contract' | 'other';
+  context_type: 'crew_identity' | 'crew_contract' | null;
   production_id: string | null;
+  production_name?: string | null;
   file_url: string;
+  file_key: string | null;
   file_name: string;
+  file_size: number | null;
+  file_mime_type: string | null;
   uploaded_at: string;
 };
 
@@ -519,6 +525,8 @@ export const crewApi = {
     }),
   deleteDocument: (crewId: string, docId: string) =>
     request<{ message: string }>(`/api/crew/${crewId}/documents/${docId}`, { method: 'DELETE' }),
+  delete: (id: string) =>
+    request<{ message: string; soft_deleted: boolean }>(`/api/crew/${id}`, { method: 'DELETE' }),
 };
 
 // ─── Cost Report types ─────────────────────────────────────────────────────────
