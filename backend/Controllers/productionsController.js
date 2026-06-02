@@ -131,11 +131,11 @@ const getProductionById = async (req, res) => {
   }
 };
 
-// PUT /api/productions/:id
+// PUT /api/productions/:id  (status is NOT a free-edit field — use /transition)
 const updateProduction = async (req, res) => {
   const allowed = [
     'name', 'production_company', 'production_designer', 'production_type',
-    'start_date', 'end_date', 'contract_type', 'status',
+    'start_date', 'end_date', 'contract_type',
   ];
   const updates = {};
   allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
@@ -156,6 +156,97 @@ const updateProduction = async (req, res) => {
     res.json(rows[0]);
   } catch (err) {
     console.error('updateProduction:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── Status Lifecycle ─────────────────────────────────────────────────────────
+
+const STATUS_ORDER = ['pre_production', 'active_build', 'strike', 'complete'];
+
+// Which roles may trigger each forward transition
+const FORWARD_ROLES = {
+  'pre_production→active_build': ['managing_director', 'construction_coordinator', 'construction_accountant'],
+  'active_build→strike':         ['managing_director', 'construction_coordinator', 'construction_accountant'],
+  'strike→complete':             ['managing_director', 'construction_accountant'],
+};
+
+// POST /api/productions/:id/transition
+const transitionStatus = async (req, res) => {
+  const { to_status, is_rollback, reason, checklist_confirmed } = req.body;
+  const role = req.user?.role;
+
+  if (!to_status) return res.status(400).json({ error: 'to_status is required' });
+  if (!STATUS_ORDER.includes(to_status))
+    return res.status(400).json({ error: `Invalid status: ${to_status}` });
+
+  try {
+    const { rows: [production] } = await db.query(
+      'SELECT id, name, status FROM productions WHERE id = $1',
+      [req.params.id]
+    );
+    if (!production) return res.status(404).json({ error: 'Production not found' });
+    if (['archived'].includes(production.status))
+      return res.status(400).json({ error: 'Archived productions cannot be transitioned' });
+
+    const fromIdx = STATUS_ORDER.indexOf(production.status);
+    const toIdx   = STATUS_ORDER.indexOf(to_status);
+
+    // ── Rollback path ──────────────────────────────────────────────────────────
+    if (is_rollback || toIdx < fromIdx) {
+      if (role !== 'managing_director')
+        return res.status(403).json({ error: 'Only MD can roll back production status' });
+      if (!reason || reason.trim().length < 20)
+        return res.status(400).json({ error: 'Rollback requires a reason of at least 20 characters' });
+      if (fromIdx - toIdx !== 1)
+        return res.status(400).json({ error: 'Can only roll back one step at a time' });
+
+      const { rows: [updated] } = await db.query(
+        `UPDATE productions SET status = $1, rollback_notice = $2 WHERE id = $3 RETURNING *`,
+        [to_status, reason.trim(), req.params.id]
+      );
+      await db.query(
+        `INSERT INTO audit_log (user_id, production_id, action, metadata) VALUES ($1, $2, 'status_transition', $3)`,
+        [req.user.id, req.params.id, JSON.stringify({
+          from_status: production.status, to_status, is_rollback: true, reason: reason.trim()
+        })]
+      );
+      return res.json({ message: `Status rolled back to ${to_status}`, production: updated });
+    }
+
+    // ── Forward path ───────────────────────────────────────────────────────────
+    if (toIdx !== fromIdx + 1)
+      return res.status(400).json({ error: `Cannot skip from ${production.status} to ${to_status}` });
+
+    const key = `${production.status}→${to_status}`;
+    const allowedRoles = FORWARD_ROLES[key] ?? [];
+    if (!allowedRoles.includes(role))
+      return res.status(403).json({ error: `Your role (${role}) cannot make this transition` });
+
+    // Strike → Complete requires checklist
+    if (production.status === 'strike' && to_status === 'complete') {
+      if (!checklist_confirmed)
+        return res.status(400).json({ error: 'Strike → Complete requires checklist confirmation' });
+    }
+
+    const { rows: [updated] } = await db.query(
+      `UPDATE productions SET status = $1, rollback_notice = NULL WHERE id = $2 RETURNING *`,
+      [to_status, req.params.id]
+    );
+
+    await db.query(
+      `INSERT INTO audit_log (user_id, production_id, action, metadata) VALUES ($1, $2, 'status_transition', $3)`,
+      [req.user.id, req.params.id, JSON.stringify({ from_status: production.status, to_status, is_rollback: false })]
+    );
+
+    // Trigger Percentometer when moving to Complete
+    if (to_status === 'complete') {
+      setImmediate(() => runPostProductionPercentometer(req.params.id));
+    }
+
+    return res.json({ message: `Status advanced to ${to_status}`, production: updated });
+  } catch (err) {
+    console.error('transitionStatus:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -481,6 +572,7 @@ const getAuditLog = async (req, res) => {
 
 module.exports = {
   getAllProductions, createProduction, getProductionById, updateProduction,
+  transitionStatus,
   getArchivePreview, archiveProduction, unarchiveProduction, getAuditLog,
   getSets, createSet, updateSet, deleteSet,
   getDocuments, uploadDocument,

@@ -58,6 +58,18 @@ const createTimesheet = async (req, res) => {
     return res.status(400).json({ error: 'crew_member_id, production_id, and week_ending_date are required' });
 
   try {
+    // STATUS GATE — block timesheets on pre_production, complete, archived
+    const { rows: [prod] } = await db.query(
+      'SELECT status FROM productions WHERE id = $1', [production_id]
+    );
+    if (!prod) return res.status(400).json({ error: 'Production not found' });
+    if (prod.status === 'pre_production')
+      return res.status(400).json({ error: 'Cannot create timesheets for a pre-production project — activate the build first' });
+    if (prod.status === 'complete')
+      return res.status(400).json({ error: 'Cannot create new timesheets on a completed production' });
+    if (prod.status === 'archived')
+      return res.status(400).json({ error: 'Cannot create timesheets on an archived production' });
+
     // GATEWAY RULE — crew member must exist and be active
     const { rows: [crew] } = await db.query(
       'SELECT * FROM crew_members WHERE id = $1 AND is_active = true',

@@ -64,6 +64,16 @@ const createPO = async (req, res) => {
   const { supplier_email } = req.body;
 
   try {
+    // STATUS GATE — block POs on complete or archived productions
+    const { rows: [prod] } = await db.query(
+      'SELECT status FROM productions WHERE id = $1', [production_id]
+    );
+    if (!prod) return res.status(400).json({ error: 'Production not found' });
+    if (prod.status === 'complete')
+      return res.status(400).json({ error: 'Cannot raise new POs on a completed production' });
+    if (prod.status === 'archived')
+      return res.status(400).json({ error: 'Cannot raise new POs on an archived production' });
+
     const po_number = await generatePoNumber();
     const { rows } = await db.query(
       `INSERT INTO purchase_orders

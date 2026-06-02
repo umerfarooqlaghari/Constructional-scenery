@@ -26,10 +26,10 @@ const statusLabel: Record<string, string> = {
   archived:       'Archived',
 };
 const phaseColor: Record<string, string> = {
-  pre_production: 'bg-blue-100 text-blue-700',
-  active_build:   'bg-teal-100 text-teal-700',
+  pre_production: 'bg-slate-100 text-slate-600',
+  active_build:   'bg-blue-100 text-blue-700',
   strike:         'bg-amber-100 text-amber-700',
-  complete:       'bg-slate-100 text-slate-600',
+  complete:       'bg-green-100 text-green-700',
   archived:       'bg-slate-100 text-slate-400',
 };
 const ragClass: Record<string, string>  = { green: 'bg-green-500', amber: 'bg-amber-400', red: 'bg-red-500', unknown: 'bg-slate-300' };

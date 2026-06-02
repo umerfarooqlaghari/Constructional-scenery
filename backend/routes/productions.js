@@ -11,6 +11,7 @@ router.get('/',                         ctrl.getAllProductions);
 router.post('/',                        ctrl.createProduction);
 router.get('/:id',                      ctrl.getProductionById);
 router.put('/:id',                      ctrl.updateProduction);
+router.post('/:id/transition',          ctrl.transitionStatus);
 router.get('/:id/archive-preview',      ctrl.getArchivePreview);
 router.post('/:id/archive',             ctrl.archiveProduction);
 router.post('/:id/unarchive',           ctrl.unarchiveProduction);

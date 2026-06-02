@@ -160,6 +160,7 @@ export type Production = {
   completed_sets: number;
   archived_at: string | null;
   archived_by: string | null;
+  rollback_notice: string | null;
   post_production_percentometer: {
     status: 'processing' | 'complete' | 'failed';
     labour_total?: number;
@@ -287,6 +288,15 @@ export const productionsApi = {
     request<{ message: string; production: Production }>(`/api/productions/${id}/archive`, { method: 'POST' }),
   unarchive: (id: string) =>
     request<{ message: string; production: Production }>(`/api/productions/${id}/unarchive`, { method: 'POST' }),
+  transitionStatus: (id: string, body: {
+    to_status: string;
+    is_rollback?: boolean;
+    reason?: string;
+    checklist_confirmed?: boolean;
+  }) =>
+    request<{ message: string; production: Production }>(`/api/productions/${id}/transition`, {
+      method: 'POST', body,
+    }),
   listArchived: () =>
     request<Production[]>(`/api/productions?include_archived=true`).then(all =>
       all.filter(p => p.status === 'archived')
