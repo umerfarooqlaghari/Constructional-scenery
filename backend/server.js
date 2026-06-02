@@ -85,6 +85,7 @@ app.use('/api/pay-runs',       require('./routes/payRuns'));
 app.use('/api/cost-reports',   require('./routes/costReports'));
 app.use('/api/forecasting',    require('./routes/forecasting'));
 app.use('/api/dashboard',      require('./routes/dashboard'));
+app.use('/api/crew-rates',     require('./routes/crewRates'));
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
