@@ -34,7 +34,7 @@ const DOC_TYPE_LABELS: Record<string, string> = {
 const TS_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   draft:            { label: 'Draft',            className: 'bg-slate-100 text-slate-500' },
   sent:             { label: 'Sent',             className: 'bg-blue-100 text-blue-700' },
-  reviewed:         { label: 'Reviewed',         className: 'bg-teal-100 text-teal-700' },
+  reviewed:         { label: 'Reviewed',         className: 'bg-blue-100 text-blue-700' },
   invoice_received: { label: 'Invoice Received', className: 'bg-purple-100 text-purple-700' },
   verified:         { label: 'Verified',         className: 'bg-green-100 text-green-700' },
 };
@@ -130,7 +130,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
     }
   };
 
-  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
   const lbl = 'block text-xs font-medium text-slate-600 mb-1';
 
   return (
@@ -147,7 +147,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
           <div className="flex items-center gap-3 bg-slate-50 rounded-lg px-4 py-3">
             <label className="relative inline-flex items-center cursor-pointer">
               <input type="checkbox" className="sr-only peer" checked={form.is_active} onChange={set('is_active')} />
-              <div className="w-9 h-5 bg-slate-300 rounded-full peer peer-checked:bg-teal-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all" />
+              <div className="w-9 h-5 bg-slate-300 rounded-full peer peer-checked:bg-blue-500 peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-0.5 after:left-[2px] after:bg-white after:rounded-full after:h-4 after:w-4 after:transition-all" />
             </label>
             <span className="text-slate-700 text-sm font-medium">{form.is_active ? 'Active' : 'Inactive'}</span>
           </div>
@@ -237,7 +237,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
 
           <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60">
               {saving && <Loader2 size={14} className="animate-spin" />}
               Save Changes
             </button>
@@ -285,7 +285,7 @@ function LinkProductionModal({ crewId, onClose, onLinked }: LinkProductionModalP
     }
   };
 
-  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
+  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -315,7 +315,7 @@ function LinkProductionModal({ crewId, onClose, onLinked }: LinkProductionModalP
           </div>
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60">
               {saving && <Loader2 size={14} className="animate-spin" />}
               Link
             </button>
@@ -361,7 +361,7 @@ function UploadDocModal({ crewId, productions, onClose, onUploaded }: UploadDocM
     }
   };
 
-  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
+  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -391,7 +391,7 @@ function UploadDocModal({ crewId, productions, onClose, onUploaded }: UploadDocM
           )}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">File *</label>
-            <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-5 cursor-pointer hover:border-teal-400 transition-colors">
+            <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-5 cursor-pointer hover:border-blue-400 transition-colors">
               <Upload size={20} className="text-slate-400 mb-2" />
               <span className="text-slate-500 text-sm">{file ? file.name : 'Click to choose file'}</span>
               <span className="text-slate-400 text-xs mt-1">PDF, JPG, PNG</span>
@@ -400,7 +400,7 @@ function UploadDocModal({ crewId, productions, onClose, onUploaded }: UploadDocM
           </div>
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
-            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60">
+            <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60">
               {saving && <Loader2 size={14} className="animate-spin" />}
               Upload
             </button>
@@ -507,7 +507,7 @@ export default function CrewDetailPage() {
           {canEdit && m && (
             <button
               onClick={() => setShowEdit(true)}
-              className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700"
             >
               <Pencil size={14} />
               Edit Profile
@@ -527,7 +527,7 @@ export default function CrewDetailPage() {
               {/* Left: identity */}
               <div className="lg:col-span-2 bg-white rounded-xl border border-slate-200 shadow-sm p-5 space-y-4">
                 <div className="flex items-start gap-4">
-                  <div className="w-14 h-14 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
+                  <div className="w-14 h-14 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
                     <span className="text-white text-lg font-bold">
                       {m.first_name[0]}{m.last_name[0]}
                     </span>
@@ -600,7 +600,7 @@ export default function CrewDetailPage() {
                 {canEdit && (
                   <button
                     onClick={() => setShowLink(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
                   >
                     <Plus size={13} />
                     Link to Production
@@ -623,7 +623,7 @@ export default function CrewDetailPage() {
                         <span className="text-slate-400 text-xs capitalize">{ph.prod_status?.replace(/_/g, ' ')}</span>
                         <button
                           onClick={() => router.push(`/productions/${ph.prod_id}`)}
-                          className="text-teal-600 text-xs hover:underline flex items-center gap-1"
+                          className="text-blue-600 text-xs hover:underline flex items-center gap-1"
                         >
                           <Link2 size={11} /> View
                         </button>
@@ -644,7 +644,7 @@ export default function CrewDetailPage() {
                 {canEdit && (
                   <button
                     onClick={() => setShowUpload(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700"
+                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
                   >
                     <Upload size={13} />
                     Upload
@@ -669,7 +669,7 @@ export default function CrewDetailPage() {
                           href={doc.file_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-teal-600 text-xs hover:underline"
+                          className="text-blue-600 text-xs hover:underline"
                         >
                           View
                         </a>

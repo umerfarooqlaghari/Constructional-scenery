@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import TopBar from '@/components/TopBar';
@@ -18,13 +18,13 @@ const fmtDate = (d: string) =>
   new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
 
 const BAR_COLOURS = [
-  'bg-teal-500', 'bg-blue-500', 'bg-indigo-400', 'bg-amber-500',
+  'bg-blue-500', 'bg-blue-500', 'bg-indigo-400', 'bg-amber-500',
   'bg-orange-500', 'bg-pink-500', 'bg-slate-400', 'bg-purple-500',
   'bg-cyan-500', 'bg-green-500', 'bg-rose-400',
 ];
 
 const inputCls =
-  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 type CalcResult = { cost_type: string; percentage: number; estimated_cost: number };
 
@@ -204,7 +204,7 @@ export default function ForecastingPage() {
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
               className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
-                activeTab === tab.id ? 'bg-teal-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
+                activeTab === tab.id ? 'bg-blue-600 text-white shadow-sm' : 'text-slate-500 hover:bg-slate-100'
               }`}
             >
               {tab.label}
@@ -236,7 +236,7 @@ export default function ForecastingPage() {
                 <div className="flex items-end gap-3 mb-5">
                   <div className="flex-1">
                     <label className="text-xs text-slate-500 font-medium block mb-1">Known Carpenter Cost £</label>
-                    <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-teal-500 focus-within:border-teal-500">
+                    <div className="flex items-center bg-slate-50 border border-slate-300 rounded-lg overflow-hidden focus-within:ring-2 focus-within:ring-blue-500 focus-within:border-blue-500">
                       <span className="px-3 text-slate-500 font-semibold text-sm bg-slate-100 border-r border-slate-300 py-2.5">£</span>
                       <input
                         type="number"
@@ -253,7 +253,7 @@ export default function ForecastingPage() {
                   <button
                     onClick={handleCalculate}
                     disabled={calcLoading}
-                    className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2.5 hover:bg-teal-700 font-medium disabled:opacity-60 transition-colors whitespace-nowrap"
+                    className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2.5 hover:bg-blue-700 font-medium disabled:opacity-60 transition-colors whitespace-nowrap"
                   >
                     {calcLoading ? <Loader2 size={14} className="animate-spin" /> : <Calculator size={14} />}
                     Calculate
@@ -292,12 +292,12 @@ export default function ForecastingPage() {
                     ))}
                     <div className="pt-4 border-t border-slate-200 flex items-center justify-between">
                       <span className="text-slate-700 font-semibold text-sm">Estimated Total Job Cost</span>
-                      <span className="text-teal-700 text-xl font-black">{fmtGBP(calcTotal)}</span>
+                      <span className="text-blue-700 text-xl font-black">{fmtGBP(calcTotal)}</span>
                     </div>
                     <div className="mt-2">
                       <button
                         onClick={() => setShowSaveModal(true)}
-                        className="w-full flex items-center justify-center gap-2 border border-teal-200 bg-teal-50 text-teal-700 text-sm rounded-lg px-4 py-2 hover:bg-teal-100 font-medium transition-colors"
+                        className="w-full flex items-center justify-center gap-2 border border-blue-200 bg-blue-50 text-blue-700 text-sm rounded-lg px-4 py-2 hover:bg-blue-100 font-medium transition-colors"
                       >
                         <Save size={14} /> Save as Scenario
                       </button>
@@ -406,7 +406,7 @@ export default function ForecastingPage() {
                 {(isMD || isCoordinator) && (
                   <button
                     onClick={() => setShowAddItem(true)}
-                    className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium whitespace-nowrap"
+                    className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                   >
                     <Plus size={14} /> Add Item
                   </button>
@@ -454,7 +454,7 @@ export default function ForecastingPage() {
                         </td>
                         <td className="px-4 py-3">
                           {item.category ? (
-                            <span className="text-xs px-2 py-0.5 bg-teal-100 text-teal-700 rounded-full font-medium">
+                            <span className="text-xs px-2 py-0.5 bg-blue-100 text-blue-700 rounded-full font-medium">
                               {item.category}
                             </span>
                           ) : <span className="text-slate-400">—</span>}
@@ -644,7 +644,7 @@ function SaveScenarioModal({ carpenterCost, productions, onClose, onSaved }: Sav
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               Save Scenario
@@ -715,7 +715,7 @@ function EditRatiosModal({ ratios, onClose, onSaved }: EditRatiosModalProps) {
                     step="0.1"
                     value={r.percentage}
                     onChange={e => updatePct(i, e.target.value)}
-                    className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-800 text-right outline-none focus:ring-2 focus:ring-teal-500"
+                    className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-800 text-right outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <span className="text-slate-500 text-sm">%</span>
                 </div>
@@ -731,7 +731,7 @@ function EditRatiosModal({ ratios, onClose, onSaved }: EditRatiosModalProps) {
               <button
                 type="submit"
                 disabled={saving}
-                className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+                className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
               >
                 {saving && <Loader2 size={14} className="animate-spin" />}
                 Save Ratios
@@ -828,7 +828,7 @@ function AddCatalogueItemModal({ onClose, onSaved }: AddCatalogueItemModalProps)
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               Add Item

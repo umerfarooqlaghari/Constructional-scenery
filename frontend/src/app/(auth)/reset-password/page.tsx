@@ -48,19 +48,17 @@ export default function ResetPasswordPage() {
       {/* Logo */}
       <div className="flex justify-center mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-500 flex items-center justify-center shadow-lg shadow-teal-200">
-            <span className="text-white text-sm font-black tracking-tight">CS</span>
-          </div>
+          <img src="/deepsian favicon.png" alt="DEEPSIAN" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
           <div>
-            <p className="text-slate-900 font-bold text-lg leading-tight">CS HQ</p>
-            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Ltd</p>
+            <p className="text-slate-900 font-bold text-lg leading-tight">DEEPSIAN</p>
+            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Database</p>
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-8 py-8">
-        <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center mb-5">
-          <KeyRound size={22} className="text-teal-600" />
+        <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-5">
+          <KeyRound size={22} className="text-blue-600" />
         </div>
 
         <h1 className="text-slate-900 font-bold text-xl mb-1">Create new password</h1>
@@ -85,7 +83,7 @@ export default function ResetPasswordPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Min. 8 characters"
-                className="w-full px-3.5 py-2.5 pr-10 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+                className="w-full px-3.5 py-2.5 pr-10 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
               <button type="button" onClick={() => setShowPass(!showPass)}
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600">
@@ -103,7 +101,7 @@ export default function ResetPasswordPage() {
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="Repeat your password"
-                className={`w-full px-3.5 py-2.5 pr-10 border rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition ${
+                className={`w-full px-3.5 py-2.5 pr-10 border rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${
                   confirm && confirm !== password ? 'border-red-300 bg-red-50' : 'border-slate-200'
                 }`}
               />
@@ -120,7 +118,7 @@ export default function ResetPasswordPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-2"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-2"
           >
             {loading ? (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

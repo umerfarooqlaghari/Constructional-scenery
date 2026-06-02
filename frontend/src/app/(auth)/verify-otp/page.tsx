@@ -86,19 +86,17 @@ export default function VerifyOtpPage() {
       {/* Logo */}
       <div className="flex justify-center mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-500 flex items-center justify-center shadow-lg shadow-teal-200">
-            <span className="text-white text-sm font-black tracking-tight">CS</span>
-          </div>
+          <img src="/deepsian favicon.png" alt="DEEPSIAN" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
           <div>
-            <p className="text-slate-900 font-bold text-lg leading-tight">CS HQ</p>
-            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Ltd</p>
+            <p className="text-slate-900 font-bold text-lg leading-tight">DEEPSIAN</p>
+            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Database</p>
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-8 py-8">
-        <div className="w-12 h-12 rounded-xl bg-teal-50 flex items-center justify-center mb-5">
-          <ShieldCheck size={22} className="text-teal-600" />
+        <div className="w-12 h-12 rounded-xl bg-blue-50 flex items-center justify-center mb-5">
+          <ShieldCheck size={22} className="text-blue-600" />
         </div>
 
         <h1 className="text-slate-900 font-bold text-xl mb-1">Check your email</h1>
@@ -113,7 +111,7 @@ export default function VerifyOtpPage() {
           </div>
         )}
         {resent && (
-          <div className="mb-4 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 text-sm">
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-blue-700 text-sm">
             New OTP sent to your email.
           </div>
         )}
@@ -131,8 +129,8 @@ export default function VerifyOtpPage() {
               onChange={(e) => handleChange(i, e.target.value)}
               onKeyDown={(e) => handleKey(i, e)}
               onPaste={handlePaste}
-              className={`w-11 h-12 text-center text-xl font-bold border rounded-lg focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition ${
-                d ? 'border-teal-400 bg-teal-50 text-teal-700' : 'border-slate-200 text-slate-900'
+              className={`w-11 h-12 text-center text-xl font-bold border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition ${
+                d ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 text-slate-900'
               }`}
             />
           ))}
@@ -141,7 +139,7 @@ export default function VerifyOtpPage() {
         <button
           onClick={handleSubmit}
           disabled={loading}
-          className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
+          className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2"
         >
           {loading ? (
             <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />

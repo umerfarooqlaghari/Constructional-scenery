@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import TopBar from '@/components/TopBar';
@@ -77,7 +77,7 @@ function AddInvoiceForm({ productionId, onClose, onSaved }: AddInvoiceFormProps)
   };
 
   const inputCls =
-    'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+    'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -130,7 +130,7 @@ function AddInvoiceForm({ productionId, onClose, onSaved }: AddInvoiceFormProps)
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               Add Invoice
@@ -322,11 +322,11 @@ export default function CostReportPage() {
                     type="date"
                     value={asAtDate}
                     onChange={e => { setAsAtDate(e.target.value); setShowDatePicker(false); loadReport(); }}
-                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-teal-500"
+                    className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-800 outline-none focus:ring-2 focus:ring-blue-500"
                   />
                   <button
                     onClick={() => { setAsAtDate(''); setShowDatePicker(false); loadReport(); }}
-                    className="block w-full text-left text-xs text-slate-500 hover:text-teal-600 px-1"
+                    className="block w-full text-left text-xs text-slate-500 hover:text-blue-600 px-1"
                   >
                     Clear (use today)
                   </button>
@@ -357,12 +357,12 @@ export default function CostReportPage() {
               <div className="flex items-center gap-2">
                 <span className="text-slate-600 text-xs font-semibold">Filter cost details</span>
                 {activeCostFilterCount > 0 && (
-                  <span className="bg-teal-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCostFilterCount}</span>
+                  <span className="bg-blue-600 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full">{activeCostFilterCount}</span>
                 )}
               </div>
               <button
                 onClick={() => setShowCostFilters(v => !v)}
-                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${showCostFilters || activeCostFilterCount > 0 ? 'bg-teal-50 border-teal-300 text-teal-700' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}
+                className={`flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${showCostFilters || activeCostFilterCount > 0 ? 'bg-blue-50 border-blue-300 text-blue-700' : 'border-slate-200 text-slate-500 hover:text-slate-700'}`}
               >
                 <SlidersHorizontal size={12} />
                 {showCostFilters ? 'Hide' : 'Show'} Filters
@@ -378,7 +378,7 @@ export default function CostReportPage() {
                     <button
                       key={v}
                       onClick={() => setCostType(v)}
-                      className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${costType === v ? 'bg-teal-600 text-white border-teal-600' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
+                      className={`text-xs px-3 py-1.5 rounded-lg border font-medium transition-colors ${costType === v ? 'bg-blue-600 text-white border-blue-600' : 'border-slate-200 text-slate-500 hover:border-slate-300'}`}
                     >
                       {v === 'all' ? 'All Costs' : v === 'supplier' ? 'Supplier Only' : 'Labour Only'}
                     </button>
@@ -394,7 +394,7 @@ export default function CostReportPage() {
                       value={supplierSearch}
                       onChange={e => setSupplierSearch(e.target.value)}
                       placeholder="e.g. Treeline"
-                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
                   {/* Set/Account code */}
@@ -405,7 +405,7 @@ export default function CostReportPage() {
                       value={setCodeFilter}
                       onChange={e => setSetCodeFilter(e.target.value)}
                       placeholder="e.g. S003"
-                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
                   {/* Trade */}
@@ -414,7 +414,7 @@ export default function CostReportPage() {
                     <select
                       value={tradeFilter}
                       onChange={e => setTradeFilter(e.target.value)}
-                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-blue-400"
                     >
                       <option value="">All trades</option>
                       {availableTrades.map(t => <option key={t} value={t}>{t}</option>)}
@@ -428,7 +428,7 @@ export default function CostReportPage() {
                       value={crewSearch}
                       onChange={e => setCrewSearch(e.target.value)}
                       placeholder="Name..."
-                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
                   {/* Week from */}
@@ -438,7 +438,7 @@ export default function CostReportPage() {
                       type="date"
                       value={weekFrom}
                       onChange={e => setWeekFrom(e.target.value)}
-                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
                   {/* Week to */}
@@ -448,7 +448,7 @@ export default function CostReportPage() {
                       type="date"
                       value={weekTo}
                       onChange={e => setWeekTo(e.target.value)}
-                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-teal-400"
+                      className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                     />
                   </div>
                 </div>
@@ -525,7 +525,7 @@ export default function CostReportPage() {
             </div>
             <div className="w-full bg-slate-100 rounded-full h-3">
               <div
-                className={`h-3 rounded-full transition-all ${progressPct > 90 ? 'bg-red-500' : progressPct > 70 ? 'bg-amber-500' : 'bg-teal-500'}`}
+                className={`h-3 rounded-full transition-all ${progressPct > 90 ? 'bg-red-500' : progressPct > 70 ? 'bg-amber-500' : 'bg-blue-500'}`}
                 style={{ width: `${progressPct}%` }}
               />
             </div>
@@ -550,7 +550,7 @@ export default function CostReportPage() {
             {canAddInvoice && !loading && (
               <button
                 onClick={() => setShowInvoiceModal(true)}
-                className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium"
+                className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium"
               >
                 <Plus size={14} /> Add Invoice
               </button>
@@ -587,7 +587,7 @@ export default function CostReportPage() {
                   report?.invoices_to_production.map(inv => (
                     <tr key={inv.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-5 py-3 text-slate-800 font-medium">{inv.invoice_description ?? '—'}</td>
-                      <td className="px-4 py-3 text-teal-700 text-xs font-mono text-center">{inv.po_number ?? '—'}</td>
+                      <td className="px-4 py-3 text-blue-700 text-xs font-mono text-center">{inv.po_number ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-500 text-xs text-center">{inv.date ? fmtDate(inv.date) : '—'}</td>
                       <td className="px-4 py-3 text-slate-600 text-xs text-center">{inv.invoice_number ?? '—'}</td>
                       <td className="px-4 py-3 text-slate-900 font-semibold text-right">{fmtGBP(parseFloat(inv.amount))}</td>
@@ -613,9 +613,9 @@ export default function CostReportPage() {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-slate-900 font-semibold text-sm">
               Supplier Costs
-              {(supplierSearch || setCodeFilter) && <span className="ml-2 text-[10px] text-teal-600 font-medium">(filtered)</span>}
+              {(supplierSearch || setCodeFilter) && <span className="ml-2 text-[10px] text-blue-600 font-medium">(filtered)</span>}
             </h2>
-            {!loading && <span className="text-teal-600 text-xs font-semibold">Total: {fmtGBP(supplierTotal)}</span>}
+            {!loading && <span className="text-blue-600 text-xs font-semibold">Total: {fmtGBP(supplierTotal)}</span>}
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-xs">
@@ -683,10 +683,10 @@ export default function CostReportPage() {
           <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
             <h2 className="text-slate-900 font-semibold text-sm">
               Labour Summary — by Week
-              {(tradeFilter || crewSearch || weekFrom || weekTo) && <span className="ml-2 text-[10px] text-teal-600 font-medium">(filtered)</span>}
+              {(tradeFilter || crewSearch || weekFrom || weekTo) && <span className="ml-2 text-[10px] text-blue-600 font-medium">(filtered)</span>}
             </h2>
             {!loading && m && (
-              <span className="text-teal-600 text-xs font-semibold">Total: {fmtGBP(m.total_labour_costs)}</span>
+              <span className="text-blue-600 text-xs font-semibold">Total: {fmtGBP(m.total_labour_costs)}</span>
             )}
           </div>
           <div className="overflow-x-auto">
@@ -740,7 +740,7 @@ export default function CostReportPage() {
                           <td className="px-4 py-2.5 text-slate-500 text-right">{fmtGBP(week.running)}</td>
                         </tr>
                         {isExpanded && week.crew.map(c => (
-                          <tr key={c.crew_number} className="bg-teal-50/40 border-l-2 border-l-teal-300">
+                          <tr key={c.crew_number} className="bg-blue-50/40 border-l-2 border-l-blue-300">
                             <td />
                             <td className="px-4 py-2 text-slate-500 pl-8">
                               <span className="font-mono text-slate-400 mr-2">{c.crew_number}</span>

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { Bell, Settings } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
@@ -17,10 +17,8 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
 
   return (
     <header className="h-14 md:h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 gap-3 sticky top-0 z-20">
-      {/* Mobile: CS logo mark */}
-      <div className="md:hidden w-7 h-7 rounded-lg bg-teal-500 flex items-center justify-center flex-shrink-0">
-        <span className="text-white text-[10px] font-black tracking-tight">CS</span>
-      </div>
+      {/* Mobile: DEEPSIAN logo */}
+      <img src="/deepsian favicon.png" alt="DEEPSIAN" className="md:hidden w-7 h-7 rounded-lg object-cover flex-shrink-0" />
 
       {/* Title */}
       <div className="flex-1 min-w-0">
@@ -37,7 +35,7 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
         <button className="p-2 text-slate-500 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition-colors">
           <Settings size={18} />
         </button>
-        <div className="ml-2 w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0" title={user?.full_name}>
+        <div className="ml-2 w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0" title={user?.full_name}>
           <span className="text-white text-xs font-bold">
             {user ? getInitials(user.full_name) : '?'}
           </span>

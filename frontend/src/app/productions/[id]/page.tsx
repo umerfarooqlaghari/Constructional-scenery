@@ -18,7 +18,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const STATUS_CONFIG: Record<ProductionStatus, { label: string; className: string }> = {
   pre_production: { label: 'Pre-Production', className: 'bg-blue-100 text-blue-700' },
-  active_build:   { label: 'Active Build',   className: 'bg-teal-100 text-teal-700'  },
+  active_build:   { label: 'Active Build',   className: 'bg-blue-100 text-blue-700'  },
   strike:         { label: 'Strike',          className: 'bg-amber-100 text-amber-700' },
   complete:       { label: 'Complete',        className: 'bg-slate-100 text-slate-500' },
   archived:       { label: 'Archived',        className: 'bg-red-100 text-red-500'    },
@@ -35,7 +35,7 @@ const SET_STATUS_CONFIG: Record<SetStatus, { label: string; className: string }>
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
-const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
 // ─── Edit Production Modal ────────────────────────────────────────────────────
 
@@ -132,7 +132,7 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               <Save size={14} />
@@ -277,7 +277,7 @@ function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, on
           <button
             onClick={submit as unknown as React.MouseEventHandler}
             disabled={saving}
-            className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+            className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
           >
             {saving && <Loader2 size={14} className="animate-spin" />}
             <Save size={14} />
@@ -345,7 +345,7 @@ function UploadDocModal({ productionId, onClose, onUploaded }: UploadDocModalPro
           </div>
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">File</label>
-            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-teal-400 hover:bg-teal-50/30 transition-colors">
+            <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
               <Upload size={20} className="text-slate-400 mb-1" />
               <span className="text-sm text-slate-500">{file ? file.name : 'Click to select file'}</span>
               <span className="text-xs text-slate-400 mt-0.5">PDF, DOC, XLS, PNG, JPG</span>
@@ -357,7 +357,7 @@ function UploadDocModal({ productionId, onClose, onUploaded }: UploadDocModalPro
             <button
               type="submit"
               disabled={uploading}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {uploading && <Loader2 size={14} className="animate-spin" />}
               Upload
@@ -556,7 +556,7 @@ export default function ProductionDetailPage() {
       <>
         <TopBar title="Production" subtitle="Loading…" />
         <main className="flex-1 p-6 flex items-center justify-center">
-          <Loader2 size={28} className="animate-spin text-teal-600" />
+          <Loader2 size={28} className="animate-spin text-blue-600" />
         </main>
       </>
     );
@@ -568,7 +568,7 @@ export default function ProductionDetailPage() {
         <TopBar title="Production" subtitle="Error" />
         <main className="flex-1 p-4 md:p-6">
           <p className="text-red-600">{error || 'Production not found.'}</p>
-          <button onClick={() => router.back()} className="mt-4 text-teal-600 text-sm hover:underline">← Go back</button>
+          <button onClick={() => router.back()} className="mt-4 text-blue-600 text-sm hover:underline">← Go back</button>
         </main>
       </>
     );
@@ -673,7 +673,7 @@ export default function ProductionDetailPage() {
       {/* Toast */}
       {toast && (
         <div className="fixed bottom-20 md:bottom-6 left-1/2 -translate-x-1/2 z-50 flex items-center gap-2 bg-slate-900 text-white text-sm px-4 py-2.5 rounded-xl shadow-lg">
-          <CheckCircle2 size={15} className="text-teal-400" />
+          <CheckCircle2 size={15} className="text-blue-400" />
           {toast}
         </div>
       )}
@@ -706,7 +706,7 @@ export default function ProductionDetailPage() {
                     <label key={label} className="flex items-center gap-3 cursor-pointer group">
                       <div
                         onClick={() => set(s => !s)}
-                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${state ? 'bg-teal-600 border-teal-600' : 'border-slate-300 group-hover:border-teal-400'}`}
+                        className={`w-5 h-5 rounded border-2 flex items-center justify-center flex-shrink-0 transition-colors ${state ? 'bg-blue-600 border-blue-600' : 'border-slate-300 group-hover:border-blue-400'}`}
                       >
                         {state && <CheckCircle2 size={12} className="text-white" />}
                       </div>
@@ -742,7 +742,7 @@ export default function ProductionDetailPage() {
                       onChange={e => setRollbackReason(e.target.value)}
                       autoFocus
                     />
-                    <p className={`text-xs mt-1 ${rollbackReason.length >= 20 ? 'text-teal-600' : 'text-slate-400'}`}>
+                    <p className={`text-xs mt-1 ${rollbackReason.length >= 20 ? 'text-blue-600' : 'text-slate-400'}`}>
                       {rollbackReason.length}/20 characters
                     </p>
                   </div>
@@ -767,7 +767,7 @@ export default function ProductionDetailPage() {
                     (showTransitionModal === 'forward' && production.status === 'strike' && !(checkInvoices && checkPayRun && checkCostReport)) ||
                     (showTransitionModal === 'rollback' && rollbackReason.trim().length < 20)
                   }
-                  className={`flex items-center gap-2 px-5 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 transition-colors ${showTransitionModal === 'rollback' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-teal-600 hover:bg-teal-700'}`}
+                  className={`flex items-center gap-2 px-5 py-2 text-sm text-white rounded-lg font-medium disabled:opacity-50 transition-colors ${showTransitionModal === 'rollback' ? 'bg-amber-600 hover:bg-amber-700' : 'bg-blue-600 hover:bg-blue-700'}`}
                 >
                   {transitionLoading && <Loader2 size={14} className="animate-spin" />}
                   {showTransitionModal === 'rollback' ? 'Confirm Rollback' : 'Confirm'}
@@ -806,7 +806,7 @@ export default function ProductionDetailPage() {
         <div className="flex items-start justify-between gap-4">
           <button
             onClick={() => router.push('/productions')}
-            className="flex items-center gap-1.5 text-slate-500 hover:text-teal-600 text-sm transition-colors mt-0.5"
+            className="flex items-center gap-1.5 text-slate-500 hover:text-blue-600 text-sm transition-colors mt-0.5"
           >
             <ArrowLeft size={15} />
             All Productions
@@ -825,7 +825,7 @@ export default function ProductionDetailPage() {
             {!isArchived && nextStatus && NEXT_LABEL[production.status] && (
               <button
                 onClick={() => openTransition('forward')}
-                className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm rounded-lg hover:bg-teal-700 transition-colors font-medium"
+                className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors font-medium"
               >
                 {NEXT_LABEL[production.status]}
               </button>
@@ -854,7 +854,7 @@ export default function ProductionDetailPage() {
               <button
                 onClick={handleUnarchive}
                 disabled={unarchiveLoading}
-                className="flex items-center gap-2 px-4 py-2 border border-teal-200 text-teal-700 bg-teal-50 text-sm rounded-lg hover:bg-teal-100 transition-colors disabled:opacity-60"
+                className="flex items-center gap-2 px-4 py-2 border border-blue-200 text-blue-700 bg-blue-50 text-sm rounded-lg hover:bg-blue-100 transition-colors disabled:opacity-60"
               >
                 {unarchiveLoading ? <Loader2 size={13} className="animate-spin" /> : <ArchiveRestore size={13} />}
                 Unarchive
@@ -912,7 +912,7 @@ export default function ProductionDetailPage() {
                 <span>{donePct}% ({production.completed_sets}/{production.total_sets})</span>
               </div>
               <div className="w-full bg-slate-100 rounded-full h-2">
-                <div className="h-2 bg-teal-500 rounded-full transition-all" style={{ width: `${donePct}%` }} />
+                <div className="h-2 bg-blue-500 rounded-full transition-all" style={{ width: `${donePct}%` }} />
               </div>
             </div>
           )}
@@ -948,7 +948,7 @@ export default function ProductionDetailPage() {
               {canEdit && !isArchived && (
                 <button
                   onClick={() => setSlideOver('add')}
-                  className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                  className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
                 >
                   <Plus size={12} />
                   Add Set
@@ -1052,13 +1052,13 @@ export default function ProductionDetailPage() {
                                       value={s.completion_status}
                                       disabled={patchingSetId === s.id}
                                       onChange={e => handlePatchStatus(s.id, e.target.value)}
-                                      className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-400 cursor-pointer disabled:opacity-60 pr-6"
+                                      className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-blue-400 cursor-pointer disabled:opacity-60 pr-6"
                                     >
                                       {(Object.keys(SET_STATUS_CONFIG) as SetStatus[]).map(st => (
                                         <option key={st} value={st}>{SET_STATUS_CONFIG[st].label}</option>
                                       ))}
                                     </select>
-                                    {patchingSetId === s.id && <Loader2 size={11} className="animate-spin text-teal-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />}
+                                    {patchingSetId === s.id && <Loader2 size={11} className="animate-spin text-blue-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />}
                                   </div>
                                 ) : (
                                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(SET_STATUS_CONFIG[s.completion_status] ?? SET_STATUS_CONFIG.not_started).className}`}>
@@ -1071,7 +1071,7 @@ export default function ProductionDetailPage() {
                                   <div className="flex items-center gap-1">
                                     <button
                                       onClick={() => setSlideOver(s)}
-                                      className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                      className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                                       title="Edit set"
                                     >
                                       <Pencil size={13} />
@@ -1110,7 +1110,7 @@ export default function ProductionDetailPage() {
             {canEdit && !isArchived && (
               <button
                 onClick={() => setShowUploadModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors"
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
               >
                 <Upload size={12} />
                 Upload
@@ -1140,7 +1140,7 @@ export default function ProductionDetailPage() {
                     href={doc.file_url}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="text-teal-600 text-xs hover:text-teal-700 hover:underline font-medium"
+                    className="text-blue-600 text-xs hover:text-blue-700 hover:underline font-medium"
                   >
                     Download
                   </a>

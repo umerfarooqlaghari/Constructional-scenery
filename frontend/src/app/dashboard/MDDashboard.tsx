@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useEffect, useState } from 'react';
 import TopBar from '@/components/TopBar';
@@ -102,7 +102,7 @@ export default function MDDashboard() {
     : '';
 
   const statCards = [
-    { label: 'Active Productions', value: String(activeCount), change: 'Active now',        up: null,  icon: Clapperboard, color: 'bg-teal-50 text-teal-600' },
+    { label: 'Active Productions', value: String(activeCount), change: 'Active now',        up: null,  icon: Clapperboard, color: 'bg-blue-50 text-blue-600' },
     { label: 'Total Crew On Site', value: String(crewTotal),   change: 'Across all builds', up: null,  icon: Users,        color: 'bg-blue-50 text-blue-600' },
     { label: 'Weekly PO Spend',    value: fmt(weekPOSpend),    change: fmt(data?.po_spend.today_total ?? 0) + ' today', up: false, icon: ShoppingCart, color: 'bg-orange-50 text-orange-600' },
     { label: 'Pending Approvals',  value: String(pendingTotal), change: pendingDetail,      up: null,  icon: AlertCircle,  color: 'bg-amber-50 text-amber-600' },
@@ -144,7 +144,7 @@ export default function MDDashboard() {
                 <h2 className="text-slate-900 font-semibold text-sm">Cost Report — Active Productions</h2>
                 <p className="text-slate-400 text-xs mt-0.5">Budget vs actual spend with RAG status</p>
               </div>
-              <a href="/cost-report" className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline">
+              <a href="/cost-report" className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline">
                 View all <ArrowUpRight size={12} />
               </a>
             </div>
@@ -255,7 +255,7 @@ export default function MDDashboard() {
                 <h2 className="text-slate-900 font-semibold text-sm">Production Pipeline</h2>
                 <p className="text-slate-400 text-xs mt-0.5">All active & upcoming productions</p>
               </div>
-              <a href="/productions" className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline">
+              <a href="/productions" className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline">
                 View all <ArrowUpRight size={12} />
               </a>
             </div>
@@ -307,7 +307,7 @@ export default function MDDashboard() {
                 <h2 className="text-slate-900 font-semibold text-sm">Purchase Order Spend</h2>
                 <p className="text-slate-400 text-xs mt-0.5">Approved PO spend by production</p>
               </div>
-              <a href="/purchase-orders" className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline">
+              <a href="/purchase-orders" className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline">
                 View all <ArrowUpRight size={12} />
               </a>
             </div>
@@ -321,10 +321,10 @@ export default function MDDashboard() {
               ) : (
                 <>
                   <div className="grid grid-cols-2 gap-3">
-                    <div className="bg-teal-50 rounded-lg p-4">
-                      <p className="text-teal-600 text-xs font-medium">Today</p>
-                      <p className="text-teal-900 text-xl font-bold mt-1">{fmt(data?.po_spend.today_total ?? 0)}</p>
-                      <p className="text-teal-500 text-[10px] mt-0.5">approved POs</p>
+                    <div className="bg-blue-50 rounded-lg p-4">
+                      <p className="text-blue-600 text-xs font-medium">Today</p>
+                      <p className="text-blue-900 text-xl font-bold mt-1">{fmt(data?.po_spend.today_total ?? 0)}</p>
+                      <p className="text-blue-500 text-[10px] mt-0.5">approved POs</p>
                     </div>
                     <div className="bg-slate-50 rounded-lg p-4">
                       <p className="text-slate-500 text-xs font-medium">This Week</p>
@@ -347,7 +347,7 @@ export default function MDDashboard() {
                             <span className="font-medium">{fmt(item.total)}</span>
                           </div>
                           <div className="w-full bg-slate-100 rounded-full h-1.5">
-                            <div className="h-1.5 bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+                            <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
                           </div>
                         </div>
                       );
@@ -367,7 +367,7 @@ export default function MDDashboard() {
                 <h2 className="text-slate-900 font-semibold text-sm">Forecasting Variance</h2>
                 <p className="text-slate-400 text-xs mt-0.5">Actual spend vs forecast per production</p>
               </div>
-              <a href="/forecasting" className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline">
+              <a href="/forecasting" className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline">
                 View forecasts <ArrowUpRight size={12} />
               </a>
             </div>

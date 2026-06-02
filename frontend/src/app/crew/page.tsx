@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -11,7 +11,7 @@ import { crewApi, productionsApi, CrewMember, EmploymentStatus, Production } fro
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [
-  'bg-teal-500', 'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500',
+  'bg-blue-500', 'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500',
   'bg-green-500', 'bg-indigo-500', 'bg-rose-500', 'bg-cyan-500', 'bg-amber-500',
 ];
 
@@ -144,7 +144,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
   };
 
   const inputCls =
-    'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+    'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
   const labelCls = 'block text-xs font-medium text-slate-600 mb-1';
 
   return (
@@ -316,7 +316,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
             <button
               type="submit"
               disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               Register Crew Member
@@ -390,7 +390,7 @@ export default function CrewPage() {
   const filtered = crew;
 
   const stats = [
-    { label: 'Total Crew',    value: totalCrew,  icon: <Users size={18} className="text-teal-600" />,      bg: 'bg-teal-50' },
+    { label: 'Total Crew',    value: totalCrew,  icon: <Users size={18} className="text-blue-600" />,      bg: 'bg-blue-50' },
     { label: 'Active',        value: activeCrew, icon: <UserCheck size={18} className="text-green-600" />,  bg: 'bg-green-50' },
     { label: 'PAYE',          value: payeCount,  icon: <Briefcase size={18} className="text-blue-600" />,   bg: 'bg-blue-50' },
     { label: 'Self-Employed', value: seCount,    icon: <Building2 size={18} className="text-purple-600" />, bg: 'bg-purple-50' },
@@ -435,7 +435,7 @@ export default function CrewPage() {
                   <button
                     key={tab.value}
                     onClick={() => setActiveTab(tab.value)}
-                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-teal-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
                   >
                     {tab.label}
                   </button>
@@ -457,7 +457,7 @@ export default function CrewPage() {
                 </div>
                 <button
                   onClick={() => setShowModal(true)}
-                  className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium whitespace-nowrap"
+                  className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                 >
                   <Plus size={14} />
                   Register Crew Member
@@ -469,7 +469,7 @@ export default function CrewPage() {
               <select
                 value={productionFilter}
                 onChange={e => setProductionFilter(e.target.value)}
-                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-blue-400"
               >
                 <option value="">All productions</option>
                 {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -477,7 +477,7 @@ export default function CrewPage() {
               <select
                 value={tradeFilter}
                 onChange={e => { setTradeFilter(e.target.value); setRankFilter(''); }}
-                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-blue-400"
               >
                 <option value="">All trades</option>
                 {allTrades.map(t => <option key={t} value={t}>{t}</option>)}
@@ -486,7 +486,7 @@ export default function CrewPage() {
                 value={rankFilter}
                 onChange={e => setRankFilter(e.target.value)}
                 disabled={rankOptions.length === 0}
-                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400 disabled:opacity-50"
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-blue-400 disabled:opacity-50"
               >
                 <option value="">All ranks</option>
                 {rankOptions.map(r => <option key={r} value={r}>{r}</option>)}
@@ -579,7 +579,7 @@ export default function CrewPage() {
                         <td className="px-4 py-3.5">
                           <button
                             onClick={e => { e.stopPropagation(); router.push(`/crew/${c.id}`); }}
-                            className="p-1.5 text-teal-500 hover:bg-teal-50 rounded-lg transition-colors"
+                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
                           >
                             <ChevronRight size={15} />
                           </button>

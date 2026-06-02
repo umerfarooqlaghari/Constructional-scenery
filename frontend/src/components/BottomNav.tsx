@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState } from 'react';
 import Link from 'next/link';
@@ -88,7 +88,7 @@ export default function BottomNav() {
             key={href}
             href={href}
             className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-colors ${
-              isActive(href) ? 'text-teal-400' : 'text-slate-400'
+              isActive(href) ? 'text-blue-400' : 'text-slate-400'
             }`}
           >
             <Icon size={22} />
@@ -99,7 +99,7 @@ export default function BottomNav() {
         <button
           onClick={() => setMoreOpen(true)}
           className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-colors ${
-            moreOpen ? 'text-teal-400' : 'text-slate-400'
+            moreOpen ? 'text-blue-400' : 'text-slate-400'
           }`}
         >
           <MoreHorizontal size={22} />
@@ -113,7 +113,7 @@ export default function BottomNav() {
           {/* Drawer header */}
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-700/60">
             <div className="flex items-center gap-3">
-              <div className="w-9 h-9 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
+              <div className="w-9 h-9 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
                 <span className="text-white text-sm font-bold">
                   {user ? getInitials(user.full_name) : '?'}
                 </span>
@@ -140,7 +140,7 @@ export default function BottomNav() {
                 onClick={() => setMoreOpen(false)}
                 className={`flex items-center gap-4 px-4 py-3.5 rounded-xl text-sm font-medium transition-colors min-h-[52px] ${
                   isActive(href)
-                    ? 'bg-teal-600 text-white'
+                    ? 'bg-blue-600 text-white'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}
               >

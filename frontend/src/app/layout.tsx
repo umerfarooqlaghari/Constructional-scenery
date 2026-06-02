@@ -10,8 +10,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "CS HQ — Construct Scenery Limited",
-  description: "Business management platform for Construct Scenery Limited",
+  title: "DEEPSIAN — Construct Scenery Database",
+  description: "DEEPSIAN — Construct Scenery Database management platform",
   icons: {
     icon: "/icon.png",
     apple: "/icon.png",
