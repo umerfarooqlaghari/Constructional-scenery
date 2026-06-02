@@ -12,6 +12,7 @@ import {
   TrendingUp,
   ChevronRight,
   LogOut,
+  CreditCard,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -36,6 +37,12 @@ const NAV_GROUPS = [
     items: [
       { href: '/crew',       label: 'Crew',                 icon: Users,        roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
       { href: '/timesheets', label: 'Timesheets & Pay Run', icon: ClipboardList, roles: ['managing_director', 'construction_accountant'] },
+    ],
+  },
+  {
+    label: 'Settings',
+    items: [
+      { href: '/settings/rate-card', label: 'Rate Card', icon: CreditCard, roles: ['managing_director'] },
     ],
   },
 ];

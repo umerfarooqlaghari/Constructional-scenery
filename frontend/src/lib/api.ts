@@ -667,4 +667,39 @@ export const forecastingApi = {
     request<Record<string, Record<string, number>>>('/api/forecasting/bectu-rates'),
 };
 
+// ─── Crew Rates types ─────────────────────────────────────────────────────────
+export type CrewRate = {
+  id: string;
+  trade: string;
+  rank: string;
+  daily_rate: string | null;
+  overtime_rate: string | null;
+  weekly_rate: string | null;
+  rate_year: string;
+  rate_type: 'bectu' | 'non_bectu';
+  effective_from: string | null;
+  effective_to: string | null;
+  created_at: string;
+};
+
+export const crewRatesApi = {
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<CrewRate[]>(`/api/crew-rates${qs}`);
+  },
+  update: (id: string, data: { daily_rate?: string | null; overtime_rate?: string | null }) =>
+    request<CrewRate>(`/api/crew-rates/${id}`, { method: 'PATCH', body: data }),
+  importCSV: (formData: FormData) =>
+    fetch('/api/crew-rates/import', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
+      },
+      body: formData,
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); }
+      return r.json() as Promise<{ message: string; inserted: number; expired: number }>;
+    }),
+};
+
 export default request;

@@ -6,7 +6,7 @@ import TopBar from '@/components/TopBar';
 import {
   Plus, Search, ChevronRight, X, Loader2, Users, UserCheck, Briefcase, Building2, Trash2,
 } from 'lucide-react';
-import { crewApi, productionsApi, CrewMember, EmploymentStatus, Production } from '@/lib/api';
+import { crewApi, productionsApi, crewRatesApi, CrewMember, CrewRate, EmploymentStatus, Production } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -44,6 +44,7 @@ type TradesData = { bectu: Record<string, string[]>; non_bectu: string[] };
 function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
   const [trades, setTrades] = useState<TradesData | null>(null);
   const [tradesLoading, setTradesLoading] = useState(true);
+  const [allRates, setAllRates] = useState<CrewRate[]>([]);
 
   const [form, setForm] = useState({
     first_name: '',
@@ -72,6 +73,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
       .then(setTrades)
       .catch(() => setTrades({ bectu: {}, non_bectu: [] }))
       .finally(() => setTradesLoading(false));
+    crewRatesApi.list({ current: 'true' }).then(setAllRates).catch(() => {});
   }, []);
 
   const set = (k: keyof typeof form) => (
@@ -245,6 +247,20 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
                 </div>
               </div>
             )}
+
+            {/* Rate preview when trade + rank selected */}
+            {(() => {
+              const rate = allRates.find(r => r.trade === form.crew_trade && r.rank === form.crew_rank);
+              if (!rate || (!rate.daily_rate && !rate.overtime_rate)) return null;
+              return (
+                <div className="mt-3 flex items-center gap-3 bg-blue-50 border border-blue-100 rounded-lg px-3 py-2 text-xs">
+                  <span className="text-blue-500 font-semibold">2026/27 Rate:</span>
+                  {rate.daily_rate && <span className="text-blue-700">Daily £{parseFloat(rate.daily_rate).toFixed(2)}</span>}
+                  {rate.overtime_rate && <span className="text-blue-600">· OT £{parseFloat(rate.overtime_rate).toFixed(2)}/hr</span>}
+                  <span className="text-blue-400 ml-auto">(read-only reference)</span>
+                </div>
+              );
+            })()}
           </div>
 
           {/* Self-Employed Company */}
