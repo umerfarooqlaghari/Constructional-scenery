@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -76,7 +76,7 @@ export default function AccountantDashboard() {
       label:   'Active Productions',
       value:   dashboard?.active_productions.length ?? 0,
       subtext: 'in progress',
-      color:   'bg-teal-50 text-teal-600',
+      color:   'bg-blue-50 text-blue-600',
       icon:    ClipboardList,
     },
   ];
@@ -127,7 +127,7 @@ export default function AccountantDashboard() {
               </div>
               <button
                 onClick={() => router.push('/timesheets')}
-                className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline"
+                className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline"
               >
                 View all <ArrowUpRight size={12} />
               </button>
@@ -171,7 +171,7 @@ export default function AccountantDashboard() {
                 ))}
                 <div className="px-5 py-3 bg-slate-50 flex justify-between items-center">
                   <span className="text-slate-500 text-xs">{tsCounts.invoice_received} timesheets pending</span>
-                  <button onClick={() => router.push('/timesheets')} className="text-teal-600 text-xs font-medium hover:underline">
+                  <button onClick={() => router.push('/timesheets')} className="text-blue-600 text-xs font-medium hover:underline">
                     View all
                   </button>
                 </div>
@@ -209,12 +209,12 @@ export default function AccountantDashboard() {
                     </div>
                   </div>
                 ))}
-                <div className="px-5 py-3 bg-teal-50 flex justify-between items-center">
+                <div className="px-5 py-3 bg-blue-50 flex justify-between items-center">
                   <div className="flex items-center gap-2">
-                    <Banknote size={14} className="text-teal-600" />
-                    <span className="text-teal-700 text-xs font-semibold">Total This Week</span>
+                    <Banknote size={14} className="text-blue-600" />
+                    <span className="text-blue-700 text-xs font-semibold">Total This Week</span>
                   </div>
-                  <span className="text-teal-900 text-sm font-bold">
+                  <span className="text-blue-900 text-sm font-bold">
                     {fmtGBP(dashboard.current_week_labour.total)}
                   </span>
                 </div>
@@ -241,7 +241,7 @@ export default function AccountantDashboard() {
               )}
               <button
                 onClick={() => router.push('/cost-report')}
-                className="ml-2 text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline"
+                className="ml-2 text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline"
               >
                 Full report <ArrowUpRight size={12} />
               </button>

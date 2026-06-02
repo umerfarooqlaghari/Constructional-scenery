@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -14,7 +14,7 @@ import { useAuth } from '@/contexts/AuthContext';
 
 const STATUS_CONFIG: Record<ProductionStatus, { label: string; className: string; icon: React.ReactNode }> = {
   pre_production: { label: 'Pre-Production', className: 'bg-blue-100 text-blue-700',   icon: <Clock size={11} className="inline mr-1" /> },
-  active_build:   { label: 'Active Build',   className: 'bg-teal-100 text-teal-700',   icon: <CheckCircle2 size={11} className="inline mr-1" /> },
+  active_build:   { label: 'Active Build',   className: 'bg-blue-100 text-blue-700',   icon: <CheckCircle2 size={11} className="inline mr-1" /> },
   strike:         { label: 'Strike',          className: 'bg-amber-100 text-amber-700', icon: <AlertTriangle size={11} className="inline mr-1" /> },
   complete:       { label: 'Complete',        className: 'bg-slate-100 text-slate-500', icon: <CheckCircle2 size={11} className="inline mr-1" /> },
   archived:       { label: 'Archived',        className: 'bg-red-100 text-red-500',     icon: <Archive size={11} className="inline mr-1" /> },
@@ -74,7 +74,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
     }
   };
 
-  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
@@ -131,7 +131,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
           <div className="flex items-center justify-end gap-3 pt-2">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
             <button type="submit" disabled={saving}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {saving && <Loader2 size={14} className="animate-spin" />}
               Create Production
@@ -322,7 +322,7 @@ export default function ProductionsPage() {
     complete:       productions.filter(p => p.status === 'complete').length,
   };
 
-  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500';
+  const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
   return (
     <>
@@ -349,7 +349,7 @@ export default function ProductionsPage() {
         {/* Summary Cards */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           {[
-            { label: 'Active Build',   count: counts.active_build,   color: 'bg-teal-500',   tab: 'active_build'   as ProductionStatus },
+            { label: 'Active Build',   count: counts.active_build,   color: 'bg-blue-500',   tab: 'active_build'   as ProductionStatus },
             { label: 'Pre-Production', count: counts.pre_production, color: 'bg-blue-500',   tab: 'pre_production' as ProductionStatus },
             { label: 'Strike',         count: counts.strike,         color: 'bg-amber-500',  tab: 'strike'         as ProductionStatus },
             { label: 'Complete',       count: counts.complete,       color: 'bg-slate-400',  tab: 'complete'       as ProductionStatus },
@@ -357,7 +357,7 @@ export default function ProductionsPage() {
             <button
               key={s.label}
               onClick={() => setActiveTab(t => t === s.tab ? 'all' : s.tab)}
-              className={`bg-white rounded-xl border px-5 py-4 shadow-sm flex items-center gap-3 text-left transition-colors ${activeTab === s.tab ? 'border-teal-400 ring-1 ring-teal-400' : 'border-slate-200 hover:border-slate-300'}`}
+              className={`bg-white rounded-xl border px-5 py-4 shadow-sm flex items-center gap-3 text-left transition-colors ${activeTab === s.tab ? 'border-blue-400 ring-1 ring-blue-400' : 'border-slate-200 hover:border-slate-300'}`}
             >
               <div className={`w-2.5 h-2.5 rounded-full ${s.color} flex-shrink-0`} />
               <div>
@@ -376,7 +376,7 @@ export default function ProductionsPage() {
                 <button
                   key={tab.value}
                   onClick={() => setActiveTab(tab.value)}
-                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-teal-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
+                  className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${activeTab === tab.value ? 'bg-blue-600 text-white' : 'text-slate-500 hover:bg-slate-100'}`}
                 >
                   {tab.label}
                 </button>
@@ -396,7 +396,7 @@ export default function ProductionsPage() {
               {canEdit && (
                 <button
                   onClick={() => setShowModal(true)}
-                  className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-teal-700 transition-colors font-medium whitespace-nowrap"
+                  className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                 >
                   <Plus size={14} />
                   New Production
@@ -469,7 +469,7 @@ export default function ProductionsPage() {
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2">
                             <div className="w-20 bg-slate-100 rounded-full h-1.5">
-                              <div className="h-1.5 bg-teal-500 rounded-full" style={{ width: `${donePct}%` }} />
+                              <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${donePct}%` }} />
                             </div>
                             <span className="text-xs text-slate-500">{p.completed_sets}/{p.total_sets}</span>
                           </div>
@@ -478,7 +478,7 @@ export default function ProductionsPage() {
                           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                             <button
                               onClick={() => router.push(`/productions/${p.id}`)}
-                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             >
                               <ChevronRight size={15} />
                             </button>
@@ -563,7 +563,7 @@ export default function ProductionsPage() {
                           <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
                             <button
                               onClick={() => router.push(`/productions/${p.id}`)}
-                              className="p-1.5 text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                              className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
                             >
                               <ChevronRight size={15} />
                             </button>
@@ -571,7 +571,7 @@ export default function ProductionsPage() {
                               <button
                                 onClick={e => handleUnarchive(e, p.id)}
                                 disabled={unarchiveLoading === p.id}
-                                className="flex items-center gap-1 px-2 py-1 text-xs text-teal-700 bg-teal-50 hover:bg-teal-100 rounded-lg transition-colors font-medium disabled:opacity-50"
+                                className="flex items-center gap-1 px-2 py-1 text-xs text-blue-700 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors font-medium disabled:opacity-50"
                                 title="Unarchive production"
                               >
                                 {unarchiveLoading === p.id

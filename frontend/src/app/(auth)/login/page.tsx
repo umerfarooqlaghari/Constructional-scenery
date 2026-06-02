@@ -41,22 +41,20 @@ export default function LoginPage() {
       {/* Logo */}
       <div className="flex justify-center mb-8">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-xl bg-teal-500 flex items-center justify-center shadow-lg shadow-teal-200">
-            <span className="text-white text-sm font-black tracking-tight">CS</span>
-          </div>
+          <img src="/deepsian favicon.png" alt="DEEPSIAN" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
           <div>
-            <p className="text-slate-900 font-bold text-lg leading-tight">CS HQ</p>
-            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Ltd</p>
+            <p className="text-slate-900 font-bold text-lg leading-tight">DEEPSIAN</p>
+            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Database</p>
           </div>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-200 shadow-sm px-8 py-8">
         <h1 className="text-slate-900 font-bold text-xl mb-1">Sign in</h1>
-        <p className="text-slate-500 text-sm mb-6">Welcome back to CS HQ</p>
+        <p className="text-slate-500 text-sm mb-6">Welcome back</p>
 
         {banner && (
-          <div className="mb-4 bg-teal-50 border border-teal-200 rounded-lg px-4 py-3 text-teal-700 text-sm flex items-center gap-2">
+          <div className="mb-4 bg-blue-50 border border-blue-200 rounded-lg px-4 py-3 text-blue-700 text-sm flex items-center gap-2">
             <CheckCircle2 size={15} className="flex-shrink-0" />
             {banner}
           </div>
@@ -76,14 +74,14 @@ export default function LoginPage() {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="you@constructscenery.co.uk"
-              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+              className="w-full px-3.5 py-2.5 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
             />
           </div>
 
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="block text-sm font-medium text-slate-700">Password</label>
-              <Link href="/forgot-password" className="text-xs text-teal-600 hover:text-teal-700 font-medium">
+              <Link href="/forgot-password" className="text-xs text-blue-600 hover:text-blue-700 font-medium">
                 Forgot password?
               </Link>
             </div>
@@ -94,7 +92,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="w-full px-3.5 py-2.5 pr-10 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-teal-500 focus:border-transparent transition"
+                className="w-full px-3.5 py-2.5 pr-10 border border-slate-200 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent transition"
               />
               <button
                 type="button"
@@ -109,7 +107,7 @@ export default function LoginPage() {
           <button
             type="submit"
             disabled={loading}
-            className="w-full bg-teal-600 hover:bg-teal-700 disabled:bg-teal-400 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-2"
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-2.5 px-4 rounded-lg text-sm transition-colors flex items-center justify-center gap-2 mt-2"
           >
             {loading ? (
               <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
@@ -125,7 +123,7 @@ export default function LoginPage() {
 
       <p className="text-center text-slate-500 text-sm mt-5">
         Don&apos;t have an account?{' '}
-        <Link href="/signup" className="text-teal-600 hover:text-teal-700 font-medium">
+        <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium">
           Sign up
         </Link>
       </p>

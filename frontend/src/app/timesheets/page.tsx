@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
 import TopBar from '@/components/TopBar';
@@ -42,7 +42,7 @@ const chaseInvoices = (production_id: string, week_ending_date: string) =>
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 const AVATAR_COLORS = [
-  'bg-teal-500', 'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500',
+  'bg-blue-500', 'bg-purple-500', 'bg-blue-500', 'bg-pink-500', 'bg-orange-500',
   'bg-green-500', 'bg-indigo-500', 'bg-rose-500', 'bg-cyan-500', 'bg-amber-500',
 ];
 
@@ -126,7 +126,7 @@ function AttachInvoiceModal({ timesheetId, crewName, onClose, onAttached }: Atta
             <label className="block text-xs font-medium text-slate-600 mb-1">Invoice File</label>
             <div
               onClick={() => inputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 rounded-lg px-4 py-6 text-center cursor-pointer hover:border-teal-400 transition-colors"
+              className="border-2 border-dashed border-slate-200 rounded-lg px-4 py-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
             >
               {file
                 ? <p className="text-slate-700 text-sm font-medium">{file.name}</p>
@@ -145,7 +145,7 @@ function AttachInvoiceModal({ timesheetId, crewName, onClose, onAttached }: Atta
             <button
               type="submit"
               disabled={uploading}
-              className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+              className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {uploading && <Loader2 size={14} className="animate-spin" />}
               Upload Invoice
@@ -333,7 +333,7 @@ export default function TimesheetsPage() {
           {canAct && (
             <div className="flex items-center gap-2">
               {chaseMsg && (
-                <span className="text-teal-700 text-xs bg-teal-50 border border-teal-200 rounded-lg px-3 py-1.5">{chaseMsg}</span>
+                <span className="text-blue-700 text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">{chaseMsg}</span>
               )}
               <button
                 onClick={handleChase}
@@ -408,7 +408,7 @@ export default function TimesheetsPage() {
               <select
                 value={tradeFilter}
                 onChange={e => setTradeFilter(e.target.value)}
-                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-teal-400"
+                className="text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-700 outline-none focus:ring-1 focus:ring-blue-400"
               >
                 <option value="">All trades</option>
                 {availableTrades.map(t => <option key={t} value={t}>{t}</option>)}

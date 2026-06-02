@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
@@ -27,7 +27,7 @@ const STATUS_LABELS: Record<ProductionStatus, string> = {
 
 const STATUS_COLORS: Record<ProductionStatus, string> = {
   pre_production: 'bg-blue-100 text-blue-700',
-  active_build:   'bg-teal-100 text-teal-700',
+  active_build:   'bg-blue-100 text-blue-700',
   strike:         'bg-amber-100 text-amber-700',
   complete:       'bg-slate-100 text-slate-500',
   archived:       'bg-red-100 text-red-500',
@@ -36,7 +36,7 @@ const STATUS_COLORS: Record<ProductionStatus, string> = {
 const PO_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
   draft:            { label: 'Draft',             className: 'bg-slate-100 text-slate-500'   },
   submitted:        { label: 'Submitted',          className: 'bg-blue-100 text-blue-700'    },
-  issued:           { label: 'Issued',             className: 'bg-teal-100 text-teal-700'    },
+  issued:           { label: 'Issued',             className: 'bg-blue-100 text-blue-700'    },
   invoice_received: { label: 'Invoice Received',   className: 'bg-purple-100 text-purple-700' },
   approved:         { label: 'Approved',           className: 'bg-green-100 text-green-700'  },
 };
@@ -70,7 +70,7 @@ export default function CoordinatorDashboard() {
     {
       label:   'Active Productions',
       value:   dashboard?.active_productions.length ?? 0,
-      color:   'bg-teal-50 text-teal-600',
+      color:   'bg-blue-50 text-blue-600',
       icon:    Clapperboard,
     },
     {
@@ -136,7 +136,7 @@ export default function CoordinatorDashboard() {
             </div>
             <button
               onClick={() => router.push('/productions')}
-              className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline"
+              className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline"
             >
               Manage <ArrowUpRight size={12} />
             </button>
@@ -207,7 +207,7 @@ export default function CoordinatorDashboard() {
               </div>
               <button
                 onClick={() => router.push('/purchase-orders')}
-                className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline"
+                className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline"
               >
                 View all <ArrowUpRight size={12} />
               </button>
@@ -263,7 +263,7 @@ export default function CoordinatorDashboard() {
               </div>
               <button
                 onClick={() => router.push('/crew')}
-                className="text-teal-600 text-xs font-medium flex items-center gap-1 hover:underline"
+                className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline"
               >
                 Crew DB <ArrowUpRight size={12} />
               </button>
@@ -287,7 +287,7 @@ export default function CoordinatorDashboard() {
                         <span className="text-slate-900 text-sm font-bold flex-shrink-0 ml-2">{row.headcount}</span>
                       </div>
                       <div className="w-full bg-slate-100 rounded-full h-1.5">
-                        <div className="h-1.5 bg-teal-500 rounded-full" style={{ width: `${pct}%` }} />
+                        <div className="h-1.5 bg-blue-500 rounded-full" style={{ width: `${pct}%` }} />
                       </div>
                     </div>
                   );

@@ -1,4 +1,4 @@
-'use client';
+﻿'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -64,12 +64,10 @@ export default function Sidebar() {
     <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 bg-slate-900 flex-col z-30">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-700/60">
-        <div className="w-8 h-8 rounded-lg bg-teal-500 flex items-center justify-center flex-shrink-0">
-          <span className="text-white text-xs font-black tracking-tight">CS</span>
-        </div>
+        <img src="/deepsian favicon.png" alt="DEEPSIAN" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
         <div>
-          <p className="text-white font-bold text-sm leading-tight">CS HQ</p>
-          <p className="text-slate-400 text-[10px] leading-tight">Construct Scenery Ltd</p>
+          <p className="text-white font-bold text-sm leading-tight tracking-widest">DEEPSIAN</p>
+          <p className="text-blue-400 text-[10px] leading-tight tracking-wider uppercase">Construct Scenery Database</p>
         </div>
       </div>
 
@@ -89,7 +87,7 @@ export default function Sidebar() {
                     href={href}
                     className={`group flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150 ${
                       active
-                        ? 'bg-teal-600 text-white shadow-sm'
+                        ? 'bg-blue-600 text-white shadow-sm'
                         : 'text-slate-400 hover:bg-slate-800 hover:text-white'
                     }`}
                   >
@@ -107,7 +105,7 @@ export default function Sidebar() {
       {/* User + Logout */}
       <div className="px-4 py-4 border-t border-slate-700/60 space-y-2">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-full bg-teal-500 flex items-center justify-center flex-shrink-0">
+          <div className="w-8 h-8 rounded-full bg-blue-500 flex items-center justify-center flex-shrink-0">
             <span className="text-white text-xs font-bold">
               {user ? getInitials(user.full_name) : '?'}
             </span>
