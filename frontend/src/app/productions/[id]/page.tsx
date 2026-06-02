@@ -145,40 +145,68 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
   );
 }
 
-// ─── Set Form (inline row or modal) ──────────────────────────────────────────
+// ─── Set Slide-Over Panel ─────────────────────────────────────────────────────
 
-interface SetFormProps {
+interface SetSlideOverProps {
   initial?: Partial<ProductionSet>;
+  existingSetNumbers: string[];
+  production: { start_date: string | null; end_date: string | null };
   onSave: (data: Partial<ProductionSet>) => Promise<void>;
-  onCancel: () => void;
+  onClose: () => void;
+  title: string;
 }
 
-function SetForm({ initial = {}, onSave, onCancel }: SetFormProps) {
+function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, onClose, title }: SetSlideOverProps) {
   const [form, setForm] = useState({
-    set_number:       initial.set_number       ?? '',
-    set_name:         initial.set_name         ?? '',
-    shoot_week:       initial.shoot_week        ?? '',
-    handover_date:    initial.handover_date     ? initial.handover_date.split('T')[0] : '',
-    completion_status: initial.completion_status ?? 'not_started' as SetStatus,
-    notes:            initial.notes            ?? '',
+    set_number:        initial.set_number        ?? '',
+    set_name:          initial.set_name          ?? '',
+    shoot_week:        initial.shoot_week         ?? '',
+    handover_date:     initial.handover_date      ? initial.handover_date.split('T')[0] : '',
+    completion_status: initial.completion_status  ?? 'not_started' as SetStatus,
+    notes:             initial.notes              ?? '',
   });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
+  const [saving, setSaving]       = useState(false);
+  const [error, setError]         = useState('');
+  const [setNumError, setSetNumError] = useState('');
+  const [dateError, setDateError]     = useState('');
 
-  const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
-    setForm(f => ({ ...f, [k]: e.target.value }));
+  const f = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>) =>
+    setForm(prev => ({ ...prev, [k]: e.target.value }));
+
+  const validateSetNumber = () => {
+    if (!form.set_number.trim()) { setSetNumError(''); return; }
+    const others = existingSetNumbers.filter(n => n !== initial.set_number);
+    if (others.includes(form.set_number.trim())) {
+      setSetNumError(`Set code "${form.set_number}" already exists in this production`);
+    } else {
+      setSetNumError('');
+    }
+  };
+
+  const validateDate = () => {
+    if (!form.handover_date) { setDateError(''); return; }
+    const d = new Date(form.handover_date);
+    if (production.start_date && d < new Date(production.start_date)) {
+      setDateError(`Handover date must be on or after production start (${production.start_date.split('T')[0]})`);
+    } else if (production.end_date && d > new Date(production.end_date)) {
+      setDateError(`Handover date must be on or before production end (${production.end_date.split('T')[0]})`);
+    } else {
+      setDateError('');
+    }
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.set_name.trim()) { setError('Set name is required.'); return; }
+    if (setNumError || dateError) { setError('Please fix the errors above.'); return; }
     setSaving(true); setError('');
     try {
       await onSave({
         ...form,
-        set_number:    form.set_number    || null,
-        shoot_week:    form.shoot_week    || null,
-        handover_date: form.handover_date || null,
-        notes:         form.notes         || null,
+        set_number:    form.set_number.trim()    || null,
+        shoot_week:    form.shoot_week.trim()    || null,
+        handover_date: form.handover_date        || null,
+        notes:         form.notes.trim()         || null,
       });
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Save failed');
@@ -187,52 +215,77 @@ function SetForm({ initial = {}, onSave, onCancel }: SetFormProps) {
   };
 
   return (
-    <form onSubmit={submit} className="bg-slate-50 border border-slate-200 rounded-xl p-4 space-y-3">
-      {error && <p className="text-red-600 text-sm">{error}</p>}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Set #</label>
-          <input className={inputCls} placeholder="S001" value={form.set_number} onChange={set('set_number')} />
+    <>
+      <div className="fixed inset-0 bg-black/30 z-40" onClick={onClose} />
+      <div className="fixed right-0 top-0 h-full w-full max-w-sm bg-white z-50 shadow-2xl flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 flex-shrink-0">
+          <h2 className="text-slate-900 font-semibold text-base">{title}</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 p-1 rounded-lg"><X size={18} /></button>
         </div>
-        <div className="md:col-span-2">
-          <label className="block text-xs font-medium text-slate-500 mb-1">Set Name *</label>
-          <input className={inputCls} placeholder="Interior Castle Great Hall" value={form.set_name} onChange={set('set_name')} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Shoot Week</label>
-          <input className={inputCls} placeholder="W/E 18 May" value={form.shoot_week} onChange={set('shoot_week')} />
+
+        {/* Form */}
+        <form onSubmit={submit} className="flex-1 overflow-y-auto px-5 py-5 space-y-4">
+          {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
+            <input
+              className={`${inputCls} ${setNumError ? 'border-red-400' : ''}`}
+              placeholder="S001"
+              value={form.set_number}
+              onChange={f('set_number')}
+              onBlur={validateSetNumber}
+            />
+            {setNumError && <p className="text-red-500 text-xs mt-1">{setNumError}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Set Name *</label>
+            <input className={inputCls} placeholder="Interior Castle Great Hall" value={form.set_name} onChange={f('set_name')} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Shoot Week</label>
+            <input className={inputCls} placeholder="W/E 18 May" value={form.shoot_week} onChange={f('shoot_week')} />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Handover Date</label>
+            <input
+              type="date"
+              className={`${inputCls} ${dateError ? 'border-red-400' : ''}`}
+              value={form.handover_date}
+              onChange={f('handover_date')}
+              onBlur={validateDate}
+            />
+            {dateError && <p className="text-red-500 text-xs mt-1">{dateError}</p>}
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+            <select className={inputCls} value={form.completion_status} onChange={f('completion_status')}>
+              {(Object.keys(SET_STATUS_CONFIG) as SetStatus[]).map(s => (
+                <option key={s} value={s}>{SET_STATUS_CONFIG[s].label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+            <textarea rows={3} className={`${inputCls} resize-none`} placeholder="Optional notes…" value={form.notes} onChange={f('notes')} />
+          </div>
+        </form>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 px-5 py-4 border-t border-slate-100 flex-shrink-0">
+          <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50 transition-colors">Cancel</button>
+          <button
+            onClick={submit as unknown as React.MouseEventHandler}
+            disabled={saving}
+            className="flex items-center gap-2 px-5 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
+          >
+            {saving && <Loader2 size={14} className="animate-spin" />}
+            <Save size={14} />
+            Save Set
+          </button>
         </div>
       </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Handover Date</label>
-          <input type="date" className={inputCls} value={form.handover_date} onChange={set('handover_date')} />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Status</label>
-          <select className={inputCls} value={form.completion_status} onChange={set('completion_status')}>
-            {(Object.keys(SET_STATUS_CONFIG) as SetStatus[]).map(s => (
-              <option key={s} value={s}>{SET_STATUS_CONFIG[s].label}</option>
-            ))}
-          </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Notes</label>
-          <input className={inputCls} placeholder="Optional notes" value={form.notes} onChange={set('notes')} />
-        </div>
-      </div>
-      <div className="flex items-center justify-end gap-2 pt-1">
-        <button type="button" onClick={onCancel} className="px-3 py-1.5 text-xs text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
-        <button
-          type="submit"
-          disabled={saving}
-          className="flex items-center gap-1.5 px-4 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60 transition-colors"
-        >
-          {saving && <Loader2 size={12} className="animate-spin" />}
-          Save Set
-        </button>
-      </div>
-    </form>
+    </>
   );
 }
 
@@ -333,9 +386,9 @@ export default function ProductionDetailPage() {
   const [error, setError]             = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
   const [showUploadModal, setShowUploadModal] = useState(false);
-  const [showAddSet, setShowAddSet]   = useState(false);
-  const [editingSetId, setEditingSetId] = useState<string | null>(null);
+  const [slideOver, setSlideOver]     = useState<'add' | ProductionSet | null>(null);
   const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
+  const [patchingSetId, setPatchingSetId] = useState<string | null>(null);
 
   // Status transition flow
   const STATUS_ORDER = ['pre_production', 'active_build', 'strike', 'complete'] as const;
@@ -465,14 +518,24 @@ export default function ProductionDetailPage() {
 
   const handleAddSet = async (data: Partial<ProductionSet>) => {
     const newSet = await productionsApi.createSet(id, data);
-    setProduction(p => p ? { ...p, sets: [...p.sets, newSet] } : p);
-    setShowAddSet(false);
+    setProduction(p => p ? { ...p, sets: [...p.sets, newSet], total_sets: (p.total_sets ?? 0) + 1 } : p);
+    setSlideOver(null);
   };
 
   const handleUpdateSet = async (setId: string, data: Partial<ProductionSet>) => {
     const updated = await productionsApi.updateSet(id, setId, data);
-    setProduction(p => p ? { ...p, sets: p.sets.map(s => s.id === setId ? updated : s) } : p);
-    setEditingSetId(null);
+    setProduction(p => p ? { ...p, sets: p.sets.map(s => s.id === setId ? { ...s, ...updated } : s) } : p);
+    setSlideOver(null);
+  };
+
+  const handlePatchStatus = async (setId: string, completion_status: string) => {
+    setPatchingSetId(setId);
+    try {
+      const updated = await productionsApi.patchSet(id, setId, completion_status);
+      setProduction(p => p ? { ...p, sets: p.sets.map(s => s.id === setId ? { ...s, ...updated } : s) } : p);
+    } catch { /* ignore */ } finally {
+      setPatchingSetId(null);
+    }
   };
 
   const handleDeleteSet = async (setId: string) => {
@@ -856,6 +919,17 @@ export default function ProductionDetailPage() {
         </div>
 
         {/* Set Tracker */}
+        {slideOver && (
+          <SetSlideOver
+            initial={slideOver === 'add' ? {} : slideOver}
+            existingSetNumbers={production.sets.map(s => s.set_number).filter(Boolean) as string[]}
+            production={production}
+            onSave={slideOver === 'add' ? handleAddSet : data => handleUpdateSet((slideOver as ProductionSet).id, data)}
+            onClose={() => setSlideOver(null)}
+            title={slideOver === 'add' ? 'Add Set' : 'Edit Set'}
+          />
+        )}
+
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
             <div>
@@ -867,13 +941,13 @@ export default function ProductionDetailPage() {
             </div>
             <div className="flex items-center gap-3">
               <div className="hidden sm:flex items-center gap-3 text-xs text-slate-500">
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" />{'>'}&thinsp;14d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />1–14d</span>
-                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />Overdue</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-green-400 inline-block" />&gt;14d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />7–14d</span>
+                <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full bg-red-500 inline-block" />&lt;7d / Overdue</span>
               </div>
               {canEdit && !isArchived && (
                 <button
-                  onClick={() => { setShowAddSet(s => !s); setEditingSetId(null); }}
+                  onClick={() => setSlideOver('add')}
                   className="flex items-center gap-1.5 px-3 py-1.5 bg-teal-600 text-white text-xs font-medium rounded-lg hover:bg-teal-700 transition-colors"
                 >
                   <Plus size={12} />
@@ -883,111 +957,146 @@ export default function ProductionDetailPage() {
             </div>
           </div>
 
-          {/* Add set form */}
-          {showAddSet && (
-            <div className="px-5 py-4 border-b border-slate-100">
-              <SetForm
-                onSave={handleAddSet}
-                onCancel={() => setShowAddSet(false)}
-              />
-            </div>
-          )}
-
           <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-2.5 text-xs font-semibold text-slate-500">Set #</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Set Name</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Shoot Week</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Handover</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Status</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500 text-center">Countdown</th>
-                  <th className="px-4 py-2.5 text-xs font-semibold text-slate-500"></th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {production.sets.length === 0 ? (
-                  <tr>
-                    <td colSpan={7} className="px-5 py-8 text-center text-slate-400 text-sm">
-                      No sets added yet. Click "Add Set" to create the first one.
-                    </td>
-                  </tr>
-                ) : (
-                  production.sets.map(s => {
-                    if (editingSetId === s.id) {
-                      return (
-                        <tr key={s.id}>
-                          <td colSpan={7} className="px-4 py-3">
-                            <SetForm
-                              initial={s}
-                              onSave={data => handleUpdateSet(s.id, data)}
-                              onCancel={() => setEditingSetId(null)}
-                            />
+            {production.sets.length === 0 ? (
+              <div className="px-5 py-10 text-center text-slate-400 text-sm">
+                No sets added yet. Click &quot;Add Set&quot; to create the first one.
+              </div>
+            ) : (() => {
+              // Group by shoot_week, order: earliest by handover_date within each group
+              const groups: Record<string, typeof production.sets> = {};
+              const sorted = [...production.sets].sort((a, b) => {
+                if (!a.handover_date) return 1;
+                if (!b.handover_date) return -1;
+                return new Date(a.handover_date).getTime() - new Date(b.handover_date).getTime();
+              });
+              sorted.forEach(s => {
+                const key = s.shoot_week ?? '__none__';
+                if (!groups[key]) groups[key] = [];
+                groups[key].push(s);
+              });
+              const groupKeys = Object.keys(groups).sort((a, b) => {
+                if (a === '__none__') return 1;
+                if (b === '__none__') return -1;
+                return a.localeCompare(b);
+              });
+
+              return (
+                <table className="w-full text-sm min-w-[700px]">
+                  <thead>
+                    <tr className="bg-slate-50 text-left">
+                      <th className="px-5 py-2.5 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Set #</th>
+                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Set Name</th>
+                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Handover</th>
+                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Countdown</th>
+                      <th className="px-4 py-2.5 text-xs font-semibold text-slate-500">Status</th>
+                      {canEdit && !isArchived && <th className="px-4 py-2.5 text-xs font-semibold text-slate-500"></th>}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {groupKeys.map(gk => (
+                      <>
+                        {/* Shoot week group header */}
+                        <tr key={`grp-${gk}`} className="bg-slate-50/80">
+                          <td colSpan={canEdit && !isArchived ? 6 : 5} className="px-5 py-2">
+                            <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
+                              {gk === '__none__' ? 'No Shoot Week' : `Shoot Week: ${gk}`}
+                            </span>
+                            <span className="ml-2 text-xs text-slate-400">{groups[gk].length} set{groups[gk].length !== 1 ? 's' : ''}</span>
                           </td>
                         </tr>
-                      );
-                    }
 
-                    const days = s.days_until_handover;
-                    const isDone = ['complete', 'handed_over'].includes(s.completion_status);
-                    const dotColor = isDone ? 'bg-slate-300' : days == null ? 'bg-slate-200' : days <= 0 ? 'bg-red-500' : days <= 14 ? 'bg-amber-400' : 'bg-green-400';
-                    const countdownText = isDone ? 'Done' : days == null ? '—' : days <= 0 ? `${Math.abs(days)}d overdue` : `${days}d`;
-                    const countdownColor = isDone ? 'text-slate-400' : days == null ? 'text-slate-400' : days <= 0 ? 'text-red-600 font-bold' : days <= 14 ? 'text-amber-600 font-semibold' : 'text-green-600';
-                    const ssc = SET_STATUS_CONFIG[s.completion_status] ?? SET_STATUS_CONFIG.not_started;
+                        {groups[gk].map(s => {
+                          const days = s.days_until_handover;
+                          const isHandedOver = s.completion_status === 'handed_over';
+                          const isDone = ['complete', 'handed_over'].includes(s.completion_status);
+                          const isOverdue = !isHandedOver && days != null && days <= 0;
+                          const isRed    = !isDone && days != null && days < 7;
+                          const isAmber  = !isDone && days != null && days >= 7 && days <= 14;
 
-                    return (
-                      <tr key={s.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3 text-slate-500 text-xs font-mono">{s.set_number ?? '—'}</td>
-                        <td className="px-4 py-3">
-                          <p className="text-slate-800 font-medium text-sm">{s.set_name}</p>
-                          {s.notes && <p className="text-slate-400 text-xs mt-0.5">{s.notes}</p>}
-                        </td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">{s.shoot_week ?? '—'}</td>
-                        <td className="px-4 py-3 text-slate-500 text-xs">
-                          {s.handover_date ? (
-                            <div className="flex items-center gap-1.5">
-                              <MapPin size={11} className="text-slate-400" />
-                              {fmtDate(s.handover_date)}
-                            </div>
-                          ) : '—'}
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${ssc.className}`}>{ssc.label}</span>
-                        </td>
-                        <td className="px-4 py-3 text-center">
-                          <div className="flex items-center justify-center gap-1.5">
-                            <span className={`w-2 h-2 rounded-full ${dotColor} flex-shrink-0`} />
-                            <span className={`text-sm ${countdownColor}`}>{countdownText}</span>
-                          </div>
-                        </td>
-                        {canEdit && !isArchived && (
-                          <td className="px-4 py-3">
-                            <div className="flex items-center gap-1">
-                              <button
-                                onClick={() => { setEditingSetId(s.id); setShowAddSet(false); }}
-                                className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
-                                title="Edit set"
-                              >
-                                <Pencil size={13} />
-                              </button>
-                              <button
-                                onClick={() => handleDeleteSet(s.id)}
-                                disabled={deletingSetId === s.id}
-                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
-                                title="Delete set"
-                              >
-                                {deletingSetId === s.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
-                              </button>
-                            </div>
-                          </td>
-                        )}
-                      </tr>
-                    );
-                  })
-                )}
-              </tbody>
-            </table>
+                          const rowBg = isHandedOver ? '' : isRed || isOverdue ? 'bg-red-50/60' : isAmber ? 'bg-amber-50/50' : '';
+                          const countdownText = isHandedOver
+                            ? 'Handed over'
+                            : days == null ? '—'
+                            : days <= 0 ? 'Overdue'
+                            : `${days}d`;
+                          const countdownCls = isHandedOver ? 'text-green-600 font-medium' : isOverdue || isRed ? 'text-red-600 font-bold' : isAmber ? 'text-amber-600 font-semibold' : 'text-green-600';
+                          const dotColor = isHandedOver ? 'bg-slate-300' : isRed || isOverdue ? 'bg-red-500' : isAmber ? 'bg-amber-400' : 'bg-green-400';
+                          const isLinked = (s.linked_po_count ?? 0) > 0;
+
+                          return (
+                            <tr key={s.id} className={`border-t border-slate-100 ${rowBg} transition-colors`}>
+                              <td className="px-5 py-3 text-slate-500 text-xs font-mono sticky left-0 bg-inherit z-10">{s.set_number ?? '—'}</td>
+                              <td className="px-4 py-3">
+                                <p className="text-slate-800 font-medium text-sm">{s.set_name}</p>
+                                {s.notes && <p className="text-slate-400 text-xs mt-0.5">{s.notes}</p>}
+                              </td>
+                              <td className="px-4 py-3 text-slate-500 text-xs whitespace-nowrap">
+                                {s.handover_date ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <MapPin size={11} className="text-slate-400" />
+                                    {fmtDate(s.handover_date)}
+                                  </div>
+                                ) : '—'}
+                              </td>
+                              <td className="px-4 py-3">
+                                <div className="flex items-center gap-1.5">
+                                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${dotColor}`} />
+                                  <span className={`text-sm ${countdownCls}`}>{countdownText}</span>
+                                </div>
+                              </td>
+                              <td className="px-4 py-3">
+                                {canEdit && !isArchived ? (
+                                  <div className="relative">
+                                    <select
+                                      value={s.completion_status}
+                                      disabled={patchingSetId === s.id}
+                                      onChange={e => handlePatchStatus(s.id, e.target.value)}
+                                      className="text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-1 focus:ring-teal-400 cursor-pointer disabled:opacity-60 pr-6"
+                                    >
+                                      {(Object.keys(SET_STATUS_CONFIG) as SetStatus[]).map(st => (
+                                        <option key={st} value={st}>{SET_STATUS_CONFIG[st].label}</option>
+                                      ))}
+                                    </select>
+                                    {patchingSetId === s.id && <Loader2 size={11} className="animate-spin text-teal-500 absolute right-1.5 top-1/2 -translate-y-1/2 pointer-events-none" />}
+                                  </div>
+                                ) : (
+                                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${(SET_STATUS_CONFIG[s.completion_status] ?? SET_STATUS_CONFIG.not_started).className}`}>
+                                    {(SET_STATUS_CONFIG[s.completion_status] ?? SET_STATUS_CONFIG.not_started).label}
+                                  </span>
+                                )}
+                              </td>
+                              {canEdit && !isArchived && (
+                                <td className="px-4 py-3">
+                                  <div className="flex items-center gap-1">
+                                    <button
+                                      onClick={() => setSlideOver(s)}
+                                      className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 rounded-lg transition-colors"
+                                      title="Edit set"
+                                    >
+                                      <Pencil size={13} />
+                                    </button>
+                                    <span title={isLinked ? 'This set has linked purchase orders or timesheet entries.' : undefined}>
+                                      <button
+                                        onClick={() => handleDeleteSet(s.id)}
+                                        disabled={deletingSetId === s.id || isLinked}
+                                        className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                                      >
+                                        {deletingSetId === s.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                      </button>
+                                    </span>
+                                  </div>
+                                </td>
+                              )}
+                            </tr>
+                          );
+                        })}
+                      </>
+                    ))}
+                  </tbody>
+                </table>
+              );
+            })()}
           </div>
         </div>
 

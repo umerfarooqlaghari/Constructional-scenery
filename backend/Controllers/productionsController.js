@@ -431,7 +431,17 @@ const unarchiveProduction = async (req, res) => {
 const getSets = async (req, res) => {
   try {
     const { rows } = await db.query(
-      'SELECT * FROM sets WHERE production_id = $1 ORDER BY shoot_week',
+      `SELECT s.*,
+              COALESCE(po_links.cnt, 0)::int AS linked_po_count
+       FROM   sets s
+       LEFT JOIN (
+         SELECT set_code, COUNT(*)::int AS cnt
+         FROM   purchase_orders
+         WHERE  production_id = $1 AND set_code IS NOT NULL
+         GROUP  BY set_code
+       ) po_links ON po_links.set_code = s.set_number
+       WHERE  s.production_id = $1
+       ORDER  BY s.shoot_week NULLS LAST, s.handover_date ASC NULLS LAST`,
       [req.params.id]
     );
     res.json(calcSetCountdown(rows));
@@ -489,9 +499,44 @@ const updateSet = async (req, res) => {
   }
 };
 
+// PATCH /api/productions/:id/sets/:setId  (inline completion_status update)
+const patchSet = async (req, res) => {
+  const { completion_status } = req.body;
+  if (!completion_status) return res.status(400).json({ error: 'completion_status is required' });
+  try {
+    const { rows } = await db.query(
+      `UPDATE sets SET completion_status = $1 WHERE id = $2 AND production_id = $3 RETURNING *`,
+      [completion_status, req.params.setId, req.params.id]
+    );
+    if (!rows[0]) return res.status(404).json({ error: 'Set not found' });
+    res.json(rows[0]);
+  } catch (err) {
+    console.error('patchSet:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // DELETE /api/productions/:id/sets/:setId
 const deleteSet = async (req, res) => {
   try {
+    // Guard: check linked purchase orders
+    const { rows: [setRow] } = await db.query(
+      'SELECT set_number FROM sets WHERE id = $1 AND production_id = $2',
+      [req.params.setId, req.params.id]
+    );
+    if (!setRow) return res.status(404).json({ error: 'Set not found' });
+
+    if (setRow.set_number) {
+      const { rows: [linked] } = await db.query(
+        'SELECT COUNT(*) AS cnt FROM purchase_orders WHERE production_id = $1 AND set_code = $2',
+        [req.params.id, setRow.set_number]
+      );
+      if (parseInt(linked.cnt, 10) > 0)
+        return res.status(400).json({
+          error: 'This set has linked purchase orders or timesheet entries.'
+        });
+    }
+
     await db.query(
       'DELETE FROM sets WHERE id = $1 AND production_id = $2',
       [req.params.setId, req.params.id]
@@ -570,10 +615,51 @@ const getAuditLog = async (req, res) => {
   }
 };
 
+// POST /api/productions/handover-alerts  (called by cron/scheduler)
+const sendHandoverAlerts = async (req, res) => {
+  const { sendEmail, templates } = require('../config/email');
+  try {
+    const { rows: sets14 } = await db.query(
+      `SELECT s.*, p.name AS production_name
+       FROM sets s
+       JOIN productions p ON s.production_id = p.id
+       WHERE s.handover_date = CURRENT_DATE + INTERVAL '14 days'
+         AND s.completion_status != 'handed_over'`
+    );
+    const { rows: sets7 } = await db.query(
+      `SELECT s.*, p.name AS production_name
+       FROM sets s
+       JOIN productions p ON s.production_id = p.id
+       WHERE s.handover_date = CURRENT_DATE + INTERVAL '7 days'
+         AND s.completion_status != 'handed_over'`
+    );
+
+    const alerts = [
+      ...sets14.map(s => ({ set: s, days: 14 })),
+      ...sets7.map(s => ({ set: s, days: 7 })),
+    ];
+
+    const results = await Promise.allSettled(
+      alerts.map(({ set, days }) => {
+        const subject = `⚠ Set handover alert: ${set.set_name} — ${days} days`;
+        const html = `<p><strong>${set.set_name}</strong> (${set.set_number ?? 'no code'}) on production <strong>${set.production_name}</strong> has its handover date in <strong>${days} days</strong> (${set.handover_date?.split('T')[0]}).</p><p>Current status: ${set.completion_status}</p>`;
+        return sendEmail({ to: process.env.ALERT_EMAIL || process.env.SMTP_USER, subject, html });
+      })
+    );
+
+    const sent = results.filter(r => r.status === 'fulfilled').length;
+    res.json({ message: `Handover alerts sent`, sent, total: alerts.length });
+  } catch (err) {
+    console.error('sendHandoverAlerts:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getAllProductions, createProduction, getProductionById, updateProduction,
   transitionStatus,
   getArchivePreview, archiveProduction, unarchiveProduction, getAuditLog,
-  getSets, createSet, updateSet, deleteSet,
+  getSets, createSet, updateSet, patchSet, deleteSet,
+  sendHandoverAlerts,
   getDocuments, uploadDocument,
 };
