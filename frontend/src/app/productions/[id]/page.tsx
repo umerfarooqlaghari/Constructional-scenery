@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
@@ -369,7 +369,217 @@ function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, on
   );
 }
 
-// ─── Document Upload Modal ────────────────────────────────────────────────────
+// ─── Documents Panel ──────────────────────────────────────────────────────────
+
+const ALLOWED_DOC_TYPES  = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+const MAX_DOC_BYTES       = 25 * 1024 * 1024;
+
+function fmtFileSize(bytes: number | null): string {
+  if (!bytes) return '';
+  if (bytes < 1024)         return `${bytes} B`;
+  if (bytes < 1024 * 1024)  return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+interface DocumentsPanelProps {
+  productionId: string;
+  documents: ProductionDocument[];
+  canUpload: boolean;
+  userId: string;
+  isMD: boolean;
+  onUploaded: (doc: ProductionDocument) => void;
+  onDeleted: (docId: string) => void;
+}
+
+function DocumentsPanel({ productionId, documents, canUpload, userId, isMD, onUploaded, onDeleted }: DocumentsPanelProps) {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
+  const [dragging, setDragging]     = useState(false);
+  const [uploadState, setUploadState] = useState<{ name: string; progress: number } | null>(null);
+  const [uploadError, setUploadError] = useState('');
+  const [deletingId, setDeletingId]   = useState<string | null>(null);
+
+  const validateAndUpload = (file: File) => {
+    setUploadError('');
+    if (!ALLOWED_DOC_TYPES.has(file.type)) {
+      setUploadError('Only PDF, JPEG, and PNG files are allowed.');
+      return;
+    }
+    if (file.size > MAX_DOC_BYTES) {
+      setUploadError(`File too large. Maximum size is 25 MB (your file: ${fmtFileSize(file.size)}).`);
+      return;
+    }
+    doXhrUpload(file);
+  };
+
+  const doXhrUpload = (file: File) => {
+    setUploadState({ name: file.name, progress: 0 });
+    const fd = new FormData();
+    fd.append('file', file);
+
+    const xhr = new XMLHttpRequest();
+    xhr.upload.onprogress = e => {
+      if (e.lengthComputable) setUploadState({ name: file.name, progress: Math.round((e.loaded / e.total) * 100) });
+    };
+    xhr.onload = () => {
+      setUploadState(null);
+      if (xhr.status === 201) {
+        try { onUploaded(JSON.parse(xhr.responseText)); } catch { /* ignore */ }
+      } else {
+        try { setUploadError(JSON.parse(xhr.responseText).error ?? 'Upload failed'); } catch { setUploadError('Upload failed'); }
+      }
+    };
+    xhr.onerror = () => { setUploadState(null); setUploadError('Upload failed — check your connection.'); };
+
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : '';
+    xhr.open('POST', `/api/productions/${productionId}/documents`);
+    if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+    xhr.send(fd);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    if (!canUpload || uploadState) return;
+    const file = e.dataTransfer.files[0];
+    if (file) validateAndUpload(file);
+  };
+
+  const handleDelete = async (doc: ProductionDocument) => {
+    if (!confirm(`Delete "${doc.file_name}"? This cannot be undone.`)) return;
+    setDeletingId(doc.id);
+    try {
+      await productionsApi.deleteDocument(productionId, doc.id);
+      onDeleted(doc.id);
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  const isPdf   = (mime: string | null) => mime === 'application/pdf';
+  const isImage = (mime: string | null) => mime?.startsWith('image/') ?? false;
+
+  return (
+    <div
+      onDragOver={e => { e.preventDefault(); if (canUpload && !uploadState) setDragging(true); }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={handleDrop}
+      className={`relative transition-colors ${dragging ? 'ring-2 ring-blue-400 ring-offset-1 rounded-xl' : ''}`}
+    >
+      {/* Header */}
+      <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+        <div>
+          <h2 className="text-slate-900 font-semibold text-sm">Production Documents</h2>
+          <p className="text-slate-400 text-xs mt-0.5">{documents.length} document{documents.length !== 1 ? 's' : ''} · PDF, JPEG, PNG · max 25 MB</p>
+        </div>
+        {canUpload && !uploadState && (
+          <>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".pdf,.jpg,.jpeg,.png"
+              className="hidden"
+              onChange={e => { const f = e.target.files?.[0]; if (f) validateAndUpload(f); e.target.value = ''; }}
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
+            >
+              <Upload size={12} />
+              Upload
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Upload progress bar */}
+      {uploadState && (
+        <div className="px-5 py-3 border-b border-slate-100 bg-blue-50/50">
+          <div className="flex items-center justify-between mb-1">
+            <span className="text-xs text-slate-700 truncate max-w-xs">{uploadState.name}</span>
+            <span className="text-xs text-blue-600 font-medium ml-2">{uploadState.progress}%</span>
+          </div>
+          <div className="w-full bg-slate-200 rounded-full h-1.5">
+            <div className="h-1.5 bg-blue-500 rounded-full transition-all duration-200" style={{ width: `${uploadState.progress}%` }} />
+          </div>
+        </div>
+      )}
+
+      {/* Error */}
+      {uploadError && (
+        <div className="px-5 py-2 bg-red-50 border-b border-red-100">
+          <p className="text-red-600 text-xs">{uploadError} <button onClick={() => setUploadError('')} className="ml-1 underline">Dismiss</button></p>
+        </div>
+      )}
+
+      {/* Drop overlay */}
+      {dragging && (
+        <div className="absolute inset-0 bg-blue-50/80 border-2 border-dashed border-blue-400 rounded-xl flex items-center justify-center z-10 pointer-events-none">
+          <div className="text-center">
+            <Upload size={28} className="text-blue-500 mx-auto mb-1" />
+            <p className="text-blue-700 font-medium text-sm">Drop to upload</p>
+          </div>
+        </div>
+      )}
+
+      {/* Document list */}
+      {documents.length === 0 ? (
+        <div className="px-5 py-10 text-center">
+          <FileText size={28} className="text-slate-200 mx-auto mb-2" />
+          <p className="text-slate-400 text-sm">No documents yet.</p>
+          {canUpload && <p className="text-slate-400 text-xs mt-1">Click Upload or drag a PDF / image here.</p>}
+        </div>
+      ) : (
+        <div className="divide-y divide-slate-100">
+          {documents.map(doc => (
+            <div key={doc.id} className="flex items-center gap-3 px-5 py-3 hover:bg-slate-50/50 transition-colors">
+              {/* File type icon */}
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-shrink-0 ${isPdf(doc.file_mime_type) ? 'bg-red-100' : isImage(doc.file_mime_type) ? 'bg-blue-100' : 'bg-slate-100'}`}>
+                <FileText size={16} className={isPdf(doc.file_mime_type) ? 'text-red-500' : isImage(doc.file_mime_type) ? 'text-blue-500' : 'text-slate-400'} />
+              </div>
+
+              {/* Name + meta */}
+              <div className="flex-1 min-w-0">
+                <p className="text-slate-800 text-sm font-medium truncate">{doc.file_name}</p>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  {doc.file_mime_type === 'application/pdf' ? 'PDF' : doc.file_mime_type?.split('/')[1]?.toUpperCase() ?? 'File'}
+                  {doc.file_size ? ` · ${fmtFileSize(doc.file_size)}` : ''}
+                  {' · '}{fmtDate(doc.uploaded_at)}
+                </p>
+              </div>
+
+              {/* Actions */}
+              <div className="flex items-center gap-1 flex-shrink-0">
+                <a
+                  href={doc.file_url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  download={doc.file_name}
+                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                  title="Download"
+                >
+                  <Upload size={13} className="rotate-180" />
+                </a>
+                {(doc.uploaded_by === userId || isMD) && (
+                  <button
+                    onClick={() => handleDelete(doc)}
+                    disabled={deletingId === doc.id}
+                    className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                    title={`Delete ${doc.file_name}`}
+                  >
+                    {deletingId === doc.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                  </button>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Old Upload Modal stub (now unused) ───────────────────────────────────────
 
 interface UploadDocModalProps {
   productionId: string;
@@ -379,7 +589,6 @@ interface UploadDocModalProps {
 
 function UploadDocModal({ productionId, onClose, onUploaded }: UploadDocModalProps) {
   const [file, setFile]         = useState<File | null>(null);
-  const [docType, setDocType]   = useState('other');
   const [uploading, setUploading] = useState(false);
   const [error, setError]       = useState('');
 
@@ -390,7 +599,6 @@ function UploadDocModal({ productionId, onClose, onUploaded }: UploadDocModalPro
     try {
       const fd = new FormData();
       fd.append('file', file);
-      fd.append('document_type', docType);
       const doc = await productionsApi.uploadDocument(productionId, fd);
       onUploaded(doc);
     } catch (err: unknown) {
@@ -410,33 +618,16 @@ function UploadDocModal({ productionId, onClose, onUploaded }: UploadDocModalPro
         <form onSubmit={submit} className="px-6 py-5 space-y-4">
           {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Document Type</label>
-            <select
-              className={inputCls}
-              value={docType}
-              onChange={e => setDocType(e.target.value)}
-            >
-              <option value="contract">Contract</option>
-              <option value="schedule">Schedule</option>
-              <option value="budget">Budget</option>
-              <option value="design">Design</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">File</label>
             <label className="flex flex-col items-center justify-center w-full h-28 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
               <Upload size={20} className="text-slate-400 mb-1" />
               <span className="text-sm text-slate-500">{file ? file.name : 'Click to select file'}</span>
-              <span className="text-xs text-slate-400 mt-0.5">PDF, DOC, XLS, PNG, JPG</span>
               <input type="file" className="hidden" onChange={e => setFile(e.target.files?.[0] ?? null)} />
             </label>
           </div>
           <div className="flex items-center justify-end gap-3 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Cancel</button>
-            <button
-              type="submit"
-              disabled={uploading}
+            <button type="submit" disabled={uploading}
               className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
             >
               {uploading && <Loader2 size={14} className="animate-spin" />}
@@ -465,7 +656,6 @@ export default function ProductionDetailPage() {
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [showEditModal, setShowEditModal] = useState(false);
-  const [showUploadModal, setShowUploadModal] = useState(false);
   const [slideOver, setSlideOver]     = useState<'add' | ProductionSet | null>(null);
   const [deletingSetId, setDeletingSetId] = useState<string | null>(null);
   const [patchingSetId, setPatchingSetId] = useState<string | null>(null);
@@ -668,16 +858,6 @@ export default function ProductionDetailPage() {
           production={production}
           onClose={() => setShowEditModal(false)}
           onSaved={updated => { setProduction(updated); setShowEditModal(false); }}
-        />
-      )}
-      {showUploadModal && !isArchived && (
-        <UploadDocModal
-          productionId={id}
-          onClose={() => setShowUploadModal(false)}
-          onUploaded={doc => {
-            setProduction(p => p ? { ...p, production_documents: [doc, ...p.production_documents] } : p);
-            setShowUploadModal(false);
-          }}
         />
       )}
 
@@ -1182,52 +1362,15 @@ export default function ProductionDetailPage() {
 
         {/* Documents */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-          <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-            <div>
-              <h2 className="text-slate-900 font-semibold text-sm">Production Documents</h2>
-              <p className="text-slate-400 text-xs mt-0.5">{production.production_documents.length} document{production.production_documents.length !== 1 ? 's' : ''}</p>
-            </div>
-            {canEdit && !isArchived && (
-              <button
-                onClick={() => setShowUploadModal(true)}
-                className="flex items-center gap-1.5 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 transition-colors"
-              >
-                <Upload size={12} />
-                Upload
-              </button>
-            )}
-          </div>
-
-          {production.production_documents.length === 0 ? (
-            <div className="px-5 py-8 text-center">
-              <FileText size={24} className="text-slate-300 mx-auto mb-2" />
-              <p className="text-slate-400 text-sm">No documents uploaded yet.</p>
-            </div>
-          ) : (
-            <div className="divide-y divide-slate-100">
-              {production.production_documents.map(doc => (
-                <div key={doc.id} className="flex items-center justify-between px-5 py-3 hover:bg-slate-50/50 transition-colors">
-                  <div className="flex items-center gap-3">
-                    <div className="w-8 h-8 bg-slate-100 rounded-lg flex items-center justify-center">
-                      <FileText size={14} className="text-slate-500" />
-                    </div>
-                    <div>
-                      <p className="text-slate-800 text-sm font-medium">{doc.file_name}</p>
-                      <p className="text-slate-400 text-xs capitalize">{doc.document_type} · {fmtDate(doc.uploaded_at)}</p>
-                    </div>
-                  </div>
-                  <a
-                    href={doc.file_url}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-blue-600 text-xs hover:text-blue-700 hover:underline font-medium"
-                  >
-                    Download
-                  </a>
-                </div>
-              ))}
-            </div>
-          )}
+          <DocumentsPanel
+            productionId={id}
+            documents={production.production_documents}
+            canUpload={canEdit && !isArchived}
+            userId={user?.id ?? ''}
+            isMD={isMD}
+            onUploaded={doc => setProduction(p => p ? { ...p, production_documents: [doc, ...p.production_documents] } : p)}
+            onDeleted={docId => setProduction(p => p ? { ...p, production_documents: p.production_documents.filter(d => d.id !== docId) } : p)}
+          />
         </div>
 
       </main>

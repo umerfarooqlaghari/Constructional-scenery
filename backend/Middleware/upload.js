@@ -46,10 +46,22 @@ const upload = multer({
   fileFilter,
 });
 
+// Restricted upload for production/crew documents: PDF, JPEG, PNG only
+const DOCUMENT_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
+
+const documentUpload = multer({
+  storage,
+  limits: { fileSize: 25 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (DOCUMENT_MIME_TYPES.has(file.mimetype)) cb(null, true);
+    else cb(new Error('Only PDF, JPEG, and PNG files are allowed for documents'));
+  },
+});
+
 /**
  * Build the publicly accessible URL for an uploaded file.
- * e.g.  http://localhost:5000/uploads/16000000-123-myfile.pdf
+ * Returns a relative /uploads/<filename> path — proxied through Next.js.
  */
 const fileUrl = (filename) => `/uploads/${filename}`;
 
-module.exports = { upload, fileUrl };
+module.exports = { upload, documentUpload, fileUrl };

@@ -1,7 +1,7 @@
 const express        = require('express');
 const router         = express.Router();
 const ctrl           = require('../Controllers/productionsController');
-const { upload }     = require('../Middleware/upload');
+const { upload, documentUpload } = require('../Middleware/upload');
 
 // Static routes before /:id to avoid route conflict
 router.get('/audit-log',                ctrl.getAuditLog);
@@ -25,7 +25,8 @@ router.patch('/:id/sets/:setId',   ctrl.patchSet);
 router.delete('/:id/sets/:setId',  ctrl.deleteSet);
 
 // Documents
-router.get('/:id/documents',       ctrl.getDocuments);
-router.post('/:id/documents',      upload.single('file'), ctrl.uploadDocument);
+router.get('/:id/documents',              ctrl.getDocuments);
+router.post('/:id/documents',             documentUpload.single('file'), ctrl.uploadDocument);
+router.delete('/:id/documents/:docId',    ctrl.deleteDocument);
 
 module.exports = router;

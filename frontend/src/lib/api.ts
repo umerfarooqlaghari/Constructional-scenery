@@ -201,7 +201,10 @@ export type ProductionDocument = {
   production_id: string;
   document_type: string;
   file_url: string;
+  file_key: string | null;
   file_name: string;
+  file_size: number | null;
+  file_mime_type: string | null;
   uploaded_by: string;
   uploaded_at: string;
 };
@@ -325,7 +328,12 @@ export const productionsApi = {
         Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
       },
       body: formData,
-    }).then(r => r.json()) as Promise<ProductionDocument>,
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({ error: 'Upload failed' })); throw new Error(e.error); }
+      return r.json() as Promise<ProductionDocument>;
+    }),
+  deleteDocument: (id: string, docId: string) =>
+    request<{ message: string }>(`/api/productions/${id}/documents/${docId}`, { method: 'DELETE' }),
 };
 
 // ─── Dashboard API ─────────────────────────────────────────────────────────────
