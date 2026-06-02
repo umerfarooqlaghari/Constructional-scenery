@@ -576,6 +576,8 @@ const deleteSet = async (req, res) => {
 
 // ─── Production Documents ──────────────────────────────────────────────────────
 
+const fileStorage = require('../services/fileStorage');
+
 // GET /api/productions/:id/documents
 const getDocuments = async (req, res) => {
   try {
@@ -591,27 +593,66 @@ const getDocuments = async (req, res) => {
 
 // POST /api/productions/:id/documents
 const uploadDocument = async (req, res) => {
-  let { document_type } = req.body;
-  let file_url  = req.body.file_url;
-  let file_name = req.body.file_name;
-
-  if (req.file) {
-    file_url  = fileUrl(req.file.filename);
-    file_name = req.file.originalname;
-  }
-
-  if (!file_url || !file_name)
-    return res.status(400).json({ error: 'Provide a file upload or file_url + file_name' });
+  if (!req.file)
+    return res.status(400).json({ error: 'No file provided' });
 
   try {
+    // Server-side validation (mime type + size already checked by documentUpload multer)
+    fileStorage.validate(req.file.mimetype, req.file.size);
+
+    const { url, key, size } = fileStorage.store(req.file);
+
     const { rows } = await db.query(
-      `INSERT INTO production_documents (production_id, document_type, file_url, file_name, uploaded_by)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO production_documents
+         (production_id, document_type, file_url, file_key, file_name, file_size, file_mime_type, uploaded_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
-      [req.params.id, document_type || 'other', file_url, file_name, req.user.id]
+      [
+        req.params.id,
+        req.body.document_type || 'other',
+        url, key,
+        req.file.originalname,
+        size,
+        req.file.mimetype,
+        req.user.id,
+      ]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
+    console.error('uploadDocument:', err);
+    res.status(err.status ?? 500).json({ error: err.message });
+  }
+};
+
+// DELETE /api/productions/:id/documents/:docId
+const deleteDocument = async (req, res) => {
+  try {
+    const { rows: [doc] } = await db.query(
+      'SELECT * FROM production_documents WHERE id = $1 AND production_id = $2',
+      [req.params.docId, req.params.id]
+    );
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    // RBAC: uploader or MD
+    if (doc.uploaded_by !== req.user.id && req.user.role !== 'managing_director')
+      return res.status(403).json({ error: 'Only the uploader or MD can delete documents' });
+
+    // Delete from storage (non-fatal if file already gone)
+    await fileStorage.deleteFile(doc.file_key ?? doc.file_name).catch(e =>
+      console.error('fileStorage.deleteFile failed (non-fatal):', e.message)
+    );
+
+    await db.query('DELETE FROM production_documents WHERE id = $1', [req.params.docId]);
+
+    await db.query(
+      `INSERT INTO audit_log (user_id, production_id, action, metadata)
+       VALUES ($1, $2, 'document_deleted', $3)`,
+      [req.user.id, req.params.id, JSON.stringify({ file_name: doc.file_name })]
+    );
+
+    res.json({ message: 'Document deleted' });
+  } catch (err) {
+    console.error('deleteDocument:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -687,5 +728,5 @@ module.exports = {
   getArchivePreview, archiveProduction, unarchiveProduction, getAuditLog,
   getSets, createSet, updateSet, patchSet, deleteSet,
   sendHandoverAlerts,
-  getDocuments, uploadDocument,
+  getDocuments, uploadDocument, deleteDocument,
 };

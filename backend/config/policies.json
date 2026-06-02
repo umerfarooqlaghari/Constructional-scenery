@@ -52,6 +52,7 @@
       "GET /api/productions/:id",
       "GET /api/productions/:id/sets",
       "GET /api/productions/:id/documents",
+      "DELETE /api/productions/:id/documents/:docId",
       "GET /api/productions/:id/archive-preview",
       "POST /api/productions/:id/archive",
       "POST /api/productions/:id/transition",
@@ -86,6 +87,7 @@
       "DELETE /api/productions/:id/sets/:setId",
       "GET /api/productions/:id/documents",
       "POST /api/productions/:id/documents",
+      "DELETE /api/productions/:id/documents/:docId",
       "POST /api/productions/:id/transition",
 
       "GET /api/purchase-orders",
