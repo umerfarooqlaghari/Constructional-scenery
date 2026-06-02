@@ -37,6 +37,60 @@ const fmtDate = (d: string | null) =>
 
 const inputCls = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
 
+// ─── Contract Type Selector (shared) ─────────────────────────────────────────
+
+const CONTRACT_TYPE_INFO = {
+  on_a_price: {
+    label: 'On a Price',
+    desc:  'Fixed fee agreed with production. Internal cost tracking only. Cost report is private.',
+  },
+  cost_plus: {
+    label: 'Cost Plus',
+    desc:  'All costs recharged with margin. Cost report shared with production. Weekly recharge submissions required.',
+  },
+} as const;
+
+function ContractTypeSelector({
+  value, onChange, locked = false, lockedReason,
+}: {
+  value: ContractType | '';
+  onChange: (v: ContractType) => void;
+  locked?: boolean;
+  lockedReason?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-600 mb-2">Contract Type *</label>
+      {locked ? (
+        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+          <div className={`text-xs px-2.5 py-1 rounded-full font-semibold ${value === 'cost_plus' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+            {value === 'cost_plus' ? 'Cost Plus' : 'On a Price'}
+          </div>
+          <span className="text-slate-400 text-xs">🔒 {lockedReason ?? 'Locked — linked records exist'}</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {(['on_a_price', 'cost_plus'] as ContractType[]).map(ct => (
+            <button key={ct} type="button" onClick={() => onChange(ct)}
+              className={`text-left p-3 rounded-xl border-2 transition-all ${value === ct ? 'border-blue-500 bg-blue-50' : 'border-slate-200 hover:border-slate-300 bg-white'}`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-semibold text-slate-800">{CONTRACT_TYPE_INFO[ct].label}</span>
+                {value === ct && <span className="text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded">selected</span>}
+              </div>
+              <p className="text-xs text-slate-500 leading-snug">{CONTRACT_TYPE_INFO[ct].desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="flex items-start gap-1.5 mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        <span className="flex-shrink-0">⚠</span>
+        Contract type cannot be changed once a purchase order or timesheet has been linked to this production.
+      </p>
+    </div>
+  );
+}
+
 // ─── Edit Production Modal ────────────────────────────────────────────────────
 
 interface EditProductionModalProps {
@@ -46,6 +100,7 @@ interface EditProductionModalProps {
 }
 
 function EditProductionModal({ production, onClose, onSaved }: EditProductionModalProps) {
+  const isLocked = production.has_linked_pos || production.has_linked_timesheets;
   const [form, setForm] = useState({
     name:                production.name ?? '',
     production_company:  production.production_company ?? '',
@@ -53,13 +108,24 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
     production_type:     production.production_type ?? '',
     start_date:          production.start_date ? production.start_date.split('T')[0] : '',
     end_date:            production.end_date   ? production.end_date.split('T')[0]   : '',
-    contract_type:       production.contract_type,
+    contract_type:       production.contract_type as ContractType | '',
   });
-  const [saving, setSaving] = useState(false);
-  const [error, setError]   = useState('');
+  const [saving, setSaving]               = useState(false);
+  const [error, setError]                 = useState('');
+  const [pendingContractType, setPendingContractType] = useState<ContractType | null>(null);
 
   const set = (k: keyof typeof form) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
     setForm(f => ({ ...f, [k]: e.target.value }));
+
+  const handleContractTypeChange = (v: ContractType) => {
+    if (v === production.contract_type) { setForm(f => ({ ...f, contract_type: v })); return; }
+    setPendingContractType(v); // show confirmation
+  };
+
+  const confirmContractTypeChange = () => {
+    if (pendingContractType) setForm(f => ({ ...f, contract_type: pendingContractType }));
+    setPendingContractType(null);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -67,8 +133,9 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
     try {
       const updated = await productionsApi.update(production.id, {
         ...form,
-        start_date: form.start_date || null,
-        end_date:   form.end_date   || null,
+        contract_type:       form.contract_type as ContractType,
+        start_date:          form.start_date || null,
+        end_date:            form.end_date   || null,
         production_company:  form.production_company  || null,
         production_designer: form.production_designer || null,
         production_type:     form.production_type     || null,
@@ -82,8 +149,23 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
   };
 
   return (
+    <>
+      {/* Contract type change confirmation */}
+      {pendingContractType && (
+        <div className="fixed inset-0 bg-black/60 z-[60] flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="text-slate-900 font-semibold text-base">Change contract type?</h3>
+            <p className="text-slate-600 text-sm">Changing the contract type will affect how the cost report is structured for this production. Are you sure?</p>
+            <div className="flex items-center justify-end gap-3">
+              <button onClick={() => setPendingContractType(null)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-50">Cancel</button>
+              <button onClick={confirmContractTypeChange} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 font-medium">Yes, change it</button>
+            </div>
+          </div>
+        </div>
+      )}
+
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg overflow-y-auto max-h-[90vh]" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
           <h2 className="text-slate-900 font-semibold text-base">Edit Production</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={18} /></button>
@@ -94,7 +176,7 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
             <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
             <input className={inputCls} value={form.name} onChange={set('name')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
               <input className={inputCls} value={form.production_company} onChange={set('production_company')} />
@@ -104,20 +186,17 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
               <input className={inputCls} value={form.production_designer} onChange={set('production_designer')} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
-              <input className={inputCls} value={form.production_type} onChange={set('production_type')} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Contract Type</label>
-              <select className={inputCls} value={form.contract_type} onChange={set('contract_type')}>
-                <option value="on_a_price">On a Price</option>
-                <option value="cost_plus">Cost Plus</option>
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
+            <input className={inputCls} value={form.production_type} onChange={set('production_type')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <ContractTypeSelector
+            value={form.contract_type}
+            onChange={handleContractTypeChange}
+            locked={isLocked}
+            lockedReason="Locked — linked POs or timesheets exist"
+          />
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
               <input type="date" className={inputCls} value={form.start_date} onChange={set('start_date')} />
@@ -142,6 +221,7 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
         </form>
       </div>
     </div>
+    </>
   );
 }
 

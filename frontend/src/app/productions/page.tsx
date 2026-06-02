@@ -36,6 +36,70 @@ const CONTRACT_TYPES: { value: ContractType; label: string }[] = [
 const fmtDate = (d: string | null) =>
   d ? new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) : '—';
 
+// ─── Contract Type Selector ───────────────────────────────────────────────────
+
+const CONTRACT_TYPE_INFO = {
+  on_a_price: {
+    label: 'On a Price',
+    desc: 'Fixed fee agreed with production. Internal cost tracking only. Cost report is private.',
+  },
+  cost_plus: {
+    label: 'Cost Plus',
+    desc: 'All costs recharged with margin. Cost report shared with production. Weekly recharge submissions required.',
+  },
+} as const;
+
+function ContractTypeSelector({
+  value,
+  onChange,
+  locked = false,
+  lockedReason,
+}: {
+  value: ContractType | '';
+  onChange: (v: ContractType) => void;
+  locked?: boolean;
+  lockedReason?: string;
+}) {
+  return (
+    <div>
+      <label className="block text-xs font-medium text-slate-600 mb-2">Contract Type *</label>
+      {locked ? (
+        <div className="flex items-center gap-3 p-3 bg-slate-50 border border-slate-200 rounded-xl">
+          <div className={`text-xs px-2.5 py-1 rounded-full font-semibold ${value === 'cost_plus' ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-600'}`}>
+            {value === 'cost_plus' ? 'Cost Plus' : 'On a Price'}
+          </div>
+          <span className="text-slate-400 text-xs">🔒 Locked — {lockedReason ?? 'linked records exist'}</span>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {(['on_a_price', 'cost_plus'] as ContractType[]).map(ct => (
+            <button
+              key={ct}
+              type="button"
+              onClick={() => onChange(ct)}
+              className={`text-left p-3 rounded-xl border-2 transition-all ${
+                value === ct
+                  ? 'border-blue-500 bg-blue-50'
+                  : 'border-slate-200 hover:border-slate-300 bg-white'
+              }`}
+            >
+              <div className="flex items-center justify-between mb-1">
+                <span className="text-sm font-semibold text-slate-800">{CONTRACT_TYPE_INFO[ct].label}</span>
+                {value === ct && <span className="text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded">selected</span>}
+              </div>
+              <p className="text-xs text-slate-500 leading-snug">{CONTRACT_TYPE_INFO[ct].desc}</p>
+            </button>
+          ))}
+        </div>
+      )}
+      <p className="flex items-start gap-1.5 mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+        <span className="flex-shrink-0 mt-0.5">⚠</span>
+        Contract type cannot be changed once a purchase order or timesheet has been linked to this production.
+      </p>
+    </div>
+  );
+}
+
 // ─── New Production Modal ─────────────────────────────────────────────────────
 
 interface NewProductionModalProps { onClose: () => void; onCreated: () => void; }
@@ -44,7 +108,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
   const [form, setForm] = useState({
     name: '', production_company: '', production_designer: '', production_type: '',
     start_date: '', end_date: '',
-    contract_type: 'on_a_price' as ContractType,
+    contract_type: '' as ContractType | '',
     status: 'pre_production' as ProductionStatus,
   });
   const [saving, setSaving] = useState(false);
@@ -56,12 +120,14 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name.trim()) { setError('Production name is required.'); return; }
+    if (!form.contract_type) { setError('Please select a contract type.'); return; }
     setSaving(true); setError('');
     try {
       await productionsApi.create({
         ...form,
-        start_date: form.start_date || null,
-        end_date:   form.end_date   || null,
+        contract_type:       form.contract_type as ContractType,
+        start_date:          form.start_date || null,
+        end_date:            form.end_date   || null,
         production_company:  form.production_company  || null,
         production_designer: form.production_designer || null,
         production_type:     form.production_type     || null,
@@ -99,18 +165,14 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <input className={inputCls} placeholder="e.g. Helena Portman" value={form.production_designer} onChange={set('production_designer')} />
             </div>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
-              <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Contract Type *</label>
-              <select className={inputCls} value={form.contract_type} onChange={set('contract_type')}>
-                {CONTRACT_TYPES.map(c => <option key={c.value} value={c.value}>{c.label}</option>)}
-              </select>
-            </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
+            <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
           </div>
+          <ContractTypeSelector
+            value={form.contract_type as ContractType | ''}
+            onChange={v => setForm(f => ({ ...f, contract_type: v }))}
+          />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>

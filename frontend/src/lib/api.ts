@@ -211,6 +211,8 @@ export type ProductionDetail = Production & {
   production_documents: ProductionDocument[];
   days_remaining: number | null;
   sets_outstanding: number;
+  has_linked_pos: boolean;
+  has_linked_timesheets: boolean;
 };
 
 // ─── Dashboard types ───────────────────────────────────────────────────────────
