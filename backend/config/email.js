@@ -113,6 +113,61 @@ const templates = {
     `,
   }),
 
+  /**
+   * Handover alert — sent to coordinators + MD at 14-day and 7-day marks
+   */
+  handoverAlert: (set, days) => {
+    const handoverDate = set.handover_date
+      ? new Date(set.handover_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : '—';
+    const statusLabel = (set.completion_status ?? '').replace(/_/g, ' ');
+    const appUrl = process.env.APP_URL || 'https://cs-hq.onrender.com';
+    const deepLink = `${appUrl}/productions/${set.prod_id}`;
+    const dotColor = days <= 7 ? '#ef4444' : '#f59e0b';
+    const subject = `Handover alert — ${set.set_name}${set.set_number ? ` (Set ${set.set_number})` : ''} · ${days} days`;
+    return {
+      subject,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+          <div style="background:#1e293b;padding:16px 24px">
+            <p style="color:#94a3b8;font-size:11px;margin:0;letter-spacing:1px;text-transform:uppercase">Handover alert — ${set.set_name}${set.set_number ? ` (Set ${set.set_number})` : ''}</p>
+            <p style="color:#64748b;font-size:11px;margin:6px 0 0">From: invoice@constructscenery.co.uk &nbsp;·&nbsp; To: coordinator, warren</p>
+          </div>
+          <div style="padding:24px">
+            <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px">
+              <span style="color:${dotColor};font-size:18px;margin-top:1px">⏱</span>
+              <div>
+                <p style="font-weight:700;color:#1e293b;margin:0;font-size:15px">${days} days to handover</p>
+                <p style="color:#475569;font-size:13px;margin:6px 0 0">
+                  <strong>${set.set_name}${set.set_number ? ` — (Set ${set.set_number})` : ''}</strong>
+                  is due for handover to production on <strong>${handoverDate}</strong>.
+                  Current status: <strong style="text-transform:capitalize">${statusLabel || 'Not started'}</strong>.
+                </p>
+              </div>
+            </div>
+            <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px;padding-top:16px;border-top:1px solid #e2e8f0">
+              <span style="font-size:16px;margin-top:1px">🎬</span>
+              <div>
+                <p style="font-weight:700;color:#1e293b;margin:0;font-size:13px">Production</p>
+                <p style="color:#475569;font-size:13px;margin:4px 0 0">
+                  ${set.production_name ?? '—'}${set.production_company ? ` &nbsp;·&nbsp; ${set.production_company}` : ''}${set.production_designer ? ` &nbsp;·&nbsp; Production designer: ${set.production_designer}` : ''}
+                </p>
+              </div>
+            </div>
+            <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px 16px">
+              <a href="${deepLink}" style="color:#0ea5e9;font-size:13px;text-decoration:none">
+                View full set schedule in CS HQ &rarr; <span style="text-decoration:underline">[link]</span>
+              </a>
+            </div>
+          </div>
+          <div style="background:#f8fafc;padding:10px 24px;border-top:1px solid #e2e8f0">
+            <p style="color:#94a3b8;font-size:11px;margin:0">Construct Scenery Limited &nbsp;·&nbsp; Automated alert &nbsp;·&nbsp; Do not reply</p>
+          </div>
+        </div>
+      `,
+    };
+  },
+
 };
 
 module.exports = { sendEmail, templates };

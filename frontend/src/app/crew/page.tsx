@@ -4,9 +4,10 @@ import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
-  Plus, Search, ChevronRight, X, Loader2, Users, UserCheck, Briefcase, Building2,
+  Plus, Search, ChevronRight, X, Loader2, Users, UserCheck, Briefcase, Building2, Trash2,
 } from 'lucide-react';
 import { crewApi, productionsApi, CrewMember, EmploymentStatus, Production } from '@/lib/api';
+import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
@@ -332,12 +333,15 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
 
 export default function CrewPage() {
   const router = useRouter();
+  const { user } = useAuth();
+  const isMD = user?.role === 'managing_director';
   const [crew, setCrew]               = useState<CrewMember[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
   const [search, setSearch]           = useState('');
   const [activeTab, setActiveTab]     = useState<FilterTab>('all');
   const [showModal, setShowModal]     = useState(false);
+  const [deletingId, setDeletingId]   = useState<string | null>(null);
 
   const [productions, setProductions]       = useState<Production[]>([]);
   const [productionFilter, setProductionFilter] = useState('');
@@ -379,6 +383,23 @@ export default function CrewPage() {
   }, [activeTab, search, productionFilter, tradeFilter, rankFilter]);
 
   useEffect(() => { load(); }, [load]);
+
+  const handleDelete = async (c: CrewMember, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (!confirm(`Delete ${c.first_name} ${c.last_name}? If linked records exist, they will be deactivated instead.`)) return;
+    setDeletingId(c.id);
+    try {
+      const result = await crewApi.delete(c.id);
+      if (result.soft_deleted) {
+        alert(result.message);
+      }
+      await load();
+    } catch (err: unknown) {
+      alert(err instanceof Error ? err.message : 'Delete failed');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   // Stats derived from whatever the server returned
   const totalCrew  = crew.length;
@@ -507,14 +528,13 @@ export default function CrewPage() {
           )}
 
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[640px]">
+            <table className="w-full text-sm min-w-[780px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Crew Member</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Trade &amp; Rank</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Employment</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Company</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Email</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Active Production(s)</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
                   <th className="px-4 py-3"></th>
                 </tr>
@@ -523,7 +543,7 @@ export default function CrewPage() {
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: 7 }).map((_, j) => (
+                      {Array.from({ length: 6 }).map((_, j) => (
                         <td key={j} className="px-4 py-4">
                           <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
                         </td>
@@ -532,7 +552,7 @@ export default function CrewPage() {
                   ))
                 ) : filtered.length === 0 ? (
                   <tr>
-                    <td colSpan={7} className="px-5 py-10 text-center text-slate-400 text-sm">
+                    <td colSpan={6} className="px-5 py-10 text-center text-slate-400 text-sm">
                       {search ? 'No crew members match your search.' : 'No crew members found.'}
                     </td>
                   </tr>
@@ -563,13 +583,18 @@ export default function CrewPage() {
                             {c.employment_status === 'paye' ? 'PAYE' : 'Self-Employed'}
                           </span>
                         </td>
-                        <td className="px-4 py-3.5">
-                          {c.employment_status === 'self_employed' && c.company_name
-                            ? <span className="text-slate-700 text-xs">{c.company_name}</span>
+                        {/* Active Productions */}
+                        <td className="px-4 py-3.5 max-w-[180px]">
+                          {(c.active_productions && c.active_productions.length > 0)
+                            ? <div className="flex flex-wrap gap-1">
+                                {c.active_productions.slice(0, 2).map(p => (
+                                  <span key={p} className="text-[10px] bg-blue-50 text-blue-700 px-1.5 py-0.5 rounded-full font-medium truncate max-w-[120px]">{p}</span>
+                                ))}
+                                {c.active_productions.length > 2 && (
+                                  <span className="text-[10px] text-slate-400">+{c.active_productions.length - 2}</span>
+                                )}
+                              </div>
                             : <span className="text-slate-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-500 text-sm">
-                          {c.email ?? <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-4 py-3.5">
                           <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${c.is_active ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-600'}`}>
@@ -577,12 +602,24 @@ export default function CrewPage() {
                           </span>
                         </td>
                         <td className="px-4 py-3.5">
-                          <button
-                            onClick={e => { e.stopPropagation(); router.push(`/crew/${c.id}`); }}
-                            className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
-                          >
-                            <ChevronRight size={15} />
-                          </button>
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={e => { e.stopPropagation(); router.push(`/crew/${c.id}`); }}
+                              className="p-1.5 text-blue-500 hover:bg-blue-50 rounded-lg transition-colors"
+                            >
+                              <ChevronRight size={15} />
+                            </button>
+                            {isMD && (
+                              <button
+                                onClick={e => handleDelete(c, e)}
+                                disabled={deletingId === c.id}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-40"
+                                title="Delete crew member"
+                              >
+                                {deletingId === c.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={13} />}
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     );

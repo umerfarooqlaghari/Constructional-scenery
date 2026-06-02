@@ -98,10 +98,17 @@ const getAllCrew = async (req, res) => {
 
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
-      `SELECT id, crew_number, first_name, last_name, email, employment_status,
-              crew_trade, crew_rank, company_name, is_active
-       FROM crew_members ${where}
-       ORDER BY last_name`,
+      `SELECT cm.id, cm.crew_number, cm.first_name, cm.last_name, cm.email, cm.employment_status,
+              cm.crew_trade, cm.crew_rank, cm.company_name, cm.is_active,
+              COALESCE(
+                (SELECT ARRAY_AGG(p.name ORDER BY p.name)
+                 FROM production_crew pc
+                 JOIN productions p ON pc.production_id = p.id
+                 WHERE pc.crew_member_id = cm.id AND p.status NOT IN ('archived','complete')),
+                ARRAY[]::text[]
+              ) AS active_productions
+       FROM crew_members cm ${where}
+       ORDER BY cm.last_name`,
       params
     );
     res.json(rows);
@@ -168,6 +175,14 @@ const getCrewById = async (req, res) => {
     );
     if (!member) return res.status(404).json({ error: 'Crew member not found' });
 
+    // Bank details visible to Coordinator and Accountant only — not MD
+    const canSeeBankDetails = ['construction_coordinator', 'construction_accountant'].includes(req.user?.role);
+    if (!canSeeBankDetails) {
+      delete member.account_name;
+      delete member.account_number;
+      delete member.sort_code;
+    }
+
     const [{ rows: productionHistory }, { rows: timesheetHistory }, { rows: documents }] =
       await Promise.all([
         db.query(
@@ -187,7 +202,11 @@ const getCrewById = async (req, res) => {
           [req.params.id]
         ),
         db.query(
-          'SELECT * FROM crew_documents WHERE crew_member_id = $1 ORDER BY uploaded_at DESC',
+          `SELECT cd.*, p.name AS production_name
+           FROM crew_documents cd
+           LEFT JOIN productions p ON cd.production_id = p.id
+           WHERE cd.crew_member_id = $1
+           ORDER BY cd.uploaded_at DESC`,
           [req.params.id]
         ),
       ]);
@@ -242,48 +261,76 @@ const updateCrewMember = async (req, res) => {
 
 // ─── POST /api/crew/:id/documents ─────────────────────────────────────────────
 const addDocument = async (req, res) => {
-  const { document_type, production_id } = req.body;
-  let file_url  = req.body.file_url;
-  let file_name = req.body.file_name;
+  const fileStorage = require('../services/fileStorage');
+  if (!req.file) return res.status(400).json({ error: 'No file provided' });
 
-  if (req.file) {
-    file_url  = fileUrl(req.file.filename);
-    file_name = req.file.originalname;
-  }
-
-  if (!document_type || !file_url || !file_name)
-    return res.status(400).json({ error: 'document_type is required, plus either a file upload or file_url + file_name' });
-
-  const validTypes = ['government_id', 'contract', 'other'];
-  if (!validTypes.includes(document_type))
-    return res.status(400).json({ error: `document_type must be one of: ${validTypes.join(', ')}` });
+  const { context_type, production_id } = req.body;
+  const validContextTypes = ['crew_identity', 'crew_contract'];
+  if (!context_type || !validContextTypes.includes(context_type))
+    return res.status(400).json({ error: `context_type must be one of: ${validContextTypes.join(', ')}` });
+  if (context_type === 'crew_contract' && !production_id)
+    return res.status(400).json({ error: 'production_id is required for crew_contract documents' });
 
   try {
+    fileStorage.validate(req.file.mimetype, req.file.size);
+    const { url, key, size } = fileStorage.store(req.file);
+
+    const docType = context_type === 'crew_contract' ? 'contract' : 'government_id';
+
     const { rows } = await db.query(
-      `INSERT INTO crew_documents (crew_member_id, document_type, production_id, file_url, file_name)
-       VALUES ($1,$2,$3,$4,$5)
+      `INSERT INTO crew_documents
+         (crew_member_id, document_type, context_type, production_id, file_url, file_key, file_name, file_size, file_mime_type)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
        RETURNING *`,
       [
-        req.params.id, document_type,
-        document_type === 'contract' ? production_id : null,
-        file_url, file_name,
+        req.params.id, docType, context_type,
+        context_type === 'crew_contract' ? production_id : null,
+        url, key, req.file.originalname, size, req.file.mimetype,
       ]
     );
     res.status(201).json(rows[0]);
   } catch (err) {
-    res.status(500).json({ error: err.message });
+    res.status(err.status ?? 500).json({ error: err.message });
   }
 };
 
 // ─── DELETE /api/crew/:id/documents/:docId ────────────────────────────────────
 const deleteDocument = async (req, res) => {
+  const fileStorage = require('../services/fileStorage');
+
+  // Only Coordinators can delete crew documents
+  if (req.user?.role !== 'construction_coordinator')
+    return res.status(403).json({ error: 'Only Coordinators can delete crew documents' });
+
   try {
-    await db.query(
-      'DELETE FROM crew_documents WHERE id = $1 AND crew_member_id = $2',
+    const { rows: [doc] } = await db.query(
+      'SELECT * FROM crew_documents WHERE id = $1 AND crew_member_id = $2',
       [req.params.docId, req.params.id]
     );
-    res.json({ message: 'Document removed' });
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    // Delete file from storage
+    await fileStorage.deleteFile(doc.file_key ?? doc.file_name).catch(e =>
+      console.error('fileStorage.deleteFile non-fatal:', e.message)
+    );
+
+    await db.query('DELETE FROM crew_documents WHERE id = $1', [req.params.docId]);
+
+    // Get crew member name for audit log
+    const { rows: [cm] } = await db.query('SELECT first_name, last_name FROM crew_members WHERE id = $1', [req.params.id]);
+    await db.query(
+      `INSERT INTO audit_log (user_id, action, metadata) VALUES ($1, 'crew_document_deleted', $2)`,
+      [req.user.id, JSON.stringify({
+        crew_member:   cm ? `${cm.first_name} ${cm.last_name}` : req.params.id,
+        document_type: doc.context_type ?? doc.document_type,
+        file_name:     doc.file_name,
+        production_id: doc.production_id ?? null,
+      })]
+    );
+
+    res.json({ message: 'Document deleted' });
   } catch (err) {
+    console.error('deleteDocument:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -307,7 +354,42 @@ const linkToProduction = async (req, res) => {
   }
 };
 
+// ─── DELETE /api/crew/:id ─────────────────────────────────────────────────────
+const deleteCrewMember = async (req, res) => {
+  try {
+    const { rows: [member] } = await db.query(
+      'SELECT id, first_name, last_name, is_active FROM crew_members WHERE id = $1',
+      [req.params.id]
+    );
+    if (!member) return res.status(404).json({ error: 'Crew member not found' });
+
+    // Hard-delete guard: check for timesheets or production engagements
+    const { rows: [linked] } = await db.query(
+      `SELECT (
+         EXISTS(SELECT 1 FROM timesheets     WHERE crew_member_id = $1) OR
+         EXISTS(SELECT 1 FROM production_crew WHERE crew_member_id = $1)
+       ) AS has_records`,
+      [req.params.id]
+    );
+
+    if (linked.has_records) {
+      // Soft delete — deactivate instead
+      await db.query('UPDATE crew_members SET is_active = false WHERE id = $1', [req.params.id]);
+      return res.json({
+        message: `${member.first_name} ${member.last_name} has been deactivated (linked records exist — hard delete prevented).`,
+        soft_deleted: true,
+      });
+    }
+
+    await db.query('DELETE FROM crew_members WHERE id = $1', [req.params.id]);
+    res.json({ message: `${member.first_name} ${member.last_name} has been permanently deleted.`, soft_deleted: false });
+  } catch (err) {
+    console.error('deleteCrewMember:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getTrades, getAllCrew, createCrewMember, getCrewById, updateCrewMember,
-  addDocument, deleteDocument, linkToProduction,
+  deleteCrewMember, addDocument, deleteDocument, linkToProduction,
 };

@@ -682,40 +682,72 @@ const getAuditLog = async (req, res) => {
   }
 };
 
-// POST /api/productions/handover-alerts  (called by cron/scheduler)
+// POST /api/productions/handover-alerts  (called by cron/scheduler — daily)
 const sendHandoverAlerts = async (req, res) => {
   const { sendEmail, templates } = require('../config/email');
   try {
+    // Collect sets hitting 14-day and 7-day marks today
     const { rows: sets14 } = await db.query(
-      `SELECT s.*, p.name AS production_name
+      `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
        FROM sets s
        JOIN productions p ON s.production_id = p.id
        WHERE s.handover_date = CURRENT_DATE + INTERVAL '14 days'
          AND s.completion_status != 'handed_over'`
     );
     const { rows: sets7 } = await db.query(
-      `SELECT s.*, p.name AS production_name
+      `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
        FROM sets s
        JOIN productions p ON s.production_id = p.id
        WHERE s.handover_date = CURRENT_DATE + INTERVAL '7 days'
          AND s.completion_status != 'handed_over'`
     );
 
-    const alerts = [
+    const allAlerts = [
       ...sets14.map(s => ({ set: s, days: 14 })),
-      ...sets7.map(s => ({ set: s, days: 7 })),
+      ...sets7.map(s =>  ({ set: s, days: 7  })),
     ];
 
-    const results = await Promise.allSettled(
-      alerts.map(({ set, days }) => {
-        const subject = `⚠ Set handover alert: ${set.set_name} — ${days} days`;
-        const html = `<p><strong>${set.set_name}</strong> (${set.set_number ?? 'no code'}) on production <strong>${set.production_name}</strong> has its handover date in <strong>${days} days</strong> (${set.handover_date?.split('T')[0]}).</p><p>Current status: ${set.completion_status}</p>`;
-        return sendEmail({ to: process.env.ALERT_EMAIL || process.env.SMTP_USER, subject, html });
-      })
-    );
+    if (!allAlerts.length) {
+      return res.json({ message: 'No handover alerts due today', sent: 0, skipped: 0 });
+    }
 
-    const sent = results.filter(r => r.status === 'fulfilled').length;
-    res.json({ message: `Handover alerts sent`, sent, total: alerts.length });
+    // Build recipient list: all coordinators + MD (Warren)
+    const { rows: recipientUsers } = await db.query(
+      `SELECT email FROM users
+       WHERE role IN ('construction_coordinator', 'managing_director')
+         AND email IS NOT NULL`
+    );
+    const recipients = recipientUsers.map(u => u.email).filter(Boolean);
+
+    if (!recipients.length) {
+      return res.json({ message: 'No recipients configured', sent: 0, skipped: 0 });
+    }
+
+    let sent = 0; let skipped = 0;
+
+    for (const { set, days } of allAlerts) {
+      // Deduplication: skip if already sent today
+      const { rows: [existing] } = await db.query(
+        `SELECT 1 FROM handover_alerts_sent WHERE set_id = $1 AND days_mark = $2 AND sent_date = CURRENT_DATE`,
+        [set.id, days]
+      );
+      if (existing) { skipped++; continue; }
+
+      const { subject, html } = templates.handoverAlert(set, days);
+      try {
+        await sendEmail({ to: recipients, subject, html });
+        await db.query(
+          `INSERT INTO handover_alerts_sent (set_id, days_mark, sent_date) VALUES ($1, $2, CURRENT_DATE)
+           ON CONFLICT DO NOTHING`,
+          [set.id, days]
+        );
+        sent++;
+      } catch (emailErr) {
+        console.error(`Handover alert email failed for set ${set.id}:`, emailErr.message);
+      }
+    }
+
+    res.json({ message: 'Handover alerts processed', sent, skipped, total: allAlerts.length });
   } catch (err) {
     console.error('sendHandoverAlerts:', err);
     res.status(500).json({ error: err.message });

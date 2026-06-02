@@ -330,14 +330,14 @@ function LinkProductionModal({ crewId, onClose, onLinked }: LinkProductionModalP
 
 interface UploadDocModalProps {
   crewId: string;
+  contextType: 'crew_identity' | 'crew_contract';
   productions: Production[];
   onClose: () => void;
   onUploaded: () => void;
 }
 
-function UploadDocModal({ crewId, productions, onClose, onUploaded }: UploadDocModalProps) {
-  const [docType, setDocType] = useState<'government_id' | 'contract' | 'other'>('other');
-  const [productionId, setProductionId] = useState('');
+function UploadDocModal({ crewId, contextType, productions, onClose, onUploaded }: UploadDocModalProps) {
+  const [productionId, setProductionId] = useState(productions.length === 1 ? productions[0].id : '');
   const [file, setFile] = useState<File | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -345,12 +345,13 @@ function UploadDocModal({ crewId, productions, onClose, onUploaded }: UploadDocM
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!file) { setError('Please select a file.'); return; }
+    if (contextType === 'crew_contract' && !productionId) { setError('Please select a production for this contract.'); return; }
     setSaving(true);
     setError('');
     const fd = new FormData();
     fd.append('file', file);
-    fd.append('document_type', docType);
-    if (docType === 'contract' && productionId) fd.append('production_id', productionId);
+    fd.append('context_type', contextType);
+    if (contextType === 'crew_contract') fd.append('production_id', productionId);
     try {
       await crewApi.uploadDocument(crewId, fd);
       onUploaded();
@@ -362,42 +363,37 @@ function UploadDocModal({ crewId, productions, onClose, onUploaded }: UploadDocM
   };
 
   const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500';
+  const title = contextType === 'crew_identity' ? 'Upload Identity Document' : 'Upload Contract';
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
       <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-          <h2 className="text-slate-900 font-semibold text-sm">Upload Document</h2>
+          <h2 className="text-slate-900 font-semibold text-sm">{title}</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
         </div>
         <form onSubmit={submit} className="px-5 py-4 space-y-4">
           {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Document Type *</label>
-            <select className={inp} value={docType} onChange={e => setDocType(e.target.value as typeof docType)}>
-              <option value="government_id">Government ID</option>
-              <option value="contract">Contract</option>
-              <option value="other">Other</option>
-            </select>
-          </div>
-          {docType === 'contract' && (
+
+          {contextType === 'crew_contract' && (
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Production (optional)</label>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Which production? *</label>
               <select className={inp} value={productionId} onChange={e => setProductionId(e.target.value)}>
-                <option value="">— None —</option>
+                <option value="">— Select production —</option>
                 {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
               </select>
             </div>
           )}
+
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">File *</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">File * <span className="text-slate-400">(PDF, JPG, PNG · max 25 MB)</span></label>
             <label className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-lg p-5 cursor-pointer hover:border-blue-400 transition-colors">
               <Upload size={20} className="text-slate-400 mb-2" />
               <span className="text-slate-500 text-sm">{file ? file.name : 'Click to choose file'}</span>
-              <span className="text-slate-400 text-xs mt-1">PDF, JPG, PNG</span>
               <input type="file" className="hidden" accept=".pdf,.jpg,.jpeg,.png" onChange={e => setFile(e.target.files?.[0] ?? null)} />
             </label>
           </div>
+
           <div className="flex justify-end gap-3 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Cancel</button>
             <button type="submit" disabled={saving} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60">
@@ -417,7 +413,8 @@ export default function CrewDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const canEdit = user?.role !== 'construction_accountant';
+  const canEdit = true; // Coordinator, Accountant, and MD can all edit
+  const canSeeBankDetails = user?.role === 'construction_coordinator' || user?.role === 'construction_accountant';
 
   const [member, setMember]           = useState<CrewDetail | null>(null);
   const [productions, setProductions] = useState<Production[]>([]);
@@ -426,8 +423,9 @@ export default function CrewDetailPage() {
 
   const [showEdit, setShowEdit]       = useState(false);
   const [showLink, setShowLink]       = useState(false);
-  const [showUpload, setShowUpload]   = useState(false);
+  const [uploadContext, setUploadContext] = useState<'crew_identity' | 'crew_contract' | null>(null);
   const [deletingDoc, setDeletingDoc] = useState<string | null>(null);
+  const isCoordinator = user?.role === 'construction_coordinator';
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -484,8 +482,14 @@ export default function CrewDetailPage() {
       {showLink && m && (
         <LinkProductionModal crewId={m.id} onClose={() => setShowLink(false)} onLinked={() => { setShowLink(false); load(); }} />
       )}
-      {showUpload && m && (
-        <UploadDocModal crewId={m.id} productions={productions} onClose={() => setShowUpload(false)} onUploaded={() => { setShowUpload(false); load(); }} />
+      {uploadContext && m && (
+        <UploadDocModal
+          crewId={m.id}
+          contextType={uploadContext}
+          productions={productions}
+          onClose={() => setUploadContext(null)}
+          onUploaded={() => { setUploadContext(null); load(); }}
+        />
       )}
 
       <TopBar
@@ -561,14 +565,21 @@ export default function CrewDetailPage() {
 
               {/* Right: bank + emergency */}
               <div className="space-y-4">
-                <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Bank Details</p>
-                  <div className="space-y-2">
-                    <Detail icon={<CreditCard size={13} />} label="Account Name" value={m.account_name} />
-                    <Detail icon={<CreditCard size={13} />} label="Account Number" value={m.account_number} />
-                    <Detail icon={<CreditCard size={13} />} label="Sort Code" value={m.sort_code} />
+                {canSeeBankDetails ? (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Bank Details</p>
+                    <div className="space-y-2">
+                      <Detail icon={<CreditCard size={13} />} label="Account Name" value={m.account_name} />
+                      <Detail icon={<CreditCard size={13} />} label="Account Number" value={m.account_number} />
+                      <Detail icon={<CreditCard size={13} />} label="Sort Code" value={m.sort_code} />
+                    </div>
                   </div>
-                </div>
+                ) : (
+                  <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+                    <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Bank Details</p>
+                    <p className="text-xs text-slate-400 italic">Restricted — visible to Coordinator and Accountant only</p>
+                  </div>
+                )}
                 <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Emergency Contact</p>
                   <div className="space-y-2">
@@ -634,59 +645,113 @@ export default function CrewDetailPage() {
               )}
             </div>
 
-            {/* Documents */}
+            {/* Documents — two sections */}
             <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
-              <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-                <div>
-                  <h3 className="text-slate-900 font-semibold text-sm">Documents</h3>
-                  <p className="text-slate-400 text-xs mt-0.5">{m.documents.length} document{m.documents.length !== 1 ? 's' : ''}</p>
-                </div>
-                {canEdit && (
-                  <button
-                    onClick={() => setShowUpload(true)}
-                    className="flex items-center gap-2 px-3 py-1.5 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
-                  >
-                    <Upload size={13} />
-                    Upload
-                  </button>
-                )}
+              <div className="px-5 py-4 border-b border-slate-100">
+                <h3 className="text-slate-900 font-semibold text-sm">Documents</h3>
+                <p className="text-slate-400 text-xs mt-0.5">{m.documents.length} document{m.documents.length !== 1 ? 's' : ''} · PDF, JPEG, PNG · max 25 MB</p>
               </div>
-              {m.documents.length === 0 ? (
-                <div className="px-5 py-8 text-center text-slate-400 text-sm">No documents uploaded.</div>
-              ) : (
-                <div className="divide-y divide-slate-100">
-                  {m.documents.map((doc: CrewDocument) => (
-                    <div key={doc.id} className="px-5 py-3.5 flex items-center justify-between">
-                      <div className="flex items-center gap-3">
-                        <FileText size={16} className="text-slate-400 flex-shrink-0" />
-                        <div>
-                          <p className="text-slate-800 text-sm font-medium">{doc.file_name}</p>
-                          <p className="text-slate-400 text-xs">{DOC_TYPE_LABELS[doc.document_type]} · Uploaded {fmtDate(doc.uploaded_at)}</p>
-                        </div>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0 ml-4">
-                        <a
-                          href={doc.file_url}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="text-blue-600 text-xs hover:underline"
+
+              {/* Identity Documents */}
+              {(() => {
+                const identityDocs = m.documents.filter(d => (d.context_type ?? d.document_type) !== 'crew_contract' && d.context_type !== 'crew_contract');
+                return (
+                  <div className="border-b border-slate-100">
+                    <div className="flex items-center justify-between px-5 py-3 bg-slate-50/60">
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Identity Documents</p>
+                      {canEdit && (
+                        <button
+                          onClick={() => setUploadContext('crew_identity')}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
                         >
-                          View
-                        </a>
-                        {canEdit && (
-                          <button
-                            onClick={() => deleteDoc(doc)}
-                            disabled={deletingDoc === doc.id}
-                            className="p-1.5 text-red-400 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            {deletingDoc === doc.id ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />}
-                          </button>
-                        )}
-                      </div>
+                          <Upload size={11} /> Upload
+                        </button>
+                      )}
                     </div>
-                  ))}
-                </div>
-              )}
+                    {identityDocs.length === 0 ? (
+                      <p className="px-5 py-5 text-center text-slate-400 text-xs">No identity documents yet.</p>
+                    ) : (
+                      <div className="divide-y divide-slate-100">
+                        {identityDocs.map(doc => (
+                          <div key={doc.id} className="px-5 py-3 flex items-center justify-between">
+                            <div className="flex items-center gap-3 min-w-0">
+                              <FileText size={15} className="text-slate-400 flex-shrink-0" />
+                              <div className="min-w-0">
+                                <p className="text-slate-800 text-sm font-medium truncate">{doc.file_name}</p>
+                                <p className="text-slate-400 text-xs">Uploaded {fmtDate(doc.uploaded_at)}</p>
+                              </div>
+                            </div>
+                            <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                              <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs hover:underline">View</a>
+                              {isCoordinator && (
+                                <button onClick={() => deleteDoc(doc)} disabled={deletingDoc === doc.id} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50">
+                                  {deletingDoc === doc.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
+
+              {/* Contracts — grouped by production */}
+              {(() => {
+                const contracts = m.documents.filter(d => d.context_type === 'crew_contract' || d.document_type === 'contract');
+                const byProd: Record<string, { prodName: string; docs: typeof contracts }> = {};
+                contracts.forEach(doc => {
+                  const key = doc.production_id ?? '__none__';
+                  if (!byProd[key]) byProd[key] = { prodName: doc.production_name ?? 'Unknown Production', docs: [] };
+                  byProd[key].docs.push(doc);
+                });
+                return (
+                  <div>
+                    <div className="flex items-center justify-between px-5 py-3 bg-slate-50/60">
+                      <p className="text-xs font-semibold text-slate-600 uppercase tracking-wide">Contracts</p>
+                      {canEdit && (
+                        <button
+                          onClick={() => setUploadContext('crew_contract')}
+                          className="flex items-center gap-1 px-2.5 py-1 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700"
+                        >
+                          <Upload size={11} /> Upload
+                        </button>
+                      )}
+                    </div>
+                    {contracts.length === 0 ? (
+                      <p className="px-5 py-5 text-center text-slate-400 text-xs">No contracts yet.</p>
+                    ) : (
+                      Object.entries(byProd).map(([key, { prodName, docs }]) => (
+                        <div key={key}>
+                          <p className="px-5 py-2 text-xs font-semibold text-slate-500 bg-slate-50/40 border-t border-slate-100">{prodName}</p>
+                          <div className="divide-y divide-slate-100">
+                            {docs.map(doc => (
+                              <div key={doc.id} className="px-5 py-3 flex items-center justify-between">
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <FileText size={15} className="text-blue-400 flex-shrink-0" />
+                                  <div className="min-w-0">
+                                    <p className="text-slate-800 text-sm font-medium truncate">{doc.file_name}</p>
+                                    <p className="text-slate-400 text-xs">Uploaded {fmtDate(doc.uploaded_at)}</p>
+                                  </div>
+                                </div>
+                                <div className="flex items-center gap-2 flex-shrink-0 ml-3">
+                                  <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs hover:underline">View</a>
+                                  {isCoordinator && (
+                                    <button onClick={() => deleteDoc(doc)} disabled={deletingDoc === doc.id} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50">
+                                      {deletingDoc === doc.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      ))
+                    )}
+                  </div>
+                );
+              })()}
             </div>
 
             {/* Timesheet History */}
