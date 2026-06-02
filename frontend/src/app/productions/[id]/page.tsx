@@ -640,6 +640,81 @@ function UploadDocModal({ productionId, onClose, onUploaded }: UploadDocModalPro
   );
 }
 
+// ─── Production Headline Banner ───────────────────────────────────────────────
+
+function ProductionBanner({ production }: { production: ProductionDetail }) {
+  if (['archived', 'complete'].includes(production.status)) return null;
+
+  const activeSets = production.sets.filter(s => s.completion_status !== 'handed_over');
+  if (activeSets.filter(s => s.handover_date).length === 0 && production.days_remaining == null) return null;
+
+  const greenCount = activeSets.filter(s => s.countdown_colour === 'green').length;
+  const amberCount = activeSets.filter(s => s.countdown_colour === 'amber').length;
+  const redCount   = activeSets.filter(s => s.countdown_colour === 'red').length;
+
+  const days = production.days_remaining;
+  const endDate = production.end_date
+    ? new Date(production.end_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+    : null;
+
+  const isRed   = days != null && days < 7;
+  const isAmber = days != null && days >= 7 && days <= 14;
+
+  const bannerBg     = isRed ? 'bg-red-50 border-red-200' : isAmber ? 'bg-amber-50 border-amber-200' : 'bg-slate-50 border-slate-200';
+  const daysColor    = isRed ? 'text-red-700' : isAmber ? 'text-amber-700' : 'text-slate-800';
+  const labelColor   = isRed ? 'text-red-600' : isAmber ? 'text-amber-700' : 'text-slate-500';
+
+  return (
+    <div className={`rounded-xl border px-5 py-4 ${bannerBg}`}>
+      <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-2">Overall Production</p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          {days != null ? (
+            <div className="flex items-baseline gap-2">
+              <span className={`text-4xl font-bold leading-none ${daysColor}`}>{days}</span>
+              <span className={`text-base font-semibold ${labelColor}`}>days to final handover</span>
+            </div>
+          ) : (
+            <span className="text-slate-400 text-sm font-medium">No handover dates set</span>
+          )}
+          <p className="text-slate-500 text-xs mt-1.5">
+            {production.name}
+            {endDate ? ` — ends ${endDate}` : ''}
+            {' · '}
+            <span className="font-medium">{production.sets_outstanding}</span> set{production.sets_outstanding !== 1 ? 's' : ''} outstanding
+          </p>
+        </div>
+
+        {(greenCount > 0 || amberCount > 0 || redCount > 0) && (
+          <div className="flex-shrink-0">
+            <p className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest mb-1.5 text-right">Set status</p>
+            <div className="flex items-center gap-3">
+              {greenCount > 0 && (
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-green-700">
+                  <span className="w-2.5 h-2.5 rounded-full bg-green-400 flex-shrink-0" />
+                  {greenCount} green
+                </span>
+              )}
+              {amberCount > 0 && (
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+                  <span className="w-2.5 h-2.5 rounded-full bg-amber-400 flex-shrink-0" />
+                  {amberCount} amber
+                </span>
+              )}
+              {redCount > 0 && (
+                <span className="flex items-center gap-1.5 text-xs font-semibold text-red-700">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 flex-shrink-0" />
+                  {redCount} red
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function ProductionDetailPage() {
@@ -1062,6 +1137,9 @@ export default function ProductionDetailPage() {
           </div>
         )}
 
+        {/* Production headline banner */}
+        <ProductionBanner production={production} />
+
         {/* Header */}
         <div className="flex items-start justify-between gap-4">
           <button
@@ -1274,7 +1352,8 @@ export default function ProductionDetailPage() {
                           const isRed    = !isDone && days != null && days < 7;
                           const isAmber  = !isDone && days != null && days >= 7 && days <= 14;
 
-                          const rowBg = isHandedOver ? '' : isRed || isOverdue ? 'bg-red-50/60' : isAmber ? 'bg-amber-50/50' : '';
+                          const rowBg     = isHandedOver ? '' : isRed || isOverdue ? 'bg-red-50/60' : isAmber ? 'bg-amber-50/50' : '';
+                          const rowBorder = isHandedOver ? '' : isRed || isOverdue ? 'border-l-4 border-l-red-500' : isAmber ? 'border-l-4 border-l-amber-400' : 'border-l-4 border-l-transparent';
                           const countdownText = isHandedOver
                             ? 'Handed over'
                             : days == null ? '—'
@@ -1285,7 +1364,7 @@ export default function ProductionDetailPage() {
                           const isLinked = (s.linked_po_count ?? 0) > 0;
 
                           return (
-                            <tr key={s.id} className={`border-t border-slate-100 ${rowBg} transition-colors`}>
+                            <tr key={s.id} className={`border-t border-slate-100 ${rowBg} ${rowBorder} transition-colors`}>
                               <td className="px-5 py-3 text-slate-500 text-xs font-mono sticky left-0 bg-inherit z-10">{s.set_number ?? '—'}</td>
                               <td className="px-4 py-3">
                                 <p className="text-slate-800 font-medium text-sm">{s.set_name}</p>

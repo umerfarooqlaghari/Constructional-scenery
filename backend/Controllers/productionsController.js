@@ -14,8 +14,8 @@ const calcSetCountdown = (sets = []) => {
     let countdown_colour = null;
     if (days !== null) {
       if      (days > 14) countdown_colour = 'green';
-      else if (days > 0)  countdown_colour = 'amber';
-      else                countdown_colour = 'red';
+      else if (days >= 7) countdown_colour = 'amber'; // 7–14 days
+      else                countdown_colour = 'red';   // <7 days or overdue
     }
     return { ...set, days_until_handover: days, countdown_colour };
   });
