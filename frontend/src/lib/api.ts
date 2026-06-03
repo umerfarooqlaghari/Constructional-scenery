@@ -367,6 +367,16 @@ export const timesheetsApi = {
     return request<Timesheet[]>(`/api/timesheets${qs}`);
   },
   getById: (id: string) => request<Timesheet>(`/api/timesheets/${id}`),
+  create: (data: { crew_member_id: string; production_id: string; week_ending_date: string }) =>
+    request<Timesheet>('/api/timesheets', { method: 'POST', body: data }),
+};
+
+export type GatewayError = {
+  error_code: 'CREW_NOT_FOUND' | 'CREW_INACTIVE' | 'CREW_RECORD_INCOMPLETE' | 'NO_PRODUCTION_ENGAGEMENT' | 'RATE_NOT_CONFIGURED';
+  error: string;
+  missing_fields?: string[];
+  crew_member_id?: string;
+  crew_name?: string;
 };
 
 // ─── Purchase Order types ──────────────────────────────────────────────────────

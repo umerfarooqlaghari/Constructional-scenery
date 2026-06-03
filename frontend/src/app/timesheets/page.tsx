@@ -1,12 +1,16 @@
 ﻿'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
+import { useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
-  Mail, Paperclip, ShieldCheck, X,
+  Mail, Paperclip, ShieldCheck, X, Plus, UserX, ExternalLink,
 } from 'lucide-react';
-import { timesheetsApi, productionsApi, Timesheet, TimesheetStatus, Production } from '@/lib/api';
+import {
+  timesheetsApi, productionsApi, crewApi,
+  Timesheet, TimesheetStatus, Production, GatewayError, CrewMember,
+} from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Inline API helpers ───────────────────────────────────────────────────────
@@ -157,6 +161,99 @@ function AttachInvoiceModal({ timesheetId, crewName, onClose, onAttached }: Atta
   );
 }
 
+// ─── Gateway Error Banner ─────────────────────────────────────────────────────
+
+function GatewayErrorBanner({ gatewayErr, onClose }: { gatewayErr: GatewayError; onClose: () => void }) {
+  const router = useRouter();
+  const crewProfileUrl = gatewayErr.crew_member_id ? `/crew/${gatewayErr.crew_member_id}` : null;
+  const MESSAGES: Record<string, string> = {
+    NO_PRODUCTION_ENGAGEMENT: `${gatewayErr.crew_name ?? 'This crew member'} is not engaged on this production. Add them to the production first.`,
+    CREW_INACTIVE: `${gatewayErr.crew_name ?? 'This crew member'} is deactivated. Reactivate them in the Crew Database first.`,
+    CREW_RECORD_INCOMPLETE: `${gatewayErr.crew_name ?? 'Crew record'} is incomplete — missing: ${gatewayErr.missing_fields?.join(', ')}.`,
+    RATE_NOT_CONFIGURED: gatewayErr.error,
+    CREW_NOT_FOUND: 'Crew member not found. Register them in the Crew Database.',
+  };
+  return (
+    <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
+      <UserX size={16} className="text-amber-600 flex-shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-amber-800 text-sm font-medium">Cannot create timesheet</p>
+        <p className="text-amber-700 text-xs mt-0.5">{MESSAGES[gatewayErr.error_code] ?? gatewayErr.error}</p>
+        {crewProfileUrl && (
+          <button onClick={() => router.push(crewProfileUrl)} className="flex items-center gap-1 mt-1.5 text-xs text-blue-600 hover:underline font-medium">
+            <ExternalLink size={11} /> Go to crew profile
+          </button>
+        )}
+      </div>
+      <button onClick={onClose} className="text-amber-400 hover:text-amber-600 flex-shrink-0"><X size={14} /></button>
+    </div>
+  );
+}
+
+// ─── New Timesheet Modal ──────────────────────────────────────────────────────
+
+function NewTimesheetModal({ productions, weekEndingDate, onClose, onCreated }: {
+  productions: Production[]; weekEndingDate: string; onClose: () => void; onCreated: () => void;
+}) {
+  const [productionId, setProductionId] = useState(productions[0]?.id ?? '');
+  const [allCrew, setAllCrew] = useState<CrewMember[]>([]);
+  const [crewId, setCrewId]   = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [gatewayErr, setGatewayErr] = useState<GatewayError | null>(null);
+
+  useEffect(() => { crewApi.list({ is_active: 'true' }).then(setAllCrew).catch(() => {}); }, []);
+
+  const submit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!crewId || !productionId) return;
+    setSaving(true); setGatewayErr(null);
+    try {
+      await timesheetsApi.create({ crew_member_id: crewId, production_id: productionId, week_ending_date: weekEndingDate });
+      onCreated();
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : '';
+      const codes = ['CREW_NOT_FOUND','CREW_INACTIVE','CREW_RECORD_INCOMPLETE','NO_PRODUCTION_ENGAGEMENT','RATE_NOT_CONFIGURED'] as const;
+      const matchCode = codes.find(k => msg.includes(k));
+      const crew = allCrew.find(c => c.id === crewId);
+      setGatewayErr({ error_code: matchCode ?? 'CREW_NOT_FOUND', error: msg, crew_member_id: crewId, crew_name: crew ? `${crew.first_name} ${crew.last_name}` : undefined });
+    } finally { setSaving(false); }
+  };
+
+  const inp = 'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-teal-500';
+  return (
+    <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+          <div><h2 className="text-slate-900 font-semibold text-sm">New Timesheet</h2><p className="text-slate-400 text-xs mt-0.5">Week ending: {weekEndingDate}</p></div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600"><X size={16} /></button>
+        </div>
+        <form onSubmit={submit} className="px-5 py-4 space-y-4">
+          {gatewayErr && <GatewayErrorBanner gatewayErr={gatewayErr} onClose={() => setGatewayErr(null)} />}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Production</label>
+            <select className={inp} value={productionId} onChange={e => setProductionId(e.target.value)}>
+              {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Crew Member *</label>
+            <select className={inp} value={crewId} onChange={e => setCrewId(e.target.value)}>
+              <option value="">— Select crew member —</option>
+              {allCrew.map(c => <option key={c.id} value={c.id}>{c.first_name} {c.last_name} ({c.crew_number}) — {c.crew_trade ?? ''}</option>)}
+            </select>
+          </div>
+          <div className="flex justify-end gap-3 pt-1">
+            <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Cancel</button>
+            <button type="submit" disabled={saving || !crewId} className="flex items-center gap-2 px-4 py-2 bg-teal-600 text-white text-sm font-medium rounded-lg hover:bg-teal-700 disabled:opacity-60">
+              {saving ? <Loader2 size={13} className="animate-spin" /> : <Plus size={13} />} Create
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function TimesheetsPage() {
@@ -186,6 +283,7 @@ export default function TimesheetsPage() {
   const [invoiceFilter, setInvoiceFilter] = useState<'all' | 'yes' | 'no'>('all');
   const [tradeFilter, setTradeFilter] = useState('');
   const [crewSearch, setCrewSearch] = useState('');
+  const [showNewTs, setShowNewTs]   = useState(false);
 
   // Load productions once
   useEffect(() => {
@@ -278,6 +376,14 @@ export default function TimesheetsPage() {
 
   return (
     <>
+      {showNewTs && (
+        <NewTimesheetModal
+          productions={productions}
+          weekEndingDate={weekEndingISO}
+          onClose={() => setShowNewTs(false)}
+          onCreated={() => { setShowNewTs(false); loadSheets(); }}
+        />
+      )}
       {attachModal && (
         <AttachInvoiceModal
           timesheetId={attachModal.id}
@@ -342,6 +448,13 @@ export default function TimesheetsPage() {
               >
                 {chasing ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
                 Chase Invoices
+              </button>
+              <button
+                onClick={() => setShowNewTs(true)}
+                disabled={!selectedProd}
+                className="flex items-center gap-2 bg-teal-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-teal-700 shadow-sm disabled:opacity-60 transition-colors font-medium"
+              >
+                <Plus size={14} /> New Timesheet
               </button>
             </div>
           )}
