@@ -1,101 +1,193 @@
-const db = require('../config/db');
+const db  = require('../config/db');
+const CRS = require('../services/costReportService');
+
+// ─── Helper: build weekly cost summary from supplier + labour entries ──────────
+// Groups supplier entries by date (as-of week proxy) and labour entries by
+// week_ending_date, then merges into an array sorted chronologically.
+const buildWeeklyCostSummary = (supplierEntries, labourEntries) => {
+  const weekMap = {};
+
+  supplierEntries.forEach(e => {
+    const key = String(e.date).split('T')[0];
+    if (!weekMap[key]) weekMap[key] = { week_or_date: key, supplier_cost: 0, labour_cost: 0, crew_count: 0 };
+    weekMap[key].supplier_cost += parseFloat(e.gross_amount || 0);
+  });
+
+  labourEntries.forEach(e => {
+    const key = String(e.week_ending_date).split('T')[0];
+    if (!weekMap[key]) weekMap[key] = { week_or_date: key, supplier_cost: 0, labour_cost: 0, crew_count: 0 };
+    weekMap[key].labour_cost += parseFloat(e.gross_amount || 0);
+    weekMap[key].crew_count  += 1;
+  });
+
+  return Object.values(weekMap)
+    .sort((a, b) => a.week_or_date.localeCompare(b.week_or_date))
+    .map(w => ({
+      ...w,
+      total_cost: w.supplier_cost + w.labour_cost,
+    }));
+};
+
+// ─── Helper: group labour entries by week_ending_date then by trade ───────────
+const groupLabourByWeekAndTrade = (labourEntries) => {
+  const byWeek = {};
+  labourEntries.forEach(e => {
+    const week  = String(e.week_ending_date).split('T')[0];
+    const trade = e.trade || 'Unknown';
+    if (!byWeek[week]) byWeek[week] = { week_ending_date: week, by_trade: {}, total_gross: 0 };
+    if (!byWeek[week].by_trade[trade]) byWeek[week].by_trade[trade] = { trade, entries: [], subtotal: 0 };
+    byWeek[week].by_trade[trade].entries.push(e);
+    byWeek[week].by_trade[trade].subtotal += parseFloat(e.gross_amount || 0);
+    byWeek[week].total_gross += parseFloat(e.gross_amount || 0);
+  });
+
+  // Convert inner maps to sorted arrays
+  return Object.values(byWeek)
+    .sort((a, b) => b.week_ending_date.localeCompare(a.week_ending_date))
+    .map(w => ({
+      week_ending_date: w.week_ending_date,
+      total_gross:      w.total_gross,
+      by_trade:         Object.values(w.by_trade).sort((a, b) => a.trade.localeCompare(b.trade)),
+    }));
+};
+
+// ─── GET /api/cost-reports/:productionId/type1 ───────────────────────────────
+// Type 1 (On a Price) full report: Lead Summary, Supplier Costs, Labour Summary,
+// Invoiced to Production. Only available for contract_type = 'on_a_price'.
+const getType1Report = async (req, res) => {
+  const { productionId } = req.params;
+  const { as_at_date, set_code, account_code, supplier_name, date_from, date_to } = req.query;
+
+  try {
+    const { rows: [production] } = await db.query(
+      `SELECT id, name, contract_type, status, target_profit_pct FROM productions WHERE id = $1`,
+      [productionId]
+    );
+    if (!production) return res.status(404).json({ error: 'Production not found' });
+    if (production.contract_type !== 'on_a_price')
+      return res.status(400).json({
+        error:         'Type 1 report is only available for On a Price contracts',
+        contract_type: production.contract_type,
+        redirect_to:   'type2',
+      });
+
+    const supplierFilters = { as_at_date, set_code, account_code, supplier_name, date_from, date_to };
+    const labourFilters   = { as_at_date };
+
+    const [supplierEntries, labourEntries, metrics, invoiceRows] = await Promise.all([
+      CRS.getSupplierCosts(productionId, supplierFilters, db),
+      CRS.getLabourCosts(productionId, labourFilters, db),
+      CRS.getSummaryMetrics(productionId, db),
+      db.query(
+        'SELECT * FROM cost_report_invoices WHERE production_id = $1 ORDER BY date DESC',
+        [productionId]
+      ).then(r => r.rows),
+    ]);
+
+    // Lead summary derived metrics
+    const totalCosts      = metrics.total_costs_to_date;
+    const totalInvoiced   = metrics.total_invoiced;
+    const targetProfitPct = parseFloat(production.target_profit_pct || 0);
+    const targetFraction  = targetProfitPct / 100;
+    const availableSpend  = totalInvoiced * (1 - targetFraction) - totalCosts;
+    const availableSpendPct = totalInvoiced > 0 ? (availableSpend / totalInvoiced) * 100 : 0;
+
+    res.json({
+      production: {
+        id:                production.id,
+        name:              production.name,
+        contract_type:     production.contract_type,
+        status:            production.status,
+        target_profit_pct: targetProfitPct,
+      },
+      lead_summary: {
+        total_costs_to_date:              totalCosts,
+        total_supplier_costs:             metrics.total_supplier_costs,
+        total_labour_costs:               metrics.total_labour_costs,
+        amounts_invoiced_to_production:   totalInvoiced,
+        current_profit:                   totalInvoiced - totalCosts,
+        profit_pct_of_turnover:           totalInvoiced > 0
+          ? ((totalInvoiced - totalCosts) / totalInvoiced) * 100 : 0,
+        target_profit_pct:                targetProfitPct,
+        available_spend_remaining:        availableSpend,
+        available_spend_pct_of_budget:    availableSpendPct,
+        last_updated:                     metrics.last_updated,
+      },
+      weekly_cost_summary:   buildWeeklyCostSummary(supplierEntries, labourEntries),
+      supplier_costs:        supplierEntries.map(e => ({
+        date:            e.date,
+        supplier:        e.supplier_name,
+        description:     null,           // not stored in cost_report_entries; use PO join if needed
+        po_number:       e.po_number,
+        set_code:        e.set_code,
+        account_code:    e.account_code,
+        cost_ex_vat:     parseFloat(e.net_amount),
+        vat:             parseFloat(e.vat),
+        total:           parseFloat(e.gross_amount),
+        purchase_method: e.payment_method,
+      })),
+      labour_summary:        groupLabourByWeekAndTrade(labourEntries),
+      invoiced_to_production: invoiceRows,
+    });
+  } catch (err) {
+    console.error('getType1Report:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
 
 // ─── GET /api/cost-reports/:productionId ─────────────────────────────────────
+// Generic cost report (used by both contract types and existing consumers).
+// Now reads from cost_report_entries via CostReportService.
 const getCostReport = async (req, res) => {
   const { productionId } = req.params;
   const { as_at_date }   = req.query;
 
   try {
     const { rows: [production] } = await db.query(
-      'SELECT * FROM productions WHERE id = $1',
-      [productionId]
+      'SELECT * FROM productions WHERE id = $1', [productionId]
     );
     if (!production) return res.status(404).json({ error: 'Production not found' });
 
-    let poDateFilter = '';
-    let tsDateFilter = '';
-    const poParams   = [productionId];
-    const tsParams   = [productionId];
-    if (as_at_date) {
-      poDateFilter = ` AND approved_at::date <= $2`;
-      poParams.push(as_at_date);
-      tsDateFilter = ` AND week_ending_date <= $2`;
-      tsParams.push(as_at_date);
-    }
-
-    const [
-      { rows: approvedPOs },
-      { rows: verifiedTimesheets },
-      { rows: invoices },
-    ] = await Promise.all([
-      db.query(
-        `SELECT * FROM purchase_orders
-         WHERE production_id = $1 AND status = 'approved' ${poDateFilter}
-         ORDER BY date_of_po`,
-        poParams
-      ),
-      db.query(
-        `SELECT t.*,
-                cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank, cm.employment_status
-         FROM   timesheets t
-         JOIN   crew_members cm ON t.crew_member_id = cm.id
-         WHERE  t.production_id = $1 AND t.status = 'finalised' ${tsDateFilter}  -- TimesheetStatus.FINALISED
-         ORDER BY t.week_ending_date`,
-        tsParams
-      ),
+    const filters = { as_at_date };
+    const [metrics, supplierEntries, labourEntries, invoiceRows] = await Promise.all([
+      as_at_date
+        ? CRS.getAsAtSnapshot(productionId, as_at_date, db)
+        : CRS.getSummaryMetrics(productionId, db),
+      CRS.getSupplierCosts(productionId, filters, db),
+      CRS.getLabourCosts(productionId, filters, db),
       db.query(
         'SELECT * FROM cost_report_invoices WHERE production_id = $1 ORDER BY date',
         [productionId]
-      ),
+      ).then(r => r.rows),
     ]);
-
-    const totalSupplier = approvedPOs.reduce((s, po) => s + parseFloat(po.net_amount || 0), 0);
-    const totalLabour   = verifiedTimesheets.reduce((s, ts) => s + parseFloat(ts.grand_total || 0), 0);
-    const totalCosts    = totalSupplier + totalLabour;
-    const totalInvoiced = invoices.reduce((s, inv) => s + parseFloat(inv.amount || 0), 0);
-    const currentProfit = totalInvoiced - totalCosts;
-    const profitPct     = totalInvoiced > 0 ? (currentProfit / totalInvoiced) * 100 : 0;
-
-    const labourByWeek = {};
-    verifiedTimesheets.forEach(ts => {
-      const key = ts.week_ending_date;
-      if (!labourByWeek[key]) labourByWeek[key] = { week_ending_date: key, crew: [], total: 0 };
-      labourByWeek[key].crew.push({
-        crew_number:  ts.crew_number,
-        name:         `${ts.first_name} ${ts.last_name}`,
-        trade:        ts.crew_trade,
-        rank:         ts.crew_rank,
-        grand_total:  parseFloat(ts.grand_total),
-      });
-      labourByWeek[key].total += parseFloat(ts.grand_total || 0);
-    });
 
     res.json({
       production,
-      contract_type:  production.contract_type,
-      as_at_date:     as_at_date || new Date().toISOString().split('T')[0],
+      contract_type: production.contract_type,
+      as_at_date:    as_at_date || new Date().toISOString().split('T')[0],
       metrics: {
-        total_supplier_costs:           totalSupplier,
-        total_labour_costs:             totalLabour,
-        total_costs_to_date:            totalCosts,
-        total_invoiced_to_production:   totalInvoiced,
-        current_profit:                 currentProfit,
-        profit_percentage_of_turnover:  profitPct.toFixed(2),
+        total_supplier_costs:          metrics.total_supplier_costs ?? metrics.total_supplier_costs,
+        total_labour_costs:            metrics.total_labour_costs,
+        total_costs_to_date:           metrics.total_costs_to_date,
+        total_invoiced_to_production:  metrics.total_invoiced ?? null,
+        current_profit:                metrics.current_profit ?? null,
+        profit_percentage_of_turnover: metrics.profit_pct != null
+          ? parseFloat(metrics.profit_pct).toFixed(2) : null,
+        last_updated:                  metrics.last_updated || null,
       },
-      supplier_costs: approvedPOs.map(po => ({
-        date:            po.date_of_po,
-        supplier:        po.supplier_name,
-        description:     po.description,
-        po_number:       po.po_number,
-        set_code:        po.set_code,
-        account_code:    po.account_code,
-        cost_ex_vat:     parseFloat(po.net_amount),
-        vat:             parseFloat(po.vat),
-        total:           parseFloat(po.gross_amount),
-        purchase_method: po.paid_from,
+      supplier_costs: supplierEntries.map(e => ({
+        date:            e.date,
+        supplier:        e.supplier_name,
+        po_number:       e.po_number,
+        set_code:        e.set_code,
+        account_code:    e.account_code,
+        cost_ex_vat:     parseFloat(e.net_amount),
+        vat:             parseFloat(e.vat),
+        total:           parseFloat(e.gross_amount),
+        purchase_method: e.payment_method,
       })),
-      labour_weekly:           Object.values(labourByWeek),
-      invoices_to_production:  invoices,
+      labour_weekly:          groupLabourByWeekAndTrade(labourEntries),
+      invoices_to_production: invoiceRows,
     });
   } catch (err) {
     console.error('getCostReport:', err);
@@ -103,7 +195,55 @@ const getCostReport = async (req, res) => {
   }
 };
 
-// ─── POST /api/cost-reports/:productionId/invoices ────────────────────────────
+// ─── GET /api/cost-reports/entries ───────────────────────────────────────────
+// Raw entry list — used by integration tests and admin tooling.
+// Routed through CostReportService; does not query cost_report_entries directly.
+const getCostReportEntries = async (req, res) => {
+  const { production_id, type } = req.query;
+  if (!production_id) return res.status(400).json({ error: 'production_id is required' });
+
+  try {
+    let rows;
+    if (!type || type === 'supplier') {
+      rows = await CRS.getSupplierCosts(production_id, {}, db);
+      if (type === 'labour') rows = [];
+    }
+    if (type === 'labour') {
+      rows = await CRS.getLabourCosts(production_id, {}, db);
+    }
+    if (!type) {
+      // Both types
+      const [supplier, labour] = await Promise.all([
+        CRS.getSupplierCosts(production_id, {}, db),
+        CRS.getLabourCosts(production_id, {}, db),
+      ]);
+      rows = [...supplier, ...labour].sort((a, b) =>
+        String(a.date).localeCompare(String(b.date))
+      );
+    }
+    res.json(rows);
+  } catch (err) {
+    console.error('getCostReportEntries:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── GET /api/cost-reports/:productionId/snapshot ────────────────────────────
+// Returns cost totals as of a given date — powers date-specific exports.
+const getSnapshot = async (req, res) => {
+  const { productionId } = req.params;
+  const { as_at_date }   = req.query;
+  if (!as_at_date) return res.status(400).json({ error: 'as_at_date is required' });
+  try {
+    const snapshot = await CRS.getAsAtSnapshot(productionId, as_at_date, db);
+    res.json(snapshot);
+  } catch (err) {
+    console.error('getSnapshot:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── POST /api/cost-reports/:productionId/invoices ───────────────────────────
 const addInvoice = async (req, res) => {
   const { invoice_description, po_number, date, invoice_number, amount, notes } = req.body;
   if (!amount) return res.status(400).json({ error: 'amount is required' });
@@ -115,13 +255,9 @@ const addInvoice = async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7)
        RETURNING *`,
       [
-        req.params.productionId,
-        invoice_description,
-        po_number,
+        req.params.productionId, invoice_description, po_number,
         date || new Date().toISOString().split('T')[0],
-        invoice_number,
-        parseFloat(amount),
-        notes,
+        invoice_number, parseFloat(amount), notes,
       ]
     );
     res.status(201).json(row);
@@ -130,69 +266,63 @@ const addInvoice = async (req, res) => {
   }
 };
 
+// ─── DELETE /api/cost-reports/:productionId/invoices/:invoiceId ──────────────
+const deleteInvoice = async (req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      'DELETE FROM cost_report_invoices WHERE id = $1 AND production_id = $2',
+      [req.params.invoiceId, req.params.productionId]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Invoice not found' });
+    res.json({ message: 'Invoice deleted' });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ─── GET /api/cost-reports/:productionId/cost-plus ───────────────────────────
+// Cost Plus (Type 2) report — also refactored to read from cost_report_entries.
 const getCostPlus = async (req, res) => {
   const { productionId } = req.params;
   try {
     const { rows: [production] } = await db.query(
-      'SELECT * FROM productions WHERE id = $1',
-      [productionId]
+      'SELECT * FROM productions WHERE id = $1', [productionId]
     );
     if (!production || production.contract_type !== 'cost_plus')
       return res.status(400).json({ error: 'This production is not a Cost Plus contract' });
 
-    const [
-      { rows: [budget] },
-      { rows: budgetLines },
-      { rows: approvedPOs },
-      { rows: verifiedTimesheets },
-    ] = await Promise.all([
-      db.query('SELECT * FROM cost_plus_budgets WHERE production_id = $1', [productionId]),
+    const [budget, budgetLines, supplierEntries, labourEntries] = await Promise.all([
+      db.query('SELECT * FROM cost_plus_budgets WHERE production_id = $1', [productionId]).then(r => r.rows[0]),
       db.query(
-        `SELECT * FROM cost_plus_budget_lines bl
+        `SELECT bl.* FROM cost_plus_budget_lines bl
          JOIN cost_plus_budgets b ON bl.budget_id = b.id
-         WHERE b.production_id = $1
-         ORDER BY bl.sort_order`,
+         WHERE b.production_id = $1 ORDER BY bl.sort_order`,
         [productionId]
-      ),
-      db.query(
-        `SELECT * FROM purchase_orders
-         WHERE production_id = $1 AND status = 'approved'
-         ORDER BY date_of_po`,
-        [productionId]
-      ),
-      db.query(
-        `SELECT t.*, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank
-         FROM timesheets t
-         JOIN crew_members cm ON t.crew_member_id = cm.id
-         WHERE t.production_id = $1 AND t.status = 'finalised'  -- TimesheetStatus.FINALISED
-         ORDER BY t.week_ending_date`,
-        [productionId]
-      ),
+      ).then(r => r.rows),
+      CRS.getSupplierCosts(productionId, {}, db),
+      CRS.getLabourCosts(productionId, {}, db),
     ]);
 
     const margin = parseFloat(budget?.margin_rate || 0.10);
 
-    const materialsToSend = approvedPOs.map(po => ({
-      week_ending_date:       po.date_of_po,
-      po_number:              po.po_number,
-      invoice_date:           po.date_of_po,
-      supplier:               po.supplier_name,
-      account_code:           po.account_code,
-      description:            po.description,
-      net_amount:             parseFloat(po.net_amount),
-      margin_amount:          parseFloat(po.net_amount) * margin,
-      recharge_to_production: parseFloat(po.net_amount) * (1 + margin),
+    const materialsToSend = supplierEntries.map(e => ({
+      date:                   e.date,
+      po_number:              e.po_number,
+      supplier:               e.supplier_name,
+      account_code:           e.account_code,
+      net_amount:             parseFloat(e.net_amount),
+      margin_amount:          parseFloat(e.net_amount) * margin,
+      recharge_to_production: parseFloat(e.net_amount) * (1 + margin),
     }));
 
-    const labourToSend = verifiedTimesheets.map(ts => ({
-      week_ending_date:   ts.week_ending_date,
-      crew:               `${ts.first_name} ${ts.last_name}`,
-      trade:              ts.crew_trade,
-      rank:               ts.crew_rank,
-      net_amount:         parseFloat(ts.grand_total),
-      margin_amount:      parseFloat(ts.grand_total) * margin,
-      cost_to_production: parseFloat(ts.grand_total) * (1 + margin),
+    const labourToSend = labourEntries.map(e => ({
+      week_ending_date:   e.week_ending_date,
+      crew:               `${e.first_name} ${e.last_name}`,
+      trade:              e.trade,
+      rank:               e.rank,
+      net_amount:         parseFloat(e.net_amount),
+      margin_amount:      parseFloat(e.net_amount) * margin,
+      cost_to_production: parseFloat(e.net_amount) * (1 + margin),
     }));
 
     const totalLabourNet    = labourToSend.reduce((s, l) => s + l.net_amount, 0);
@@ -224,11 +354,8 @@ const getCostPlus = async (req, res) => {
 const upsertBudget = async (req, res) => {
   const { margin_rate, contracted_weeks, budget_lines } = req.body;
   const client = await db.connect();
-
   try {
     await client.query('BEGIN');
-
-    // Upsert budget header
     const { rows: [budget] } = await client.query(
       `INSERT INTO cost_plus_budgets (production_id, margin_rate, contracted_weeks)
        VALUES ($1,$2,$3)
@@ -238,23 +365,16 @@ const upsertBudget = async (req, res) => {
          contracted_weeks = EXCLUDED.contracted_weeks,
          updated_at       = NOW()
        RETURNING *`,
-      [
-        req.params.productionId,
-        parseFloat(margin_rate || 0.10),
-        parseInt(contracted_weeks || 0, 10),
-      ]
+      [req.params.productionId, parseFloat(margin_rate || 0.10), parseInt(contracted_weeks || 0, 10)]
     );
-
-    // Replace all budget lines (3NF normalised table)
     await client.query('DELETE FROM cost_plus_budget_lines WHERE budget_id = $1', [budget.id]);
 
     const lines = Array.isArray(budget_lines) ? budget_lines : [];
     for (let i = 0; i < lines.length; i++) {
-      const line     = lines[i];
-      const weekly   = parseFloat(line.weekly_cost ?? 0);
-      const weeks    = parseInt(line.weeks ?? 0, 10);
-      const total    = parseFloat(line.total ?? weekly * weeks);
-
+      const line   = lines[i];
+      const weekly = parseFloat(line.weekly_cost ?? 0);
+      const weeks  = parseInt(line.weeks ?? 0, 10);
+      const total  = parseFloat(line.total ?? weekly * weeks);
       await client.query(
         `INSERT INTO cost_plus_budget_lines
            (budget_id, account_code, description, weekly_cost, weeks, total, sort_order)
@@ -262,14 +382,11 @@ const upsertBudget = async (req, res) => {
         [budget.id, line.account_code ?? null, line.description ?? '', weekly, weeks, total, i]
       );
     }
-
     await client.query('COMMIT');
-
     const { rows: savedLines } = await db.query(
       'SELECT * FROM cost_plus_budget_lines WHERE budget_id = $1 ORDER BY sort_order',
       [budget.id]
     );
-
     res.json({ ...budget, budget_lines: savedLines });
   } catch (err) {
     await client.query('ROLLBACK');
@@ -279,27 +396,8 @@ const upsertBudget = async (req, res) => {
   }
 };
 
-// ─── GET /api/cost-reports/entries?production_id=:id&type=supplier ───────────
-const getCostReportEntries = async (req, res) => {
-  const { production_id, type } = req.query;
-  if (!production_id) return res.status(400).json({ error: 'production_id is required' });
-
-  try {
-    const conditions = ['production_id = $1', 'deleted_at IS NULL'];
-    const params     = [production_id];
-    if (type) { conditions.push(`entry_type = $${params.length + 1}`); params.push(type); }
-
-    const { rows } = await db.query(
-      `SELECT * FROM cost_report_entries
-       WHERE ${conditions.join(' AND ')}
-       ORDER BY date, created_at`,
-      params
-    );
-    res.json(rows);
-  } catch (err) {
-    console.error('getCostReportEntries:', err);
-    res.status(500).json({ error: err.message });
-  }
+module.exports = {
+  getType1Report, getCostReport, getSnapshot,
+  getCostReportEntries, addInvoice, deleteInvoice,
+  getCostPlus, upsertBudget,
 };
-
-module.exports = { getCostReport, addInvoice, getCostPlus, upsertBudget, getCostReportEntries };
