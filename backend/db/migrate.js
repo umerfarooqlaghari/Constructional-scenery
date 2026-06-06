@@ -80,7 +80,7 @@ function splitStatements(sql) {
 async function migrate() {
   const client = await pool.connect();
   console.log('\n╔══════════════════════════════════════════╗');
-  console.log('║     CS HQ — Database Migration           ║');
+  console.log('║     Deepsian — Database Migration        ║');
   console.log('╚══════════════════════════════════════════╝\n');
 
   try {

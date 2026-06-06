@@ -1,37 +1,102 @@
-const db                       = require('../config/db');
-const { sendEmail, templates } = require('../config/email');
-const { fileUrl }              = require('../Middleware/upload');
+const db                           = require('../config/db');
+const { sendEmail, templates }     = require('../config/email');
+const { fileUrl }                  = require('../Middleware/upload');
+const { generateTimesheetPdf }     = require('../services/timesheetPdfService');
+const { generateVerificationPack } = require('../services/verificationPackService');
+const { generateTimesheetListPdf } = require('../services/timesheetListPdfService');
+
+// ─── Helper: record an outbound email to email_log ────────────────────────────
+const logEmail = async (module, relatedRecordId, recipientEmail, recipientName, success, errorMessage = null) => {
+  try {
+    await db.query(
+      `INSERT INTO email_log (module, related_record_id, recipient_email, recipient_name, success, error_message)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [module, relatedRecordId, recipientEmail, recipientName, success, errorMessage || null]
+    );
+  } catch (logErr) {
+    console.error('email_log insert failed:', logErr.message);
+  }
+};
 
 const STANDARD_START = '07:30';
 const MEAL_RATES     = { breakfast: 10.50, lunch: 14.00, supper: 10.50 };
+
+// BECTU rate years run 1 July → 30 June (e.g. '2025/26' covers Jul 2025 – Jun 2026).
+// This maps a week_ending_date to the matching rate_year string.
+const getRateYear = (weekEndingDate) => {
+  const d     = new Date(weekEndingDate + 'T00:00:00Z');
+  const year  = d.getUTCFullYear();
+  const month = d.getUTCMonth() + 1; // 1-indexed
+  const startYear = month >= 7 ? year : year - 1;
+  return `${startYear}/${String(startYear + 1).slice(-2)}`;
+};
 
 const calcTimeOut = (overtimeHours = 0) => {
   const endMinutes = 15 * 60 + 45 + Math.round(overtimeHours * 60); // 15:45 + OT
   return `${String(Math.floor(endMinutes / 60)).padStart(2, '0')}:${String(endMinutes % 60).padStart(2, '0')}`;
 };
 
+// ─── Helper: build shared WHERE conditions for timesheet list/export queries ──
+const buildTimesheetFilterConditions = (query) => {
+  const conditions = [];
+  const params     = [];
+  let   i          = 1;
+
+  if (query.production_id)    { conditions.push(`t.production_id = $${i++}`);                    params.push(query.production_id); }
+  if (query.crew_member_id)   { conditions.push(`t.crew_member_id = $${i++}`);                   params.push(query.crew_member_id); }
+  if (query.week_ending_date) { conditions.push(`t.week_ending_date = $${i++}`);                 params.push(query.week_ending_date); }
+  if (query.status)           { conditions.push(`t.status = $${i++}`);                           params.push(query.status); }
+  if (query.date_from)        { conditions.push(`t.week_ending_date >= $${i++}`);                params.push(query.date_from); }
+  if (query.date_to)          { conditions.push(`t.week_ending_date <= $${i++}`);                params.push(query.date_to); }
+  if (query.crew_trade)       { conditions.push(`cm.crew_trade = $${i++}`);                      params.push(query.crew_trade); }
+  if (query.crew_rank)        { conditions.push(`cm.crew_rank = $${i++}`);                       params.push(query.crew_rank); }
+  if (query.crew_number)      { conditions.push(`cm.crew_number ILIKE $${i++}`);                 params.push(`%${query.crew_number}%`); }
+  if (query.crew_member_name) { conditions.push(`(cm.first_name || ' ' || cm.last_name) ILIKE $${i++}`); params.push(`%${query.crew_member_name}%`); }
+
+  if (query.invoice_attached === 'yes') conditions.push(`t.invoice_attachment_url IS NOT NULL`);
+  if (query.invoice_attached === 'no')  conditions.push(`t.invoice_attachment_url IS NULL`);
+
+  // Pay-run status: does a processed pay_run exist that includes this timesheet?
+  if (query.pay_run_status === 'processed') {
+    conditions.push(`EXISTS (
+      SELECT 1 FROM pay_run_items pri2
+      JOIN pay_runs pr2 ON pr2.id = pri2.pay_run_id
+      WHERE pri2.timesheet_id = t.id AND pr2.status = 'processed'
+    )`);
+  } else if (query.pay_run_status === 'not_processed') {
+    conditions.push(`NOT EXISTS (
+      SELECT 1 FROM pay_run_items pri2
+      JOIN pay_runs pr2 ON pr2.id = pri2.pay_run_id
+      WHERE pri2.timesheet_id = t.id AND pr2.status = 'processed'
+    )`);
+  }
+
+  if (query.include_archived !== 'true') {
+    conditions.push(`p.status != 'archived'`);
+  }
+
+  return { conditions, params };
+};
+
+// ─── Helper: human-readable filter summary for PDF export header ──────────────
+const buildTimesheetFilterSummary = (query) => {
+  const parts = [];
+  if (query.crew_member_name) parts.push(`Name: ${query.crew_member_name}`);
+  if (query.crew_number)      parts.push(`Crew No.: ${query.crew_number}`);
+  if (query.crew_trade)       parts.push(`Trade: ${query.crew_trade}`);
+  if (query.crew_rank)        parts.push(`Rank: ${query.crew_rank}`);
+  if (query.date_from || query.date_to)
+    parts.push(`Week: ${query.date_from || '*'} → ${query.date_to || '*'}`);
+  if (query.status)           parts.push(`Status: ${query.status}`);
+  if (query.invoice_attached) parts.push(`Invoice: ${query.invoice_attached}`);
+  if (query.pay_run_status)   parts.push(`Pay run: ${query.pay_run_status.replace('_', ' ')}`);
+  return parts.length ? parts.join('  ·  ') : null;
+};
+
 // ─── GET /api/timesheets ──────────────────────────────────────────────────────
 const getAllTimesheets = async (req, res) => {
   try {
-    const conditions = [];
-    const params     = [];
-    let   i          = 1;
-
-    if (req.query.production_id)    { conditions.push(`t.production_id = $${i++}`);    params.push(req.query.production_id); }
-    if (req.query.crew_member_id)   { conditions.push(`t.crew_member_id = $${i++}`);   params.push(req.query.crew_member_id); }
-    if (req.query.week_ending_date) { conditions.push(`t.week_ending_date = $${i++}`); params.push(req.query.week_ending_date); }
-    if (req.query.status)           { conditions.push(`t.status = $${i++}`);           params.push(req.query.status); }
-    if (req.query.date_from)        { conditions.push(`t.week_ending_date >= $${i++}`); params.push(req.query.date_from); }
-    if (req.query.date_to)          { conditions.push(`t.week_ending_date <= $${i++}`); params.push(req.query.date_to); }
-    if (req.query.invoice_attached === 'yes') { conditions.push(`t.invoice_attachment_url IS NOT NULL`); }
-    if (req.query.invoice_attached === 'no')  { conditions.push(`t.invoice_attachment_url IS NULL`); }
-    if (req.query.crew_trade) { conditions.push(`cm.crew_trade = $${i++}`); params.push(req.query.crew_trade); }
-    if (req.query.crew_rank)  { conditions.push(`cm.crew_rank = $${i++}`);  params.push(req.query.crew_rank); }
-
-    if (req.query.include_archived !== 'true') {
-      conditions.push(`p.status != 'archived'`);
-    }
-
+    const { conditions, params } = buildTimesheetFilterConditions(req.query);
     const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
       `SELECT t.*,
@@ -51,11 +116,125 @@ const getAllTimesheets = async (req, res) => {
   }
 };
 
+// ─── Shared export query ──────────────────────────────────────────────────────
+// Fetches timesheets with computed columns needed for CSV/PDF export:
+// days_worked, ot_hours_total, pay_run_status, withholding, pay_run_amount.
+const fetchTimesheetsForExport = async (query) => {
+  const { conditions, params } = buildTimesheetFilterConditions(query);
+  const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
+  const { rows } = await db.query(
+    `SELECT t.*,
+            cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank,
+            cm.employment_status, cm.paye_withholding_rate,
+            p.name AS prod_name,
+            COALESCE(te_agg.days_worked, 0)::int   AS days_worked,
+            COALESCE(te_agg.ot_hours_total, 0)     AS ot_hours_total,
+            pr.status                               AS pay_run_status,
+            pri.net_amount                          AS pay_run_net_amount
+     FROM timesheets t
+     JOIN crew_members cm ON t.crew_member_id = cm.id
+     JOIN productions  p  ON t.production_id  = p.id
+     LEFT JOIN (
+       SELECT timesheet_id,
+              COUNT(*) FILTER (WHERE full_day_worked = true) AS days_worked,
+              SUM(overtime_hours)                            AS ot_hours_total
+       FROM timesheet_entries
+       GROUP BY timesheet_id
+     ) te_agg ON te_agg.timesheet_id = t.id
+     LEFT JOIN pay_run_items pri ON pri.timesheet_id = t.id
+     LEFT JOIN pay_runs       pr  ON pr.id = pri.pay_run_id AND pr.status = 'processed'
+     ${where}
+     ORDER BY t.week_ending_date DESC, cm.last_name, cm.first_name`,
+    params
+  );
+  return rows;
+};
+
+// ─── GET /api/timesheets/export/csv ───────────────────────────────────────────
+// CSV columns (ticket spec): Crew Number, Name, Trade, Rank, Employment Type,
+// Week Ending, Days Worked, OT Hours, Gross Total, Withholding, Pay Run Amount,
+// Invoice Attached, Status
+const exportTimesheetsCSV = async (req, res) => {
+  try {
+    const rows = await fetchTimesheetsForExport(req.query);
+    const esc  = (v) => {
+      if (v === null || v === undefined) return '';
+      const s = String(v);
+      return (s.includes(',') || s.includes('"') || s.includes('\n'))
+        ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+
+    const header = [
+      'Crew Number', 'Name', 'Trade', 'Rank', 'Employment Type',
+      'Week Ending', 'Days Worked', 'OT Hours', 'Gross Total',
+      'Withholding', 'Pay Run Amount', 'Invoice Attached', 'Status',
+    ];
+    const lines = [header.map(esc).join(',')];
+
+    rows.forEach(r => {
+      const gross       = parseFloat(r.grand_total || 0);
+      const isPAYE      = r.employment_status === 'paye';
+      const withholdRate = isPAYE ? parseFloat(r.paye_withholding_rate || 0) / 100 : 0;
+      const withholding  = (gross * withholdRate).toFixed(2);
+      const payRunAmt    = r.pay_run_net_amount != null
+        ? parseFloat(r.pay_run_net_amount).toFixed(2)
+        : (gross - parseFloat(withholding)).toFixed(2);
+
+      lines.push([
+        r.crew_number,
+        `${r.first_name} ${r.last_name}`,
+        r.crew_trade,
+        r.crew_rank,
+        r.employment_status === 'paye' ? 'PAYE' : 'Self-Employed',
+        r.week_ending_date,
+        r.days_worked,
+        parseFloat(r.ot_hours_total || 0).toFixed(1),
+        gross.toFixed(2),
+        withholding,
+        payRunAmt,
+        r.invoice_attachment_url ? 'Yes' : 'No',
+        r.status,
+      ].map(esc).join(','));
+    });
+
+    const date = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+    res.setHeader('Content-Disposition', `attachment; filename="timesheets-${date}.csv"`);
+    res.send(lines.join('\r\n'));
+  } catch (err) {
+    console.error('exportTimesheetsCSV:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── GET /api/timesheets/export/pdf ───────────────────────────────────────────
+// A4 portrait, branded list PDF with applied-filters summary in the header.
+const exportTimesheetsPDF = async (req, res) => {
+  try {
+    const rows          = await fetchTimesheetsForExport(req.query);
+    const filterSummary = buildTimesheetFilterSummary(req.query);
+    const pdfBuffer     = await generateTimesheetListPdf(rows, filterSummary);
+
+    const date = new Date().toISOString().split('T')[0];
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="timesheets-${date}.pdf"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('exportTimesheetsPDF:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ─── POST /api/timesheets ─────────────────────────────────────────────────────
 const createTimesheet = async (req, res) => {
   const { crew_member_id, production_id, week_ending_date } = req.body;
   if (!crew_member_id || !production_id || !week_ending_date)
     return res.status(400).json({ error: 'crew_member_id, production_id, and week_ending_date are required' });
+
+  // Validate week_ending_date is a Sunday
+  const wedDate = new Date(week_ending_date + 'T00:00:00Z');
+  if (isNaN(wedDate.getTime()) || wedDate.getUTCDay() !== 0)
+    return res.status(400).json({ error: 'week_ending_date must be a Sunday (YYYY-MM-DD)' });
 
   try {
     // STATUS GATE — block timesheets on pre_production, complete, archived
@@ -87,7 +266,7 @@ const createTimesheet = async (req, res) => {
       [crew_member_id, production_id, week_ending_date]
     );
     if (existing)
-      return res.status(400).json({ error: 'A timesheet already exists for this crew member and week' });
+      return res.status(409).json({ error: 'DUPLICATE_TIMESHEET', message: 'A timesheet already exists for this crew member, production, and week' });
 
     const { rows: [ts] } = await db.query(
       `INSERT INTO timesheets (crew_member_id, production_id, week_ending_date, status, created_by)
@@ -169,12 +348,24 @@ const saveEntries = async (req, res) => {
       [req.params.id]
     );
     if (!ts) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Timesheet not found' }); }
+    if (ts.status === 'finalised') {
+      await client.query('ROLLBACK');
+      return res.status(403).json({ error: 'Finalised timesheets are locked and cannot be edited' });
+    }
 
-    // Get BECTU rate for this crew member's trade/rank
-    const { rows: [rateRow] } = await client.query(
-      'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2',
-      [ts.crew_trade, ts.crew_rank]
+    // Fetch the BECTU rate in effect at the timesheet's week_ending_date.
+    // Falls back to most-recent rate if no exact year match (e.g. future rate card not yet loaded).
+    const rateYear = getRateYear(ts.week_ending_date);
+    let { rows: [rateRow] } = await client.query(
+      'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2 AND rate_year = $3',
+      [ts.crew_trade, ts.crew_rank, rateYear]
     );
+    if (!rateRow) {
+      ({ rows: [rateRow] } = await client.query(
+        'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2 ORDER BY rate_year DESC LIMIT 1',
+        [ts.crew_trade, ts.crew_rank]
+      ));
+    }
     const dailyRate = parseFloat(rateRow?.daily_rate || 0);
     const otRate    = parseFloat(rateRow?.overtime_rate || 0);
 
@@ -258,19 +449,39 @@ const saveEntries = async (req, res) => {
   }
 };
 
+// ─── Helper: send one timesheet email with PDF attachment ─────────────────────
+const sendTimesheetEmail = async (ts, entries) => {
+  const crewName   = `${ts.first_name} ${ts.last_name}`;
+  const daysWorked = entries.filter(e => e.full_day_worked).length;
+  const pdfBuffer  = await generateTimesheetPdf(ts, entries);
+
+  await sendEmail({
+    from:        `"Construct Scenery" <${process.env.SMTP_USER}>`,
+    replyTo:     'invoice@constructscenery.co.uk',
+    to:          ts.email,
+    ...templates.timesheetDistributed(crewName, ts.week_ending_date, ts.prod_name, daysWorked, ts.grand_total),
+    attachments: [{ filename: `Timesheet-${ts.week_ending_date}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }],
+  });
+};
+
 // ─── POST /api/timesheets/bulk-distribute ─────────────────────────────────────
+// Sends all DRAFT timesheets for the week. Status advances to distributed only
+// on successful email send. Already-distributed timesheets are skipped entirely.
 const bulkDistribute = async (req, res) => {
   const { week_ending_date, production_id } = req.body;
   if (!week_ending_date)
     return res.status(400).json({ error: 'week_ending_date is required' });
 
   try {
-    const conditions = ["t.week_ending_date = $1", "t.status = 'draft'"];
+    const conditions = ["t.week_ending_date = $1", "t.status = 'draft'"];  // TimesheetStatus.DRAFT
     const params     = [week_ending_date];
     if (production_id) { conditions.push(`t.production_id = $2`); params.push(production_id); }
 
     const { rows: timesheets } = await db.query(
-      `SELECT t.id, cm.first_name, cm.last_name, cm.email, p.name AS prod_name
+      `SELECT t.*,
+              cm.first_name, cm.last_name, cm.email, cm.crew_number,
+              cm.crew_trade, cm.crew_rank, cm.employment_status, cm.company_name,
+              p.name AS prod_name
        FROM timesheets t
        JOIN crew_members cm ON t.crew_member_id = cm.id
        JOIN productions p   ON t.production_id  = p.id
@@ -281,39 +492,78 @@ const bulkDistribute = async (req, res) => {
     if (!timesheets.length)
       return res.status(400).json({ error: 'No draft timesheets found for this week' });
 
-    const ids = timesheets.map(t => t.id);
-    await db.query(
-      `UPDATE timesheets SET status = 'sent' WHERE id = ANY($1::uuid[])`,
-      [ids]
-    );
+    const results = { sent: [], failed: [], no_email: [] };
 
-    // Send email to each crew member who has an email address
-    const emailResults = { sent: 0, skipped: 0 };
     for (const ts of timesheets) {
-      if (ts.email) {
-        const { subject, html } = templates.timesheetDistributed(
-          `${ts.first_name} ${ts.last_name}`,
-          week_ending_date,
-          ts.prod_name || 'your production'
-        );
-        await sendEmail({ to: ts.email, subject, html }).catch(err => {
-          console.error(`Timesheet email failed for ${ts.first_name} ${ts.last_name}:`, err.message);
-        });
-        emailResults.sent++;
-      } else {
-        emailResults.skipped++;
+      if (!ts.email) {
+        // Advance to distributed even without email (accountant can still finalise)
+        await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
+        results.no_email.push(`${ts.first_name} ${ts.last_name}`);
+        continue;
+      }
+
+      const { rows: entries } = await db.query(
+        'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+        [ts.id]
+      );
+
+      try {
+        await sendTimesheetEmail(ts, entries);
+        await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
+        await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
+        results.sent.push(`${ts.first_name} ${ts.last_name}`);
+      } catch (emailErr) {
+        console.error(`Timesheet email failed for ${ts.first_name} ${ts.last_name}:`, emailErr.message);
+        await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, false, emailErr.message);
+        results.failed.push(`${ts.first_name} ${ts.last_name}`);
       }
     }
 
     res.json({
-      message:           `${timesheets.length} timesheet(s) distributed`,
-      distributed_count: timesheets.length,
-      emails_sent:       emailResults.sent,
-      emails_skipped:    emailResults.skipped,
+      message:      `${results.sent.length} timesheet(s) distributed`,
       week_ending_date,
+      results,
     });
   } catch (err) {
     console.error('bulkDistribute:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── POST /api/timesheets/:id/resend ─────────────────────────────────────────
+// Resends a single timesheet to the crew member. Only available on
+// amendment_requested timesheets. Advances status back to distributed.
+const resendTimesheet = async (req, res) => {
+  try {
+    const { rows: [ts] } = await db.query(
+      `SELECT t.*,
+              cm.first_name, cm.last_name, cm.email, cm.crew_number,
+              cm.crew_trade, cm.crew_rank, cm.employment_status, cm.company_name,
+              p.name AS prod_name
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       JOIN productions p   ON t.production_id  = p.id
+       WHERE t.id = $1`,
+      [req.params.id]
+    );
+    if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
+    if (ts.status !== 'amendment_requested')
+      return res.status(409).json({ error: 'Only amendment_requested timesheets can be resent' });
+    if (!ts.email)
+      return res.status(400).json({ error: 'Crew member has no email address on file' });
+
+    const { rows: entries } = await db.query(
+      'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+      [req.params.id]
+    );
+
+    await sendTimesheetEmail(ts, entries);
+    await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [req.params.id]);
+    await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
+
+    res.json({ message: 'Timesheet resent to crew member', timesheet_id: ts.id });
+  } catch (err) {
+    console.error('resendTimesheet:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -334,7 +584,7 @@ const attachInvoice = async (req, res) => {
   try {
     const { rows: [ts] } = await db.query(
       `UPDATE timesheets
-       SET invoice_attachment_url = $1, invoice_attachment_name = $2, status = 'invoice_received'
+       SET invoice_attachment_url = $1, invoice_attachment_name = $2
        WHERE id = $3
        RETURNING *`,
       [invoice_attachment_url, invoice_attachment_name, req.params.id]
@@ -346,15 +596,22 @@ const attachInvoice = async (req, res) => {
 };
 
 // ─── POST /api/timesheets/chase-invoices ─────────────────────────────────────
+// Chases self-employed crew with no invoice on distributed timesheets.
+// Skips crew members already chased today (duplicate prevention via email_log).
 const chaseInvoices = async (req, res) => {
   const { week_ending_date } = req.body;
   try {
-    const conditions = ["t.status = 'sent'", 't.invoice_attachment_url IS NULL'];
-    const params     = [];
+    const conditions = [
+      "t.status IN ('distributed', 'amendment_requested')",
+      't.invoice_attachment_url IS NULL',
+      "cm.employment_status = 'self_employed'",  // PAYE crew do not invoice
+    ];
+    const params = [];
     if (week_ending_date) { conditions.push(`t.week_ending_date = $1`); params.push(week_ending_date); }
 
     const { rows } = await db.query(
-      `SELECT t.week_ending_date, cm.first_name, cm.last_name, cm.email
+      `SELECT t.id, t.week_ending_date, t.grand_total,
+              cm.first_name, cm.last_name, cm.email
        FROM timesheets t
        JOIN crew_members cm ON t.crew_member_id = cm.id
        WHERE ${conditions.join(' AND ')}`,
@@ -363,32 +620,43 @@ const chaseInvoices = async (req, res) => {
 
     if (!rows.length) return res.json({ message: 'No outstanding invoices to chase', chased_count: 0 });
 
-    // Send chase emails to crew members who have an email address on file
-    const emailResults = { sent: 0, skipped: 0 };
+    const today = new Date().toISOString().split('T')[0];
+    const results = { sent: [], already_chased_today: [], no_email: [] };
+
     for (const t of rows) {
-      if (t.email) {
-        const { subject, html } = templates.invoiceChase(
-          `${t.first_name} ${t.last_name}`,
-          t.week_ending_date
-        );
-        await sendEmail({ to: t.email, subject, html }).catch(err => {
-          console.error(`Chase email failed for ${t.first_name} ${t.last_name}:`, err.message);
+      const crewName = `${t.first_name} ${t.last_name}`;
+
+      if (!t.email) { results.no_email.push(crewName); continue; }
+
+      // Duplicate prevention — skip if already chased today
+      const { rows: recentChase } = await db.query(
+        `SELECT id FROM email_log
+         WHERE module = 'invoice_chase'
+           AND recipient_email = $1
+           AND sent_at >= $2::date`,
+        [t.email, today]
+      );
+      if (recentChase.length) { results.already_chased_today.push(crewName); continue; }
+
+      try {
+        await sendEmail({
+          from:    `"Construct Scenery" <${process.env.SMTP_USER}>`,
+          replyTo: 'invoice@constructscenery.co.uk',
+          to:      t.email,
+          ...templates.invoiceChase(crewName, t.week_ending_date, t.grand_total),
         });
-        emailResults.sent++;
-      } else {
-        emailResults.skipped++;
+        await logEmail('invoice_chase', t.id, t.email, crewName, true);
+        results.sent.push(crewName);
+      } catch (emailErr) {
+        console.error(`Chase email failed for ${crewName}:`, emailErr.message);
+        await logEmail('invoice_chase', t.id, t.email, crewName, false, emailErr.message);
       }
     }
 
     res.json({
-      message:      `Invoice chase sent to ${emailResults.sent} crew member(s)`,
-      chased_count: rows.length,
-      emails_sent:  emailResults.sent,
-      emails_skipped: emailResults.skipped,
-      crew_chased:  rows.map(t => ({
-        crew_member: `${t.first_name} ${t.last_name}`,
-        week_ending:  t.week_ending_date,
-      })),
+      message:     `Invoice chase sent to ${results.sent.length} crew member(s)`,
+      week_ending_date: week_ending_date || null,
+      results,
     });
   } catch (err) {
     console.error('chaseInvoices:', err);
@@ -397,21 +665,138 @@ const chaseInvoices = async (req, res) => {
 };
 
 // ─── POST /api/timesheets/:id/verify ─────────────────────────────────────────
+// Finalises a timesheet and locks it from further editing.
+//   - Status must be distributed or amendment_requested.
+//   - PAYE crew: no invoice needed → always allowed.
+//   - Self-employed crew: invoice must be attached → 409 INVOICE_REQUIRED if not.
 const verifyTimesheet = async (req, res) => {
   try {
-    const { rows: [existing] } = await db.query(
-      'SELECT invoice_attachment_url FROM timesheets WHERE id = $1',
-      [req.params.id]
-    );
-    if (!existing?.invoice_attachment_url)
-      return res.status(400).json({ error: 'Cannot verify: invoice not yet attached' });
-
     const { rows: [ts] } = await db.query(
-      `UPDATE timesheets SET status = 'verified' WHERE id = $1 RETURNING *`,
+      `SELECT t.id, t.status, t.invoice_attachment_url,
+              cm.employment_status
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       WHERE t.id = $1`,
       [req.params.id]
     );
-    res.json({ message: 'Timesheet verified', timesheet: ts });
+    if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
+
+    const readyStatuses = ['distributed', 'amendment_requested'];
+    if (!readyStatuses.includes(ts.status))
+      return res.status(409).json({
+        error: 'Timesheet must be distributed or amendment_requested before it can be finalised',
+      });
+
+    if (ts.employment_status === 'self_employed' && !ts.invoice_attachment_url)
+      return res.status(409).json({
+        error:    'INVOICE_REQUIRED',
+        message:  'An invoice must be attached before finalising a self-employed timesheet',
+      });
+
+    const { rows: [updated] } = await db.query(
+      `UPDATE timesheets SET status = 'finalised' WHERE id = $1 RETURNING *`,  // TimesheetStatus.FINALISED
+      [req.params.id]
+    );
+    res.json({ message: 'Timesheet finalised', timesheet: updated });
   } catch (err) {
+    console.error('verifyTimesheet:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── PATCH /api/timesheets/:id ────────────────────────────────────────────────
+const patchTimesheet = async (req, res) => {
+  const VALID_STATUSES = ['draft', 'distributed', 'amendment_requested', 'finalised'];  // TimesheetStatus
+  const { status } = req.body;
+
+  if (!status)
+    return res.status(400).json({ error: 'No updatable fields provided' });
+  if (!VALID_STATUSES.includes(status))
+    return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
+
+  if (status === 'finalised')
+    return res.status(400).json({ error: 'Use POST /:id/verify to finalise a timesheet' });
+
+  try {
+    const { rows: [existing] } = await db.query(
+      'SELECT id, status FROM timesheets WHERE id = $1', [req.params.id]
+    );
+    if (!existing) return res.status(404).json({ error: 'Timesheet not found' });
+    if (existing.status === 'finalised')
+      return res.status(403).json({ error: 'Finalised timesheets are locked — status cannot be changed' });
+
+    const { rows: [updated] } = await db.query(
+      'UPDATE timesheets SET status = $1 WHERE id = $2 RETURNING *',
+      [status, req.params.id]
+    );
+    res.json(updated);
+  } catch (err) {
+    console.error('patchTimesheet:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── POST /api/timesheets/verification-pack ───────────────────────────────────
+// Returns a merged PDF: each crew member's timesheet + invoice (or placeholder).
+// All timesheets for the week must be finalised — returns 409 if any are not.
+// Filename: VerificationPack_[ProductionName]_w-e-[WeekEndingDate].pdf
+const generateVerificationPackPdf = async (req, res) => {
+  const { week_ending_date, production_id } = req.body;
+  if (!week_ending_date || !production_id)
+    return res.status(400).json({ error: 'week_ending_date and production_id are required' });
+
+  try {
+    const { rows: timesheets } = await db.query(
+      `SELECT t.*,
+              cm.crew_number, cm.first_name, cm.last_name,
+              cm.employment_status, cm.company_name, cm.crew_trade, cm.crew_rank,
+              p.name AS prod_name
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       JOIN productions p   ON t.production_id  = p.id
+       WHERE t.week_ending_date = $1 AND t.production_id = $2
+       ORDER BY cm.last_name, cm.first_name`,
+      [week_ending_date, production_id]
+    );
+
+    if (!timesheets.length)
+      return res.status(404).json({ error: 'No timesheets found for this week and production' });
+
+    const notFinalised = timesheets.filter(t => t.status !== 'finalised');
+    if (notFinalised.length)
+      return res.status(409).json({
+        error:         `${notFinalised.length} timesheet(s) are not yet finalised`,
+        not_finalised: notFinalised.map(t => `${t.first_name} ${t.last_name}`),
+      });
+
+    // Attach entries to each timesheet row
+    const withEntries = await Promise.all(timesheets.map(async ts => {
+      const { rows: entries } = await db.query(
+        'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+        [ts.id]
+      );
+      return { ...ts, entries };
+    }));
+
+    const prodName = timesheets[0]?.prod_name || 'Production';
+    const { pdfBytes, timesheetPageCount, invoicePageCount, crewCount } =
+      await generateVerificationPack(withEntries, prodName);
+
+    const safeName = prodName.replace(/[^a-zA-Z0-9]+/g, '_');
+    const filename = `VerificationPack_${safeName}_w-e-${week_ending_date}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    // Summary header allows frontend to show the page-count toast
+    res.setHeader('X-Pack-Summary', JSON.stringify({
+      crew_count:       crewCount,
+      timesheet_pages:  timesheetPageCount,
+      invoice_pages:    invoicePageCount,
+      total_pages:      timesheetPageCount + invoicePageCount,
+    }));
+    res.send(Buffer.from(pdfBytes));
+  } catch (err) {
+    console.error('generateVerificationPackPdf:', err);
     res.status(500).json({ error: err.message });
   }
 };
@@ -461,7 +846,10 @@ const getVerificationPack = async (req, res) => {
 };
 
 module.exports = {
-  getAllTimesheets, createTimesheet, getTimesheetById,
-  saveEntries, bulkDistribute,
-  attachInvoice, chaseInvoices, verifyTimesheet, getVerificationPack,
+  getAllTimesheets, exportTimesheetsCSV, exportTimesheetsPDF,
+  createTimesheet, getTimesheetById,
+  saveEntries, patchTimesheet,
+  bulkDistribute, resendTimesheet,
+  attachInvoice, chaseInvoices, verifyTimesheet,
+  generateVerificationPackPdf, getVerificationPack,
 };

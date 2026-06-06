@@ -298,7 +298,7 @@ const runPostProductionPercentometer = async (productionId, attempt = 1) => {
       db.query(
         `SELECT SUM(grand_total::numeric) AS total
          FROM timesheets
-         WHERE production_id = $1 AND status = 'verified'`,
+         WHERE production_id = $1 AND status = 'finalised'`,  -- TimesheetStatus.FINALISED
         [productionId]
       ),
     ]);

@@ -185,17 +185,16 @@ const forgotPassword = async (req, res) => {
     const { sendEmail } = require('../config/email');
     await sendEmail({
       to: email,
-      subject: 'CS HQ — Password Reset OTP',
+      subject: 'Deepsian — Password Reset OTP',
       html: `
         <div style="font-family:Arial,sans-serif;max-width:480px;margin:0 auto;padding:24px">
           <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
-            <div style="width:32px;height:32px;background:#0d9488;border-radius:8px;display:flex;align-items:center;justify-content:center">
-              <span style="color:#fff;font-size:12px;font-weight:900">CS</span>
+            <div style="background:#0f172a;padding:6px 12px;border-radius:6px;display:inline-block">
+              <span style="color:#fff;font-size:13px;font-weight:900;letter-spacing:2px">DEEPSIAN</span>
             </div>
-            <span style="font-weight:700;font-size:16px;color:#0f172a">CS HQ</span>
           </div>
           <h2 style="color:#0f172a;font-size:20px;margin:0 0 8px">Password Reset Request</h2>
-          <p style="color:#475569;font-size:14px;margin:0 0 24px">Use the code below to reset your CS HQ password. This code expires in <strong>15 minutes</strong>.</p>
+          <p style="color:#475569;font-size:14px;margin:0 0 24px">Use the code below to reset your Deepsian password. This code expires in <strong>15 minutes</strong>.</p>
           <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:12px;padding:24px;text-align:center;margin-bottom:24px">
             <p style="color:#64748b;font-size:12px;text-transform:uppercase;letter-spacing:2px;margin:0 0 8px">Your OTP</p>
             <p style="font-size:40px;font-weight:700;letter-spacing:12px;color:#0f172a;margin:0">${otp}</p>

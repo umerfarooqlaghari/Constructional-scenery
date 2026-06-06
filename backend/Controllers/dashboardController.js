@@ -62,7 +62,7 @@ const getCurrentWeekLabour = async (weekEnd) => {
     if (!byProd[name]) byProd[name] = { production: name, total: 0, pending: 0, approved: 0 };
     const amt = parseFloat(ts.grand_total || 0);
     byProd[name].total += amt;
-    if (ts.status === 'verified') byProd[name].approved += amt;
+    if (ts.status === 'finalised') byProd[name].approved += amt;  // TimesheetStatus.FINALISED
     else                          byProd[name].pending  += amt;
   });
 
@@ -88,7 +88,7 @@ const getActiveProductionsSummary = async () => {
         [prod.id]
       ),
       db.query(
-        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'verified'`,
+        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'finalised'`,
         [prod.id]
       ),
       db.query(
@@ -163,7 +163,7 @@ const getForecastingVariance = async () => {
         [f.production_id]
       ),
       db.query(
-        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'verified'`,
+        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'finalised'`,
         [f.production_id]
       ),
     ]);
@@ -209,7 +209,7 @@ const getProductionPipeline = async () => {
 const getPendingApprovals = async () => {
   const [{ rows: [pos] }, { rows: [tss] }] = await Promise.all([
     db.query(`SELECT COUNT(*)::int AS cnt FROM purchase_orders WHERE status = 'submitted'`),
-    db.query(`SELECT COUNT(*)::int AS cnt FROM timesheets       WHERE status = 'invoice_received'`),
+    db.query(`SELECT COUNT(*)::int AS cnt FROM timesheets WHERE status = 'distributed' AND invoice_attachment_url IS NOT NULL`),
   ]);
   return {
     purchase_orders: pos.cnt,

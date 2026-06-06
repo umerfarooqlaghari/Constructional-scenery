@@ -39,7 +39,7 @@ const getCostReport = async (req, res) => {
                 cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank, cm.employment_status
          FROM   timesheets t
          JOIN   crew_members cm ON t.crew_member_id = cm.id
-         WHERE  t.production_id = $1 AND t.status = 'verified' ${tsDateFilter}
+         WHERE  t.production_id = $1 AND t.status = 'finalised' ${tsDateFilter}  -- TimesheetStatus.FINALISED
          ORDER BY t.week_ending_date`,
         tsParams
       ),
@@ -165,7 +165,7 @@ const getCostPlus = async (req, res) => {
         `SELECT t.*, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank
          FROM timesheets t
          JOIN crew_members cm ON t.crew_member_id = cm.id
-         WHERE t.production_id = $1 AND t.status = 'verified'
+         WHERE t.production_id = $1 AND t.status = 'finalised'  -- TimesheetStatus.FINALISED
          ORDER BY t.week_ending_date`,
         [productionId]
       ),
@@ -279,4 +279,27 @@ const upsertBudget = async (req, res) => {
   }
 };
 
-module.exports = { getCostReport, addInvoice, getCostPlus, upsertBudget };
+// ─── GET /api/cost-reports/entries?production_id=:id&type=supplier ───────────
+const getCostReportEntries = async (req, res) => {
+  const { production_id, type } = req.query;
+  if (!production_id) return res.status(400).json({ error: 'production_id is required' });
+
+  try {
+    const conditions = ['production_id = $1', 'deleted_at IS NULL'];
+    const params     = [production_id];
+    if (type) { conditions.push(`entry_type = $${params.length + 1}`); params.push(type); }
+
+    const { rows } = await db.query(
+      `SELECT * FROM cost_report_entries
+       WHERE ${conditions.join(' AND ')}
+       ORDER BY date, created_at`,
+      params
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getCostReportEntries:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+module.exports = { getCostReport, addInvoice, getCostPlus, upsertBudget, getCostReportEntries };

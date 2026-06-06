@@ -1,5 +1,120 @@
 const db = require('../config/db');
 const { encrypt, decrypt } = require('../config/crypto');
+const { recordWeeklyLabour } = require('../services/labourCostService');
+
+// Derive a short production code from the production name.
+// Takes the first letter of each word, uppercase, max 4 chars.
+// e.g. "Star Wars: Episode IV" → "SWEI"
+const prodShortCode = (name) =>
+  (name || '')
+    .trim()
+    .split(/\s+/)
+    .map(w => w[0]?.toUpperCase() || '')
+    .join('')
+    .slice(0, 4) || 'PROD';
+
+// ─── GET /api/pay-runs/available-weeks ────────────────────────────────────────
+// Returns distinct week_ending_dates that have at least one finalised timesheet,
+// plus whether a pay_run already exists for that week (and its status).
+const getAvailableWeeks = async (req, res) => {
+  const { production_id } = req.query;
+  if (!production_id)
+    return res.status(400).json({ error: 'production_id is required' });
+
+  try {
+    const { rows } = await db.query(
+      `SELECT t.week_ending_date,
+              COUNT(t.id)::int                                AS timesheet_count,
+              pr.id                                           AS pay_run_id,
+              pr.status                                       AS pay_run_status,
+              pr.processed_at
+       FROM timesheets t
+       LEFT JOIN pay_runs pr
+              ON pr.production_id    = t.production_id
+             AND pr.week_ending_date = t.week_ending_date
+       WHERE t.production_id = $1
+         AND t.status = 'finalised'
+       GROUP BY t.week_ending_date, pr.id, pr.status, pr.processed_at
+       ORDER BY t.week_ending_date DESC`,
+      [production_id]
+    );
+    res.json(rows);
+  } catch (err) {
+    console.error('getAvailableWeeks:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
+// ─── GET /api/pay-runs/preview ────────────────────────────────────────────────
+// Returns the pay run table data (calculated amounts, bank details) for a given
+// week without creating or persisting a pay_run record.
+const getPayRunPreview = async (req, res) => {
+  const { production_id, week_ending_date } = req.query;
+  if (!production_id || !week_ending_date)
+    return res.status(400).json({ error: 'production_id and week_ending_date are required' });
+
+  try {
+    const { rows: timesheets } = await db.query(
+      `SELECT t.id, t.grand_total, t.week_ending_date,
+              cm.first_name, cm.last_name, cm.crew_number, cm.employment_status,
+              cm.paye_withholding_rate,
+              cm.sort_code, cm.account_number, cm.account_name,
+              p.name AS prod_name
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       JOIN productions  p  ON t.production_id  = p.id
+       WHERE t.production_id    = $1
+         AND t.week_ending_date = $2
+         AND t.status = 'finalised'
+       ORDER BY cm.last_name, cm.first_name`,
+      [production_id, week_ending_date]
+    );
+
+    if (!timesheets.length)
+      return res.status(404).json({ error: 'No finalised timesheets found for this week' });
+
+    const prodName  = timesheets[0].prod_name;
+    const shortCode = prodShortCode(prodName);
+
+    const items = timesheets.map(ts => {
+      const gross        = parseFloat(ts.grand_total || 0);
+      const isPAYE       = ts.employment_status === 'paye';
+      const withholdRate = isPAYE ? parseFloat(ts.paye_withholding_rate || 0) / 100 : 0;
+      const withholdAmt  = Math.round(gross * withholdRate * 100) / 100;
+      const netAmount    = Math.round((gross - withholdAmt) * 100) / 100;
+
+      return {
+        timesheet_id:       ts.id,
+        crew_number:        ts.crew_number,
+        crew_name:          `${ts.first_name} ${ts.last_name}`,
+        employment_type:    ts.employment_status,
+        sort_code:          decrypt(ts.sort_code),
+        account_number:     decrypt(ts.account_number),
+        account_name:       decrypt(ts.account_name),
+        gross_total:        gross,
+        withholding_amount: withholdAmt,
+        pay_run_amount:     netAmount,
+        reference:          `${shortCode}-${week_ending_date}-${ts.crew_number}`,
+      };
+    });
+
+    res.json({
+      production_id,
+      week_ending_date,
+      production_name: prodName,
+      summary: {
+        total_crew:     items.length,
+        total_gross:    items.reduce((s, i) => s + i.gross_total,        0),
+        total_withheld: items.reduce((s, i) => s + i.withholding_amount, 0),
+        total_net:      items.reduce((s, i) => s + i.pay_run_amount,     0),
+      },
+      items,
+    });
+  } catch (err) {
+    console.error('getPayRunPreview:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
 
 // ─── GET /api/pay-runs ────────────────────────────────────────────────────────
 const getAllPayRuns = async (req, res) => {
@@ -36,27 +151,40 @@ const createPayRun = async (req, res) => {
   try {
     await client.query('BEGIN');
 
+    // 409 if this week has already been processed
+    const { rows: [existing] } = await client.query(
+      `SELECT id FROM pay_runs
+       WHERE production_id = $1 AND week_ending_date = $2 AND status = 'processed'`,
+      [production_id, week_ending_date]
+    );
+    if (existing) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'ALREADY_PROCESSED', message: 'A pay run for this week has already been processed and cannot be reprocessed' });
+    }
+
     // Get all timesheets with crew bank details (bank fields are encrypted at rest)
     const { rows: timesheets } = await client.query(
       `SELECT t.*,
               cm.employment_status, cm.paye_withholding_rate, cm.crew_number,
-              cm.sort_code, cm.account_number, cm.account_name
+              cm.sort_code, cm.account_number, cm.account_name,
+              p.name AS prod_name
        FROM   timesheets t
        JOIN   crew_members cm ON t.crew_member_id = cm.id
+       JOIN   productions  p  ON t.production_id  = p.id
        WHERE  t.production_id = $1 AND t.week_ending_date = $2`,
       [production_id, week_ending_date]
     );
 
-    const unverified = timesheets.filter(t => t.status !== 'verified');
+    if (!timesheets.length) {
+      await client.query('ROLLBACK');
+      return res.status(400).json({ error: 'No timesheets found for this week' });
+    }
+    const unverified = timesheets.filter(t => t.status !== 'finalised');  // TimesheetStatus.FINALISED
     if (unverified.length) {
       await client.query('ROLLBACK');
       return res.status(400).json({
-        error: `${unverified.length} timesheet(s) not yet verified. All must be verified before processing a pay run.`,
+        error: `${unverified.length} timesheet(s) not yet finalised. All must be finalised before processing a pay run.`,
       });
-    }
-    if (!timesheets.length) {
-      await client.query('ROLLBACK');
-      return res.status(400).json({ error: 'No verified timesheets found for this week' });
     }
 
     const { rows: [payRun] } = await client.query(
@@ -66,29 +194,28 @@ const createPayRun = async (req, res) => {
       [production_id, week_ending_date, req.user.id]
     );
 
+    const prodName  = timesheets[0].prod_name;
+    const shortCode = prodShortCode(prodName);
+
     // Decrypt bank details from crew_members, then re-encrypt for storage in pay_run_items
     const items = timesheets.map(ts => {
-      const grossAmount  = parseFloat(ts.grand_total || 0);
+      const gross        = parseFloat(ts.grand_total || 0);
       const isPAYE       = ts.employment_status === 'paye';
-      const withholdRate = isPAYE ? (parseFloat(ts.paye_withholding_rate || 0) / 100) : 0;
-      const withholdAmt  = grossAmount * withholdRate;
-
-      const sortCode     = decrypt(ts.sort_code);
-      const accountNum   = decrypt(ts.account_number);
-      const accountName  = decrypt(ts.account_name);
+      const withholdRate = isPAYE ? parseFloat(ts.paye_withholding_rate || 0) / 100 : 0;
+      const withholdAmt  = Math.round(gross * withholdRate * 100) / 100;
 
       return {
         pay_run_id:         payRun.id,
         timesheet_id:       ts.id,
         crew_member_id:     ts.crew_member_id,
         employment_type:    ts.employment_status,
-        gross_amount:       grossAmount,
+        gross_amount:       gross,
         withholding_amount: withholdAmt,
-        net_amount:         grossAmount - withholdAmt,
-        sort_code:          encrypt(sortCode),
-        account_number:     encrypt(accountNum),
-        account_name:       encrypt(accountName),
-        reference:          `${ts.crew_number}-${week_ending_date}`,
+        net_amount:         Math.round((gross - withholdAmt) * 100) / 100,
+        sort_code:          encrypt(decrypt(ts.sort_code)),
+        account_number:     encrypt(decrypt(ts.account_number)),
+        account_name:       encrypt(decrypt(ts.account_name)),
+        reference:          `${shortCode}-${week_ending_date}-${ts.crew_number}`,
       };
     });
 
@@ -182,22 +309,42 @@ const getPayRunById = async (req, res) => {
 };
 
 // ─── POST /api/pay-runs/:id/process ──────────────────────────────────────────
+// Marks the pay run as processed and atomically records labour costs into the
+// Cost Report. Returns 409 ALREADY_PROCESSED if the run was already processed.
 const processPayRun = async (req, res) => {
+  const client = await db.connect();
   try {
-    const { rows: [pr] } = await db.query(
+    await client.query('BEGIN');
+
+    const { rows: [pr] } = await client.query(
       `UPDATE pay_runs SET status = 'processed', processed_at = NOW()
        WHERE id = $1 AND status = 'draft'
        RETURNING *`,
       [req.params.id]
     );
-    if (!pr) return res.status(400).json({ error: 'Pay run not found or already processed' });
-    res.json({ message: 'Pay run marked as processed', pay_run: pr });
+    if (!pr) {
+      await client.query('ROLLBACK');
+      return res.status(409).json({ error: 'ALREADY_PROCESSED', message: 'This pay run has already been processed' });
+    }
+
+    // Feed labour costs into Cost Report (same transaction — rolls back on failure)
+    await recordWeeklyLabour(pr.week_ending_date, pr.production_id, client);
+
+    await client.query('COMMIT');
+    res.json({ message: 'Pay run processed. Labour costs fed into Cost Report.', pay_run: pr });
   } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('processPayRun:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 };
 
 // ─── GET /api/pay-runs/:id/export-csv ────────────────────────────────────────
+// Bank-upload ready CSV: no header row, no £ symbols, amounts as raw 2dp decimals.
+// Filename: PayRun_[ProductionName]_w-e-[WeekEndingDate].csv
+// Columns: Sort Code, Account Number, Account Name, Amount, Reference
 const exportCsv = async (req, res) => {
   try {
     const { rows: [payRun] } = await db.query(
@@ -212,32 +359,33 @@ const exportCsv = async (req, res) => {
     const { rows: items } = await db.query(
       `SELECT pri.sort_code, pri.account_number, pri.account_name, pri.net_amount, pri.reference
        FROM pay_run_items pri
-       WHERE pri.pay_run_id = $1`,
+       WHERE pri.pay_run_id = $1
+       ORDER BY pri.reference`,
       [req.params.id]
     );
 
-    const headers = ['Sort Code', 'Account Number', 'Account Name', 'Amount', 'Reference'];
+    // No header row — bank upload format
     const csvRows = items.map(item => [
       decrypt(item.sort_code)      || '',
       decrypt(item.account_number) || '',
       decrypt(item.account_name)   || '',
-      parseFloat(item.net_amount).toFixed(2),
+      parseFloat(item.net_amount).toFixed(2),  // raw decimal, no £
       item.reference               || '',
-    ]);
+    ].join(','));
 
-    const csvContent = [
-      headers.join(','),
-      ...csvRows.map(r => r.map(c => `"${String(c).replace(/"/g, '""')}"`).join(',')),
-    ].join('\r\n');
-
-    const filename = `pay-run-${payRun.prod_name.replace(/\s+/g, '-')}-${payRun.week_ending_date}.csv`;
-    res.setHeader('Content-Type', 'text/csv');
+    const safeName = (payRun.prod_name || 'Production').replace(/[^a-zA-Z0-9]+/g, '_');
+    const filename = `PayRun_${safeName}_w-e-${payRun.week_ending_date}.csv`;
+    res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(csvContent);
+    res.send(csvRows.join('\r\n'));
   } catch (err) {
     console.error('exportCsv:', err);
     res.status(500).json({ error: err.message });
   }
 };
 
-module.exports = { getAllPayRuns, createPayRun, getPayRunById, processPayRun, exportCsv };
+module.exports = {
+  getAvailableWeeks, getPayRunPreview,
+  getAllPayRuns, createPayRun, getPayRunById,
+  processPayRun, exportCsv,
+};

@@ -21,7 +21,7 @@ const pool = new Pool({
 async function seedRates() {
   const client = await pool.connect();
   console.log('\n╔══════════════════════════════════════════╗');
-  console.log('║     CS HQ — BECTU Rate Card Seeder       ║');
+  console.log('║     Deepsian — BECTU Rate Card Seeder    ║');
   console.log('╚══════════════════════════════════════════╝\n');
 
   try {

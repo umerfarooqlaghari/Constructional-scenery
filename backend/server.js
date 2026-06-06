@@ -49,7 +49,7 @@ app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 // ─── HEALTH CHECK (public) ────────────────────────────────────────────────────
 app.get('/', (req, res) => {
   res.json({
-    name:    'CS HQ API',
+    name:    'Deepsian API',
     version: '1.0.0',
     status:  'running',
     modules: [
@@ -110,7 +110,7 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`
 ╔══════════════════════════════════════╗
-║        CS HQ API — Running           ║
+║       Deepsian API — Running          ║
 ║  Port  : ${PORT}                          ║
 ║  Auth  : JWT (bcrypt + pg)           ║
 ║  Policy: OPA-style policies.json     ║

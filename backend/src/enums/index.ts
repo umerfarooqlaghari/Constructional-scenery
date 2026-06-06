@@ -53,18 +53,16 @@ export enum PaidFrom {
 
 export enum PurchaseOrderStatus {
   DRAFT = 'draft',
-  SUBMITTED = 'submitted',
   ISSUED = 'issued',
-  INVOICE_RECEIVED = 'invoice_received',
+  PENDING_APPROVAL = 'pending_approval',
   APPROVED = 'approved',
 }
 
 export enum TimesheetStatus {
   DRAFT = 'draft',
-  SENT = 'sent',
-  REVIEWED = 'reviewed',
-  INVOICE_RECEIVED = 'invoice_received',
-  VERIFIED = 'verified',
+  DISTRIBUTED = 'distributed',
+  AMENDMENT_REQUESTED = 'amendment_requested',
+  FINALISED = 'finalised',
 }
 
 export enum PayRunStatus {

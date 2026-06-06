@@ -61,7 +61,7 @@ All status values, types, and roles are defined in `backend/src/enums/index.ts`.
 | `SetCompletionStatus` | `NOT_STARTED`, `IN_PROGRESS`, `NEARING_COMPLETION`, `COMPLETE`, `HANDED_OVER` |
 | `EmploymentStatus` | `PAYE`, `SELF_EMPLOYED` |
 | `PurchaseOrderStatus` | `DRAFT`, `SUBMITTED`, `ISSUED`, `INVOICE_RECEIVED`, `APPROVED` |
-| `TimesheetStatus` | `DRAFT`, `SENT`, `REVIEWED`, `INVOICE_RECEIVED`, `VERIFIED` |
+| `TimesheetStatus` | `DRAFT`, `DISTRIBUTED`, `AMENDMENT_REQUESTED`, `FINALISED` |
 | `PayRunStatus` | `DRAFT`, `PROCESSED` |
 | `CrewDocumentType` | `GOVERNMENT_ID`, `CONTRACT`, `OTHER` |
 | `PaidFrom` | `SUPPLIER_ACCOUNT`, `ARBUTHNOT_CURRENT_ACCOUNT`, `CHARGE_CARD`, `PLEO_CHARGE_CARD` |
