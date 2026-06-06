@@ -2,6 +2,10 @@ const express = require('express');
 const router  = express.Router();
 const ctrl = require('../Controllers/payRunsController');
 
+// Specific paths before /:id
+router.get('/available-weeks', ctrl.getAvailableWeeks);
+router.get('/preview',         ctrl.getPayRunPreview);
+
 router.get('/',               ctrl.getAllPayRuns);
 router.post('/',              ctrl.createPayRun);
 router.get('/:id',            ctrl.getPayRunById);

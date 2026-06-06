@@ -29,16 +29,19 @@ const transporter = nodemailer.createTransport({
  * @param {string}          [opts.from]   - Override sender (defaults to SMTP_FROM_NAME <SMTP_USER>)
  * @returns {Promise<object>} Nodemailer info object
  */
-const sendEmail = async ({ to, subject, html, text, from }) => {
-  const fromAddress = from || `"${process.env.SMTP_FROM_NAME || 'CS HQ'}" <${process.env.SMTP_USER}>`;
+const sendEmail = async ({ to, subject, html, text, from, replyTo, attachments }) => {
+  const fromAddress = from || `"${process.env.SMTP_FROM_NAME || 'Deepsian'}" <${process.env.SMTP_USER}>`;
+  const opts = { from: fromAddress, to, subject, html, text };
+  if (replyTo)     opts.replyTo     = replyTo;
+  if (attachments) opts.attachments = attachments;
 
   try {
-    const info = await transporter.sendMail({ from: fromAddress, to, subject, html, text });
+    const info = await transporter.sendMail(opts);
     console.log(`📧 Email sent → ${Array.isArray(to) ? to.join(', ') : to} | ${subject} | id: ${info.messageId}`);
     return info;
   } catch (err) {
     console.error(`❌ Email failed → ${subject}:`, err.message);
-    throw err;  // let caller decide whether to swallow the error
+    throw err;
   }
 };
 
@@ -47,68 +50,103 @@ const sendEmail = async ({ to, subject, html, text, from }) => {
 const templates = {
 
   /**
-   * PO issued to supplier (triggered by POST /api/purchase-orders/:id/submit)
+   * PO issued to supplier (triggered by POST /api/purchase-orders/:id/issue)
+   * @param {object} po
+   * @param {string} productionName
    */
-  poIssued: (po) => ({
+  poIssued: (po, productionName) => ({
     subject: `Purchase Order ${po.po_number} — Construct Scenery Limited`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-        <h2 style="color:#2c3e50">Purchase Order: ${po.po_number}</h2>
+        <div style="background:#0f172a;padding:20px 24px;margin-bottom:24px">
+          <span style="color:#fff;font-size:20px;font-weight:700;letter-spacing:2px">DEEPSIAN</span>
+          <span style="color:#94a3b8;font-size:12px;margin-left:12px">Construct Scenery Limited</span>
+        </div>
+        <h2 style="color:#0f172a;margin:0 0 4px">Purchase Order: ${po.po_number}</h2>
+        <p style="color:#64748b;margin:0 0 20px">Production: <strong>${productionName || '—'}</strong></p>
         <p>Dear ${po.supplier_name},</p>
-        <p>Please find below a purchase order issued by <strong>Construct Scenery Limited</strong>.</p>
+        <p>Please find attached a purchase order issued by <strong>Construct Scenery Limited</strong>.</p>
         <table style="width:100%;border-collapse:collapse;margin:16px 0">
-          <tr style="background:#f4f4f4"><td style="padding:8px;border:1px solid #ddd"><strong>PO Number</strong></td><td style="padding:8px;border:1px solid #ddd">${po.po_number}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd"><strong>Date</strong></td><td style="padding:8px;border:1px solid #ddd">${po.date_of_po}</td></tr>
-          <tr style="background:#f4f4f4"><td style="padding:8px;border:1px solid #ddd"><strong>Description</strong></td><td style="padding:8px;border:1px solid #ddd">${po.description || '—'}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd"><strong>Net Amount</strong></td><td style="padding:8px;border:1px solid #ddd">£${parseFloat(po.net_amount).toFixed(2)}</td></tr>
-          <tr style="background:#f4f4f4"><td style="padding:8px;border:1px solid #ddd"><strong>VAT</strong></td><td style="padding:8px;border:1px solid #ddd">£${parseFloat(po.vat || 0).toFixed(2)}</td></tr>
-          <tr><td style="padding:8px;border:1px solid #ddd"><strong>Gross Amount</strong></td><td style="padding:8px;border:1px solid #ddd"><strong>£${parseFloat(po.gross_amount).toFixed(2)}</strong></td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>PO Number</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0">${po.po_number}</td></tr>
+          <tr><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>Date</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0">${po.date_of_po}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>Production</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0">${productionName || '—'}</td></tr>
+          <tr><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>Description</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0">${po.description || '—'}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>Net Amount</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0">£${parseFloat(po.net_amount).toFixed(2)}</td></tr>
+          <tr><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>VAT</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0">£${parseFloat(po.vat || 0).toFixed(2)}</td></tr>
+          <tr style="background:#f8fafc"><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>Gross Amount</strong></td><td style="padding:8px 12px;border:1px solid #e2e8f0"><strong>£${parseFloat(po.gross_amount).toFixed(2)}</strong></td></tr>
         </table>
         <p>Please confirm receipt of this order and supply the goods/services as specified.</p>
         <p>When invoicing, please quote the PO number <strong>${po.po_number}</strong> on your invoice.</p>
         <br/>
-        <p style="color:#666">Regards,<br/><strong>Construct Scenery Limited</strong><br/>info@constructscenery.co.uk</p>
+        <p style="color:#666">Regards,<br/><strong>Construct Scenery Limited</strong><br/>warren@constructscenery.co.uk</p>
       </div>
     `,
   }),
 
   /**
-   * Timesheet distributed to crew member
+   * Timesheet distributed to crew member.
+   * @param {string} crewName
+   * @param {string} weekEndingDate  YYYY-MM-DD
+   * @param {string} productionName
+   * @param {number} daysWorked      Standard days worked that week
+   * @param {number|string} grandTotal
    */
-  timesheetDistributed: (crewName, weekEndingDate, productionName) => ({
+  timesheetDistributed: (crewName, weekEndingDate, productionName, daysWorked, grandTotal) => ({
     subject: `Timesheet for Week Ending ${weekEndingDate} — ${productionName}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-        <h2 style="color:#2c3e50">Timesheet: Week Ending ${weekEndingDate}</h2>
+        <div style="background:#0f172a;padding:16px 24px;margin-bottom:24px">
+          <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:2px">DEEPSIAN</span>
+          <span style="color:#94a3b8;font-size:11px;margin-left:10px">Construct Scenery Limited</span>
+        </div>
+        <h2 style="color:#0f172a;margin:0 0 4px">Timesheet: Week Ending ${weekEndingDate}</h2>
+        <p style="color:#64748b;margin:0 0 20px">Production: <strong>${productionName || '—'}</strong></p>
         <p>Dear ${crewName},</p>
-        <p>Your timesheet for the week ending <strong>${weekEndingDate}</strong> on production <strong>${productionName}</strong> has been prepared.</p>
-        <p>Please:</p>
+        <p>Please find your timesheet for the week ending <strong>${weekEndingDate}</strong> attached to this email.</p>
+        <table style="width:100%;border-collapse:collapse;margin:16px 0;background:#f8fafc;border-radius:6px">
+          <tr>
+            <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0"><strong>Days worked</strong></td>
+            <td style="padding:10px 16px;border-bottom:1px solid #e2e8f0">${daysWorked ?? '—'}</td>
+          </tr>
+          <tr>
+            <td style="padding:10px 16px"><strong>Grand total</strong></td>
+            <td style="padding:10px 16px"><strong>£${parseFloat(grandTotal || 0).toFixed(2)}</strong></td>
+          </tr>
+        </table>
+        <p>If everything looks correct, please sign the timesheet and reply to this email with:</p>
         <ol>
-          <li>Review your timesheet entries</li>
-          <li>Raise your invoice for the amount shown</li>
-          <li>Reply to this email with your signed timesheet and invoice attached</li>
+          <li>Your <strong>signed timesheet</strong> (the attached PDF, signed and scanned/photographed)</li>
+          <li>Your <strong>invoice</strong> for the amount shown above</li>
         </ol>
-        <p>Payment cannot be processed until your invoice is received.</p>
+        <p>If anything needs correcting, please reply explaining the issue and we will amend and resend.</p>
         <br/>
-        <p style="color:#666">Regards,<br/><strong>Construct Scenery Limited</strong><br/>accounts@constructscenery.co.uk</p>
+        <p style="color:#666;font-size:13px">Regards,<br/><strong>Construct Scenery Limited</strong><br/>invoice@constructscenery.co.uk</p>
       </div>
     `,
   }),
 
   /**
-   * Invoice chase reminder
+   * Invoice chase reminder (self-employed crew only).
+   * @param {string}       crewName
+   * @param {string}       weekEndingDate  YYYY-MM-DD
+   * @param {number|string} grandTotal
    */
-  invoiceChase: (crewName, weekEndingDate) => ({
+  invoiceChase: (crewName, weekEndingDate, grandTotal) => ({
     subject: `Reminder: Invoice Required — Week Ending ${weekEndingDate}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
-        <h2 style="color:#e74c3c">Invoice Required</h2>
+        <div style="background:#0f172a;padding:16px 24px;margin-bottom:24px">
+          <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:2px">DEEPSIAN</span>
+          <span style="color:#94a3b8;font-size:11px;margin-left:10px">Construct Scenery Limited</span>
+        </div>
+        <h2 style="color:#b91c1c;margin:0 0 4px">Invoice Required</h2>
+        <p style="color:#64748b;margin:0 0 20px">Week ending: <strong>${weekEndingDate}</strong></p>
         <p>Dear ${crewName},</p>
         <p>We have not yet received your invoice for the week ending <strong>${weekEndingDate}</strong>.</p>
-        <p>Could you please send your invoice as soon as possible so we can process your payment promptly.</p>
-        <p>If you have already sent your invoice, please disregard this message.</p>
+        <p>Your timesheet total is <strong>£${parseFloat(grandTotal || 0).toFixed(2)}</strong>. Please submit your invoice for this amount as soon as possible so we can process your payment promptly.</p>
+        <p>Please reply to this email with your invoice attached. If you have already sent it, please disregard this message.</p>
         <br/>
-        <p style="color:#666">Regards,<br/><strong>Construct Scenery Limited</strong><br/>accounts@constructscenery.co.uk</p>
+        <p style="color:#666;font-size:13px">Regards,<br/><strong>Construct Scenery Limited</strong><br/>invoice@constructscenery.co.uk</p>
       </div>
     `,
   }),
@@ -121,7 +159,7 @@ const templates = {
       ? new Date(set.handover_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
       : '—';
     const statusLabel = (set.completion_status ?? '').replace(/_/g, ' ');
-    const appUrl = process.env.APP_URL || 'https://cs-hq.onrender.com';
+    const appUrl = process.env.APP_URL || 'https://deepsian.onrender.com';
     const deepLink = `${appUrl}/productions/${set.prod_id}`;
     const dotColor = days <= 7 ? '#ef4444' : '#f59e0b';
     const subject = `Handover alert — ${set.set_name}${set.set_number ? ` (Set ${set.set_number})` : ''} · ${days} days`;
@@ -156,7 +194,7 @@ const templates = {
             </div>
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px 16px">
               <a href="${deepLink}" style="color:#0ea5e9;font-size:13px;text-decoration:none">
-                View full set schedule in CS HQ &rarr; <span style="text-decoration:underline">[link]</span>
+                View full set schedule in Deepsian &rarr; <span style="text-decoration:underline">[link]</span>
               </a>
             </div>
           </div>
