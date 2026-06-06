@@ -16,6 +16,7 @@ router.post('/:id/transition',          ctrl.transitionStatus);
 router.get('/:id/archive-preview',      ctrl.getArchivePreview);
 router.post('/:id/archive',             ctrl.archiveProduction);
 router.post('/:id/unarchive',           ctrl.unarchiveProduction);
+router.get('/:id/forecast-variance',    ctrl.getForecastVariance);
 
 // Sets
 router.get('/:id/sets',            ctrl.getSets);

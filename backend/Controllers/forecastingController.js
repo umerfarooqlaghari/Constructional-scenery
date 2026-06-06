@@ -19,7 +19,7 @@ const DEFAULT_RATIOS = [
 // GET /api/forecasting/forecasts
 const getAllForecasts = async (req, res) => {
   try {
-    const conditions = [];
+    const conditions = [`f.deleted_at IS NULL`];
     const params     = [];
     let   i          = 1;
     if (req.query.production_id) { conditions.push(`f.production_id = $${i++}`); params.push(req.query.production_id); }
@@ -27,12 +27,16 @@ const getAllForecasts = async (req, res) => {
       conditions.push(`(p.id IS NULL OR p.status != 'archived')`);
     }
 
-    const where = conditions.length ? `WHERE ${conditions.join(' AND ')}` : '';
     const { rows } = await db.query(
-      `SELECT f.*, p.id AS prod_id, p.name AS prod_name
+      `SELECT f.id, f.name AS scenario_name, f.production_id, f.created_by, f.created_at,
+              f.total_labour_cost    AS total_labour,
+              f.total_materials_cost AS total_materials,
+              f.total_forecast_cost  AS combined_total,
+              f.percentometer_carpenter_cost, f.percentometer_total,
+              p.id AS prod_id, p.name AS prod_name
        FROM forecasts f
        LEFT JOIN productions p ON f.production_id = p.id
-       ${where}
+       WHERE ${conditions.join(' AND ')}
        ORDER BY f.created_at DESC`,
       params
     );
@@ -43,12 +47,32 @@ const getAllForecasts = async (req, res) => {
 };
 
 // POST /api/forecasting/forecasts
+// Accepts scenario_name (preferred) or name. Labour subtotal formula:
+//   (daily_rate × 5 × number_of_weeks × number_of_crew) + (ot_rate × overtime_hours × number_of_crew)
 const createForecast = async (req, res) => {
-  const { name, production_id, labour_items, materials_items, percentometer_carpenter_cost } = req.body;
-  if (!name) return res.status(400).json({ error: 'name is required' });
+  const {
+    scenario_name, name, production_id,
+    labour_items, materials_items, percentometer_carpenter_cost,
+  } = req.body;
+  const forecastName = scenario_name || name;
+  if (!forecastName) return res.status(400).json({ error: 'scenario_name is required' });
 
-  const totalLabour    = (labour_items    || []).reduce((s, i) => s + (i.subtotal || 0), 0);
-  const totalMaterials = (materials_items || []).reduce((s, i) => s + (i.subtotal || 0), 0);
+  const calcLabourSubtotal = (item) => {
+    const daily   = parseFloat(item.daily_rate || 0);
+    const ot      = parseFloat(item.ot_rate || 0);
+    const weeks   = parseFloat(item.number_of_weeks || 1);
+    const crew    = parseInt(item.number_of_crew || 1, 10);
+    const otHours = parseFloat(item.overtime_hours || 0);
+    if (daily > 0) return (daily * 5 * weeks * crew) + (ot * otHours * crew);
+    return parseFloat(item.subtotal || 0);
+  };
+
+  const totalLabour    = (labour_items    || []).reduce((s, i) => s + calcLabourSubtotal(i), 0);
+  const totalMaterials = (materials_items || []).reduce((s, i) => {
+    const qty   = parseFloat(i.quantity || 1);
+    const price = parseFloat(i.unit_price || 0);
+    return s + (i.subtotal != null ? parseFloat(i.subtotal) : qty * price);
+  }, 0);
   const percentometerTotal = percentometer_carpenter_cost
     ? parseFloat(percentometer_carpenter_cost) / 0.42
     : null;
@@ -64,63 +88,80 @@ const createForecast = async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        RETURNING *`,
       [
-        name,
-        production_id || null,
-        totalLabour,
-        totalMaterials,
-        totalLabour + totalMaterials,
+        forecastName, production_id || null,
+        totalLabour, totalMaterials, totalLabour + totalMaterials,
         percentometer_carpenter_cost ? parseFloat(percentometer_carpenter_cost) : null,
         percentometerTotal,
         req.user.id,
       ]
     );
 
-    // Insert labour items
     if (labour_items?.length) {
-      const labourPlaceholders = labour_items.map((_, idx) => {
-        const base = idx * 7;
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7})`;
+      const ph = labour_items.map((_, idx) => {
+        const b = idx * 9;
+        return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9})`;
       }).join(',');
       await client.query(
         `INSERT INTO forecast_labour_items
-           (forecast_id, crew_type, number_of_crew, number_of_weeks, overtime_hours, weekly_rate, subtotal)
-         VALUES ${labourPlaceholders}`,
-        labour_items.flatMap(i => [
-          forecast.id, i.crew_type, i.number_of_crew || 1, i.number_of_weeks || 1,
-          i.overtime_hours || 0, i.weekly_rate || 0, i.subtotal || 0,
-        ])
+           (forecast_id, crew_type, number_of_crew, number_of_weeks, overtime_hours,
+            daily_rate, ot_rate, weekly_rate, subtotal)
+         VALUES ${ph}`,
+        labour_items.flatMap(i => {
+          const daily = parseFloat(i.daily_rate || 0);
+          return [
+            forecast.id, i.crew_type,
+            parseInt(i.number_of_crew || 1, 10),
+            parseFloat(i.number_of_weeks || 1),
+            parseFloat(i.overtime_hours || 0),
+            daily || null,
+            parseFloat(i.ot_rate || 0) || null,
+            daily > 0 ? daily * 5 : parseFloat(i.weekly_rate || 0),
+            calcLabourSubtotal(i),
+          ];
+        })
       );
     }
 
-    // Insert materials items
     if (materials_items?.length) {
-      const matPlaceholders = materials_items.map((_, idx) => {
-        const base = idx * 6;
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6})`;
+      const ph = materials_items.map((_, idx) => {
+        const b = idx * 7;
+        return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`;
       }).join(',');
       await client.query(
         `INSERT INTO forecast_materials_items
-           (forecast_id, supplier_catalogue_id, supplier_name, product_description, unit_price, subtotal)
-         VALUES ${matPlaceholders}`,
-        materials_items.flatMap(i => [
-          forecast.id, i.supplier_catalogue_id || null, i.supplier_name,
-          i.product_description, i.unit_price || 0, i.subtotal || 0,
-        ])
+           (forecast_id, supplier_catalogue_id, supplier_name, product_description,
+            quantity, unit_price, subtotal)
+         VALUES ${ph}`,
+        materials_items.flatMap(i => {
+          const qty   = parseFloat(i.quantity || 1);
+          const price = parseFloat(i.unit_price || 0);
+          return [
+            forecast.id, i.supplier_catalogue_id || null,
+            i.supplier_name || '', i.product_description || '',
+            qty, price,
+            i.subtotal != null ? parseFloat(i.subtotal) : qty * price,
+          ];
+        })
       );
     }
 
     await client.query('COMMIT');
 
-    // Fetch full forecast for response
     const { rows: [full] } = await db.query(
-      `SELECT f.*, p.id AS prod_id, p.name AS prod_name
+      `SELECT f.id, f.name AS scenario_name, f.production_id, f.created_by, f.created_at,
+              f.total_labour_cost AS total_labour, f.total_materials_cost AS total_materials,
+              f.total_forecast_cost AS combined_total,
+              f.percentometer_carpenter_cost, f.percentometer_total,
+              p.id AS prod_id, p.name AS prod_name
        FROM forecasts f
        LEFT JOIN productions p ON f.production_id = p.id
        WHERE f.id = $1`,
       [forecast.id]
     );
-    const { rows: labourResult }    = await db.query('SELECT * FROM forecast_labour_items WHERE forecast_id = $1', [forecast.id]);
-    const { rows: materialsResult } = await db.query('SELECT * FROM forecast_materials_items WHERE forecast_id = $1', [forecast.id]);
+    const [{ rows: labourResult }, { rows: materialsResult }] = await Promise.all([
+      db.query('SELECT * FROM forecast_labour_items    WHERE forecast_id = $1', [forecast.id]),
+      db.query('SELECT * FROM forecast_materials_items WHERE forecast_id = $1', [forecast.id]),
+    ]);
 
     res.status(201).json({ ...full, forecast_labour_items: labourResult, forecast_materials_items: materialsResult });
   } catch (err) {
@@ -136,16 +177,20 @@ const createForecast = async (req, res) => {
 const getForecastById = async (req, res) => {
   try {
     const { rows: [forecast] } = await db.query(
-      `SELECT f.*, p.id AS prod_id, p.name AS prod_name
+      `SELECT f.id, f.name AS scenario_name, f.production_id, f.created_by, f.created_at,
+              f.total_labour_cost AS total_labour, f.total_materials_cost AS total_materials,
+              f.total_forecast_cost AS combined_total,
+              f.percentometer_carpenter_cost, f.percentometer_total,
+              p.id AS prod_id, p.name AS prod_name
        FROM forecasts f
        LEFT JOIN productions p ON f.production_id = p.id
-       WHERE f.id = $1`,
+       WHERE f.id = $1 AND f.deleted_at IS NULL`,
       [req.params.id]
     );
     if (!forecast) return res.status(404).json({ error: 'Forecast not found' });
 
     const [{ rows: labourItems }, { rows: materialsItems }] = await Promise.all([
-      db.query('SELECT * FROM forecast_labour_items WHERE forecast_id = $1', [req.params.id]),
+      db.query('SELECT * FROM forecast_labour_items    WHERE forecast_id = $1', [req.params.id]),
       db.query('SELECT * FROM forecast_materials_items WHERE forecast_id = $1', [req.params.id]),
     ]);
 
@@ -155,36 +200,212 @@ const getForecastById = async (req, res) => {
   }
 };
 
-// PUT /api/forecasting/forecasts/:id
+// PATCH /api/forecasting/forecasts/:id
+// Supports partial metadata update (scenario_name, production_id) and full
+// replacement of labour_items and/or materials_items if provided.
 const updateForecast = async (req, res) => {
-  const allowed = ['name', 'production_id', 'percentometer_carpenter_cost'];
-  const updates = {};
-  allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
+  const {
+    scenario_name, name, production_id,
+    labour_items, materials_items, percentometer_carpenter_cost,
+  } = req.body;
 
-  if (!Object.keys(updates).length)
-    return res.status(400).json({ error: 'No updatable fields provided' });
-
-  const fields    = Object.keys(updates);
-  const values    = Object.values(updates);
-  const setClause = fields.map((f, i) => `${f} = $${i + 1}`).join(', ');
-
+  const client = await db.connect();
   try {
-    const { rows: [row] } = await db.query(
-      `UPDATE forecasts SET ${setClause} WHERE id = $${fields.length + 1} RETURNING *`,
-      [...values, req.params.id]
+    await client.query('BEGIN');
+
+    const { rows: [existing] } = await client.query(
+      'SELECT * FROM forecasts WHERE id = $1 AND deleted_at IS NULL',
+      [req.params.id]
     );
-    res.json(row);
+    if (!existing) return res.status(404).json({ error: 'Forecast not found' });
+
+    // Metadata patch
+    const metaUpdates = [];
+    const metaVals    = [];
+    let   j           = 1;
+    if (scenario_name !== undefined || name !== undefined) {
+      metaUpdates.push(`name = $${j++}`); metaVals.push(scenario_name || name);
+    }
+    if (production_id !== undefined) {
+      metaUpdates.push(`production_id = $${j++}`); metaVals.push(production_id || null);
+    }
+    if (percentometer_carpenter_cost !== undefined) {
+      metaUpdates.push(`percentometer_carpenter_cost = $${j++}`);
+      metaVals.push(percentometer_carpenter_cost ? parseFloat(percentometer_carpenter_cost) : null);
+      metaUpdates.push(`percentometer_total = $${j++}`);
+      metaVals.push(percentometer_carpenter_cost ? parseFloat(percentometer_carpenter_cost) / 0.42 : null);
+    }
+
+    // Replace items if provided — recalculate totals
+    const calcLabourSubtotal = (item) => {
+      const daily = parseFloat(item.daily_rate || 0);
+      const ot    = parseFloat(item.ot_rate || 0);
+      const weeks = parseFloat(item.number_of_weeks || 1);
+      const crew  = parseInt(item.number_of_crew || 1, 10);
+      const otH   = parseFloat(item.overtime_hours || 0);
+      if (daily > 0) return (daily * 5 * weeks * crew) + (ot * otH * crew);
+      return parseFloat(item.subtotal || 0);
+    };
+
+    let totalLabour    = parseFloat(existing.total_labour_cost);
+    let totalMaterials = parseFloat(existing.total_materials_cost);
+
+    if (labour_items !== undefined) {
+      await client.query('DELETE FROM forecast_labour_items WHERE forecast_id = $1', [req.params.id]);
+      totalLabour = (labour_items || []).reduce((s, i) => s + calcLabourSubtotal(i), 0);
+      if (labour_items?.length) {
+        const ph = labour_items.map((_, idx) => {
+          const b = idx * 9;
+          return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9})`;
+        }).join(',');
+        await client.query(
+          `INSERT INTO forecast_labour_items
+             (forecast_id, crew_type, number_of_crew, number_of_weeks, overtime_hours,
+              daily_rate, ot_rate, weekly_rate, subtotal)
+           VALUES ${ph}`,
+          labour_items.flatMap(i => {
+            const daily = parseFloat(i.daily_rate || 0);
+            return [
+              req.params.id, i.crew_type,
+              parseInt(i.number_of_crew || 1, 10),
+              parseFloat(i.number_of_weeks || 1),
+              parseFloat(i.overtime_hours || 0),
+              daily || null,
+              parseFloat(i.ot_rate || 0) || null,
+              daily > 0 ? daily * 5 : parseFloat(i.weekly_rate || 0),
+              calcLabourSubtotal(i),
+            ];
+          })
+        );
+      }
+      metaUpdates.push(`total_labour_cost = $${j++}`);   metaVals.push(totalLabour);
+      metaUpdates.push(`total_forecast_cost = $${j++}`); metaVals.push(totalLabour + totalMaterials);
+    }
+
+    if (materials_items !== undefined) {
+      await client.query('DELETE FROM forecast_materials_items WHERE forecast_id = $1', [req.params.id]);
+      totalMaterials = (materials_items || []).reduce((s, i) => {
+        const qty = parseFloat(i.quantity || 1); const price = parseFloat(i.unit_price || 0);
+        return s + (i.subtotal != null ? parseFloat(i.subtotal) : qty * price);
+      }, 0);
+      if (materials_items?.length) {
+        const ph = materials_items.map((_, idx) => {
+          const b = idx * 7;
+          return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7})`;
+        }).join(',');
+        await client.query(
+          `INSERT INTO forecast_materials_items
+             (forecast_id, supplier_catalogue_id, supplier_name, product_description,
+              quantity, unit_price, subtotal)
+           VALUES ${ph}`,
+          materials_items.flatMap(i => {
+            const qty = parseFloat(i.quantity || 1); const price = parseFloat(i.unit_price || 0);
+            return [
+              req.params.id, i.supplier_catalogue_id || null,
+              i.supplier_name || '', i.product_description || '',
+              qty, price, i.subtotal != null ? parseFloat(i.subtotal) : qty * price,
+            ];
+          })
+        );
+      }
+      metaUpdates.push(`total_materials_cost = $${j++}`); metaVals.push(totalMaterials);
+      metaUpdates.push(`total_forecast_cost = $${j++}`);  metaVals.push(totalLabour + totalMaterials);
+    }
+
+    if (metaUpdates.length) {
+      await client.query(
+        `UPDATE forecasts SET ${metaUpdates.join(', ')} WHERE id = $${j}`,
+        [...metaVals, req.params.id]
+      );
+    }
+
+    await client.query('COMMIT');
+
+    const { rows: [full] } = await db.query(
+      `SELECT f.id, f.name AS scenario_name, f.production_id, f.created_by, f.created_at,
+              f.total_labour_cost AS total_labour, f.total_materials_cost AS total_materials,
+              f.total_forecast_cost AS combined_total,
+              f.percentometer_carpenter_cost, f.percentometer_total,
+              p.id AS prod_id, p.name AS prod_name
+       FROM forecasts f
+       LEFT JOIN productions p ON f.production_id = p.id
+       WHERE f.id = $1`,
+      [req.params.id]
+    );
+    const [{ rows: labourResult }, { rows: materialsResult }] = await Promise.all([
+      db.query('SELECT * FROM forecast_labour_items    WHERE forecast_id = $1', [req.params.id]),
+      db.query('SELECT * FROM forecast_materials_items WHERE forecast_id = $1', [req.params.id]),
+    ]);
+    res.json({ ...full, forecast_labour_items: labourResult, forecast_materials_items: materialsResult });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('updateForecast:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
+// DELETE /api/forecasting/forecasts/:id  — soft-delete only, never hard-delete
+const deleteForecast = async (req, res) => {
+  try {
+    const { rowCount } = await db.query(
+      'UPDATE forecasts SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
+      [req.params.id]
+    );
+    if (!rowCount) return res.status(404).json({ error: 'Forecast not found' });
+    res.json({ message: 'Forecast deleted' });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 };
 
-const deleteForecast = async (req, res) => {
+// ─── PATCH /api/forecasting/forecasts/:id/link ───────────────────────────────
+// Links a forecast to a production and optionally marks it as primary.
+// Only one forecast per production can be primary — setting is_primary = true
+// clears any existing primary for that production first (atomic swap).
+const linkForecast = async (req, res) => {
+  const { production_id, is_primary } = req.body;
+  if (!production_id) return res.status(400).json({ error: 'production_id is required' });
+
+  const client = await db.connect();
   try {
-    await db.query('DELETE FROM forecasts WHERE id = $1', [req.params.id]);
-    res.json({ message: 'Forecast deleted' });
+    await client.query('BEGIN');
+
+    const { rows: [forecast] } = await client.query(
+      'SELECT * FROM forecasts WHERE id = $1 AND deleted_at IS NULL',
+      [req.params.id]
+    );
+    if (!forecast) return res.status(404).json({ error: 'Forecast not found' });
+
+    if (is_primary) {
+      // Demote any existing primary for this production
+      await client.query(
+        `UPDATE forecasts
+         SET is_primary = false
+         WHERE production_id = $1 AND is_primary = true AND id != $2 AND deleted_at IS NULL`,
+        [production_id, req.params.id]
+      );
+    }
+
+    const { rows: [updated] } = await client.query(
+      `UPDATE forecasts
+       SET production_id = $1,
+           is_primary    = $2
+       WHERE id = $3
+       RETURNING id, name AS scenario_name, production_id, is_primary,
+                 total_forecast_cost AS combined_total, created_at`,
+      [production_id, is_primary === true, req.params.id]
+    );
+
+    await client.query('COMMIT');
+    res.json(updated);
   } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('linkForecast:', err);
     res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
   }
 };
 
@@ -359,7 +580,7 @@ const getBectuRates = async (req, res) => {
 };
 
 module.exports = {
-  getAllForecasts, createForecast, getForecastById, updateForecast, deleteForecast,
+  getAllForecasts, createForecast, getForecastById, updateForecast, deleteForecast, linkForecast,
   getRatios, calculatePercentometer, updateRatios,
   getCatalogue, createCatalogueItem, updateCatalogueItem, deleteCatalogueItem,
   getBectuRates,

@@ -5,8 +5,12 @@ const ctrl    = require('../Controllers/crewRatesController');
 
 const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 2 * 1024 * 1024 } });
 
-router.get('/',         ctrl.getRates);
-router.patch('/:id',    ctrl.updateRate);
-router.post('/import',  csvUpload.single('csv'), ctrl.importCSV);
+// Specific paths before /:id
+router.get('/history',   ctrl.getHistory);                         // version history
+router.post('/preview',  csvUpload.single('csv'), ctrl.previewCSV); // diff preview before import
+router.post('/import',   csvUpload.single('csv'), ctrl.importCSV);  // commit new rate card year
+
+router.get('/',          ctrl.getRates);
+router.patch('/:id',     ctrl.updateRate);
 
 module.exports = router;

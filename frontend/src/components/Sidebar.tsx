@@ -3,16 +3,9 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
-  LayoutDashboard,
-  Clapperboard,
-  ShoppingCart,
-  Users,
-  ClipboardList,
-  BarChart2,
-  TrendingUp,
-  ChevronRight,
-  LogOut,
-  CreditCard,
+  LayoutDashboard, Clapperboard, ShoppingCart, Users, ClipboardList,
+  BarChart2, TrendingUp, ChevronRight, LogOut, CreditCard,
+  Banknote, BookOpen, Upload, Settings,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -27,22 +20,26 @@ const NAV_GROUPS = [
   {
     label: 'Finance',
     items: [
-      { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart, roles: ['managing_director', 'construction_coordinator'] },
-      { href: '/cost-report',     label: 'Cost Report',     icon: BarChart2,    roles: ['managing_director', 'construction_accountant'] },
-      { href: '/forecasting',     label: 'Forecasting',     icon: TrendingUp,   roles: ['managing_director', 'construction_coordinator'] },
+      { href: '/purchase-orders',    label: 'Purchase Orders',   icon: ShoppingCart, roles: ['managing_director', 'construction_coordinator'] },
+      { href: '/cost-report',        label: 'Cost Report',       icon: BarChart2,    roles: ['managing_director', 'construction_accountant'] },
+      { href: '/pay-runs',           label: 'Pay Runs',          icon: Banknote,     roles: ['managing_director', 'construction_accountant'] },
+      { href: '/forecasting',        label: 'Forecasting',       icon: TrendingUp,   roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/supplier-catalogue', label: 'Supplier Catalogue',icon: BookOpen,     roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
   {
     label: 'People',
     items: [
-      { href: '/crew',       label: 'Crew',                 icon: Users,        roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
-      { href: '/timesheets', label: 'Timesheets & Pay Run', icon: ClipboardList, roles: ['managing_director', 'construction_accountant'] },
+      { href: '/crew',        label: 'Crew Database', icon: Users,        roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/crew/import', label: 'Crew Import',   icon: Upload,       roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/timesheets',  label: 'Timesheets',    icon: ClipboardList, roles: ['managing_director', 'construction_accountant'] },
     ],
   },
   {
     label: 'Settings',
     items: [
-      { href: '/settings/rate-card', label: 'Rate Card', icon: CreditCard, roles: ['managing_director'] },
+      { href: '/settings/rate-card', label: 'Rate Card',        icon: CreditCard, roles: ['managing_director', 'construction_accountant'] },
+      { href: '/settings',           label: 'System Settings',  icon: Settings,   roles: ['managing_director', 'construction_coordinator'] },
     ],
   },
 ];

@@ -389,7 +389,191 @@ const deleteCrewMember = async (req, res) => {
   }
 };
 
+// ─── Crew CSV bulk import ─────────────────────────────────────────────────────
+
+const csvParse = require('csv-parse/sync');
+
+const IMPORT_TEMPLATE_HEADER = [
+  'First Name', 'Last Name', 'Date of Birth', 'Home Address', 'Employment Status',
+  'Crew Trade', 'Crew Rank', 'PAYE Withholding Rate', 'Company/Business Name',
+  'Company Registration Number or UTR', 'VAT Registration Number',
+  'Account Name', 'Account Number', 'Sort Code',
+  'Emergency Contact Name', 'Emergency Contact Relationship', 'Emergency Contact Phone',
+].join(',') + '\r\n';
+
+const VALID_EMPLOYMENT_STATUSES = new Set(['paye', 'self_employed']);
+
+// Maps CSV "Employment Status" values to DB values
+const normaliseEmploymentStatus = (v) => {
+  const l = String(v || '').toLowerCase().trim();
+  if (l === 'paye')           return 'paye';
+  if (l === 'self-employed' || l === 'self employed') return 'self_employed';
+  return null;
+};
+
+// Validate a single CSV row — returns array of error strings (empty = valid)
+const validateImportRow = (row, idx, knownTrades, knownRanks) => {
+  const errors = [];
+  const rowNum = idx + 2;
+  if (!row['First Name']?.trim())        errors.push(`Row ${rowNum}: First Name is required`);
+  if (!row['Last Name']?.trim())         errors.push(`Row ${rowNum}: Last Name is required`);
+  if (!row['Employment Status']?.trim()) errors.push(`Row ${rowNum}: Employment Status is required`);
+  else if (!normaliseEmploymentStatus(row['Employment Status']))
+    errors.push(`Row ${rowNum}: Employment Status must be "PAYE" or "Self-Employed"`);
+  if (!row['Crew Trade']?.trim())  errors.push(`Row ${rowNum}: Crew Trade is required`);
+  if (!row['Crew Rank']?.trim())   errors.push(`Row ${rowNum}: Crew Rank is required`);
+  else if (knownTrades && !knownTrades.has(row['Crew Trade']?.trim()))
+    errors.push(`Row ${rowNum}: Crew Trade "${row['Crew Trade']?.trim()}" is not in the BECTU/non-BECTU rate card`);
+  return errors;
+};
+
+// GET /api/crew/import/template
+const getImportTemplate = (_req, res) => {
+  res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+  res.setHeader('Content-Disposition', 'attachment; filename="crew_import_template.csv"');
+  res.send(IMPORT_TEMPLATE_HEADER);
+};
+
+// POST /api/crew/import/preview — validate CSV, return per-row results. No DB writes.
+const previewImport = async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No CSV file provided' });
+
+  let records;
+  try {
+    records = csvParse.parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true, trim: true });
+  } catch (e) {
+    return res.status(400).json({ error: `CSV parse error: ${e.message}` });
+  }
+  if (!records.length) return res.status(400).json({ error: 'CSV is empty' });
+
+  // Load known trades from BECTU rate card
+  const { rows: rateRows } = await db.query('SELECT DISTINCT trade FROM bectu_rates WHERE effective_to IS NULL');
+  const knownTrades = new Set(rateRows.map(r => r.trade));
+
+  // Check duplicates in DB (First Name + Last Name + Date of Birth)
+  const { rows: existingCrew } = await db.query(
+    `SELECT LOWER(first_name) || '|' || LOWER(last_name) || '|' || COALESCE(date_of_birth::text,'') AS key
+     FROM crew_members WHERE is_active = true`
+  );
+  const existingSet = new Set(existingCrew.map(r => r.key));
+
+  const preview = records.map((row, idx) => {
+    const errors = validateImportRow(row, idx, knownTrades, null);
+    const dob = row['Date of Birth']?.trim() || '';
+    const dupKey = `${row['First Name']?.trim().toLowerCase()}|${row['Last Name']?.trim().toLowerCase()}|${dob}`;
+    const isDuplicate = existingSet.has(dupKey);
+    if (isDuplicate) errors.push(`Potential duplicate: crew member with same name & DOB already exists`);
+
+    return {
+      row:       idx + 2,
+      first_name: row['First Name']?.trim(),
+      last_name:  row['Last Name']?.trim(),
+      crew_trade: row['Crew Trade']?.trim(),
+      crew_rank:  row['Crew Rank']?.trim(),
+      employment_status: normaliseEmploymentStatus(row['Employment Status']),
+      is_duplicate: isDuplicate,
+      errors,
+      valid: errors.length === 0,
+    };
+  });
+
+  res.json({
+    total_rows:   preview.length,
+    valid_rows:   preview.filter(r => r.valid).length,
+    invalid_rows: preview.filter(r => !r.valid).length,
+    preview,
+  });
+};
+
+// POST /api/crew/import — commit valid rows. Invalid + duplicate rows are skipped.
+const importCSV = async (req, res) => {
+  if (!req.file) return res.status(400).json({ error: 'No CSV file provided' });
+
+  let records;
+  try {
+    records = csvParse.parse(req.file.buffer.toString(), { columns: true, skip_empty_lines: true, trim: true });
+  } catch (e) {
+    return res.status(400).json({ error: `CSV parse error: ${e.message}` });
+  }
+  if (!records.length) return res.status(400).json({ error: 'CSV is empty' });
+
+  const { rows: rateRows } = await db.query('SELECT DISTINCT trade FROM bectu_rates WHERE effective_to IS NULL');
+  const knownTrades = new Set(rateRows.map(r => r.trade));
+
+  const { rows: existingCrew } = await db.query(
+    `SELECT LOWER(first_name) || '|' || LOWER(last_name) || '|' || COALESCE(date_of_birth::text,'') AS key
+     FROM crew_members WHERE is_active = true`
+  );
+  const existingSet = new Set(existingCrew.map(r => r.key));
+
+  const created = [];
+  const skipped = [];
+
+  for (let idx = 0; idx < records.length; idx++) {
+    const row    = records[idx];
+    const errors = validateImportRow(row, idx, knownTrades, null);
+    const dob    = row['Date of Birth']?.trim() || '';
+    const dupKey = `${row['First Name']?.trim().toLowerCase()}|${row['Last Name']?.trim().toLowerCase()}|${dob}`;
+
+    if (existingSet.has(dupKey)) {
+      skipped.push({ row: idx + 2, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim(), reason: 'Duplicate (same name & DOB)' });
+      continue;
+    }
+    if (errors.length) {
+      skipped.push({ row: idx + 2, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim(), reason: errors.join('; ') });
+      continue;
+    }
+
+    try {
+      const crew_number = await generateCrewNumber();
+      await db.query(
+        `INSERT INTO crew_members
+           (crew_number, first_name, last_name, date_of_birth, home_address,
+            employment_status, crew_trade, crew_rank, paye_withholding_rate,
+            company_name, company_registration_number, vat_registration_number,
+            account_name, account_number, sort_code,
+            emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
+            is_active)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,true)`,
+        [
+          crew_number,
+          row['First Name']?.trim(),
+          row['Last Name']?.trim(),
+          dob || null,
+          row['Home Address']?.trim() ? encrypt(row['Home Address'].trim()) : null,
+          normaliseEmploymentStatus(row['Employment Status']),
+          row['Crew Trade']?.trim(),
+          row['Crew Rank']?.trim(),
+          parseFloat(row['PAYE Withholding Rate'] || 0),
+          row['Company/Business Name']?.trim() || null,
+          row['Company Registration Number or UTR']?.trim() || null,
+          row['VAT Registration Number']?.trim() || null,
+          row['Account Name']?.trim() ? encrypt(row['Account Name'].trim()) : null,
+          row['Account Number']?.trim() ? encrypt(row['Account Number'].trim()) : null,
+          row['Sort Code']?.trim() ? encrypt(row['Sort Code'].trim()) : null,
+          row['Emergency Contact Name']?.trim() || null,
+          row['Emergency Contact Relationship']?.trim() || null,
+          row['Emergency Contact Phone']?.trim() ? encrypt(row['Emergency Contact Phone'].trim()) : null,
+        ]
+      );
+      created.push({ row: idx + 2, crew_number, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim() });
+      existingSet.add(dupKey); // prevent in-batch duplicates
+    } catch (err) {
+      skipped.push({ row: idx + 2, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim(), reason: `DB error: ${err.message}` });
+    }
+  }
+
+  res.status(201).json({
+    total_rows:  records.length,
+    created:     created.length,
+    skipped:     skipped.length,
+    created_records: created,
+    skipped_records: skipped,
+  });
+};
+
 module.exports = {
   getTrades, getAllCrew, createCrewMember, getCrewById, updateCrewMember,
   deleteCrewMember, addDocument, deleteDocument, linkToProduction,
+  getImportTemplate, previewImport, importCSV,
 };

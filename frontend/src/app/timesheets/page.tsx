@@ -3,9 +3,10 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
+import Link from 'next/link';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
-  Mail, Paperclip, ShieldCheck, X, Plus, UserX, ExternalLink,
+  Mail, Paperclip, ShieldCheck, X, Plus, ExternalLink, UserX,
 } from 'lucide-react';
 import {
   timesheetsApi, productionsApi, crewApi,
@@ -644,6 +645,16 @@ export default function TimesheetsPage() {
                                     : <ShieldCheck size={12} />}
                                   Verify
                                 </button>
+                              )}
+                              {/* Edit entries link */}
+                              {(ts.status as string) !== 'finalised' && ts.status !== 'verified' && (
+                                <Link
+                                  href={`/timesheets/${ts.id}`}
+                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                                >
+                                  <ExternalLink size={12} />
+                                  Edit Entries
+                                </Link>
                               )}
                               {/* Attach Invoice — only if sent or reviewed */}
                               {(ts.status === 'sent' || ts.status === 'reviewed') && (

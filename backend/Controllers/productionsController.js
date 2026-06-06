@@ -280,53 +280,93 @@ const transitionStatus = async (req, res) => {
 // ─── Percentometer background job ─────────────────────────────────────────────
 const runPostProductionPercentometer = async (productionId, attempt = 1) => {
   try {
-    // Mark as processing
+    // Seed a single "processing" sentinel row so GET actuals returns processing state immediately
+    await db.query(
+      `INSERT INTO percentometer_actuals (production_id, status)
+       VALUES ($1, 'processing')
+       ON CONFLICT DO NOTHING`,
+      [productionId]
+    );
+    // Also keep legacy JSONB field for backward compat
     await db.query(
       `UPDATE productions SET post_production_percentometer = $1 WHERE id = $2`,
       [JSON.stringify({ status: 'processing' }), productionId]
     );
 
-    // Pull approved POs grouped by account_code and verified timesheets total
-    const [{ rows: poRows }, { rows: tsRows }] = await Promise.all([
+    // Pull data from cost_report_entries (source of truth since Cost Report module)
+    const [{ rows: labourRows }, { rows: supplierRows }, { rows: ratioRows }] = await Promise.all([
       db.query(
-        `SELECT account_code, SUM(gross_amount::numeric) AS total
-         FROM purchase_orders
-         WHERE production_id = $1 AND status = 'approved'
-         GROUP BY account_code`,
+        `SELECT cre.trade, SUM(cre.gross_amount) AS total
+         FROM cost_report_entries cre
+         WHERE cre.production_id = $1 AND cre.entry_type = 'labour' AND cre.deleted_at IS NULL
+         GROUP BY cre.trade`,
         [productionId]
       ),
       db.query(
-        `SELECT SUM(grand_total::numeric) AS total
-         FROM timesheets
-         WHERE production_id = $1 AND status = 'finalised'`,  -- TimesheetStatus.FINALISED
+        `SELECT COALESCE(SUM(gross_amount), 0) AS total
+         FROM cost_report_entries
+         WHERE production_id = $1 AND entry_type = 'supplier' AND deleted_at IS NULL`,
         [productionId]
+      ),
+      db.query(
+        `SELECT cost_type, percentage FROM percentometer_ratios WHERE effective_to IS NULL`
       ),
     ]);
 
-    const materialsTotal = poRows.reduce((s, r) => s + parseFloat(r.total || 0), 0);
-    const labourTotal    = parseFloat(tsRows[0]?.total || 0);
-    const grandTotal     = materialsTotal + labourTotal;
+    const materialsTotal = parseFloat(supplierRows[0]?.total || 0);
+    const labourByTrade  = Object.fromEntries(
+      labourRows.map(r => [r.trade, parseFloat(r.total || 0)])
+    );
+    const grandTotal = materialsTotal + Object.values(labourByTrade).reduce((s, v) => s + v, 0);
 
+    // Map ratios
+    const ratioMap        = Object.fromEntries(ratioRows.map(r => [r.cost_type, parseFloat(r.percentage)]));
+    const tradeCostTypes  = new Set(['Carpenters', 'Painters', 'Stagehands', 'Riggers', 'Sculptors', 'Metalwork']);
+    const matRatioSum     = ratioRows
+      .filter(r => !tradeCostTypes.has(r.cost_type))
+      .reduce((s, r) => s + parseFloat(r.percentage), 0);
+
+    // Remove processing sentinel, write per-cost-type rows
+    await db.query('DELETE FROM percentometer_actuals WHERE production_id = $1', [productionId]);
+
+    for (const r of ratioRows) {
+      let actualAmount;
+      if (tradeCostTypes.has(r.cost_type)) {
+        // Match labour trade by name (case-insensitive)
+        const matchKey = Object.keys(labourByTrade).find(
+          t => t?.toLowerCase() === r.cost_type.toLowerCase()
+        );
+        actualAmount = matchKey ? labourByTrade[matchKey] : 0;
+      } else {
+        // Distribute materials proportionally among material cost types
+        actualAmount = matRatioSum > 0
+          ? materialsTotal * (parseFloat(r.percentage) / matRatioSum)
+          : 0;
+      }
+      const actualPct = grandTotal > 0 ? (actualAmount / grandTotal) * 100 : 0;
+      await db.query(
+        `INSERT INTO percentometer_actuals
+           (production_id, status, cost_type, actual_amount, actual_percentage, grand_total)
+         VALUES ($1,'complete',$2,$3,$4,$5)`,
+        [productionId, r.cost_type, actualAmount, actualPct, grandTotal]
+      );
+    }
+
+    // Legacy JSONB field
     await db.query(
       `UPDATE productions SET post_production_percentometer = $1 WHERE id = $2`,
-      [
-        JSON.stringify({
-          status:           'complete',
-          labour_total:     labourTotal,
-          materials_total:  materialsTotal,
-          grand_total:      grandTotal,
-          labour_pct:       grandTotal > 0 ? ((labourTotal / grandTotal) * 100).toFixed(1) : '0',
-          materials_pct:    grandTotal > 0 ? ((materialsTotal / grandTotal) * 100).toFixed(1) : '0',
-          computed_at:      new Date().toISOString(),
-        }),
-        productionId,
-      ]
+      [JSON.stringify({ status: 'complete', grand_total: grandTotal, computed_at: new Date().toISOString() }), productionId]
     );
   } catch (err) {
     console.error(`Percentometer job attempt ${attempt} failed for ${productionId}:`, err.message);
     if (attempt < 3) {
       setTimeout(() => runPostProductionPercentometer(productionId, attempt + 1), 5000 * attempt);
     } else {
+      await db.query('DELETE FROM percentometer_actuals WHERE production_id = $1', [productionId]).catch(() => {});
+      await db.query(
+        `INSERT INTO percentometer_actuals (production_id, status, error_message) VALUES ($1,'failed',$2)`,
+        [productionId, err.message]
+      ).catch(() => {});
       await db.query(
         `UPDATE productions SET post_production_percentometer = $1 WHERE id = $2`,
         [JSON.stringify({ status: 'failed', error: err.message }), productionId]
@@ -683,29 +723,29 @@ const getAuditLog = async (req, res) => {
 };
 
 // POST /api/productions/handover-alerts  (called by cron/scheduler — daily)
+// Gap 9: alert thresholds are read from app_settings.handover_alert_days (default [14, 7]).
 const sendHandoverAlerts = async (req, res) => {
   const { sendEmail, templates } = require('../config/email');
   try {
-    // Collect sets hitting 14-day and 7-day marks today
-    const { rows: sets14 } = await db.query(
-      `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
-       FROM sets s
-       JOIN productions p ON s.production_id = p.id
-       WHERE s.handover_date = CURRENT_DATE + INTERVAL '14 days'
-         AND s.completion_status != 'handed_over'`
+    // Load configurable alert thresholds from app_settings
+    const { rows: [settingRow] } = await db.query(
+      `SELECT value FROM app_settings WHERE key = 'handover_alert_days'`
     );
-    const { rows: sets7 } = await db.query(
-      `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
-       FROM sets s
-       JOIN productions p ON s.production_id = p.id
-       WHERE s.handover_date = CURRENT_DATE + INTERVAL '7 days'
-         AND s.completion_status != 'handed_over'`
-    );
+    const alertDays = Array.isArray(settingRow?.value) ? settingRow.value : [14, 7];
 
-    const allAlerts = [
-      ...sets14.map(s => ({ set: s, days: 14 })),
-      ...sets7.map(s =>  ({ set: s, days: 7  })),
-    ];
+    // Collect sets hitting each configured threshold today
+    const allAlerts = [];
+    for (const days of alertDays) {
+      const { rows: sets } = await db.query(
+        `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
+         FROM sets s
+         JOIN productions p ON s.production_id = p.id
+         WHERE s.handover_date = CURRENT_DATE + ($1 || ' days')::interval
+           AND s.completion_status != 'handed_over'`,
+        [days]
+      );
+      sets.forEach(s => allAlerts.push({ set: s, days }));
+    }
 
     if (!allAlerts.length) {
       return res.json({ message: 'No handover alerts due today', sent: 0, skipped: 0 });
@@ -754,6 +794,59 @@ const sendHandoverAlerts = async (req, res) => {
   }
 };
 
+// ─── GET /api/productions/:id/forecast-variance ───────────────────────────────
+// Returns live forecast vs actual panel data for a production detail page.
+// Uses the production's primary linked forecast and live cost_report_entries.
+const getForecastVariance = async (req, res) => {
+  const { id } = req.params;
+  try {
+    const [{ rows: [production] }, { rows: [primaryForecast] }] = await Promise.all([
+      db.query('SELECT id, name, contract_type FROM productions WHERE id = $1', [id]),
+      db.query(
+        `SELECT id, name AS scenario_name, total_forecast_cost AS forecast_total
+         FROM forecasts
+         WHERE production_id = $1 AND is_primary = true AND deleted_at IS NULL
+         LIMIT 1`,
+        [id]
+      ),
+    ]);
+
+    if (!production) return res.status(404).json({ error: 'Production not found' });
+
+    if (!primaryForecast) {
+      return res.json({ linked: false, message: 'No forecast linked — add a forecast to track variance.' });
+    }
+
+    const { rows: [costs] } = await db.query(
+      `SELECT COALESCE(SUM(gross_amount), 0) AS total
+       FROM cost_report_entries
+       WHERE production_id = $1 AND deleted_at IS NULL`,
+      [id]
+    );
+
+    const forecastTotal  = parseFloat(primaryForecast.forecast_total || 0);
+    const actualTotal    = parseFloat(costs.total || 0);
+    const varianceAmount = actualTotal - forecastTotal;
+    const variancePct    = forecastTotal > 0 ? (varianceAmount / forecastTotal) * 100 : null;
+
+    res.json({
+      linked:           true,
+      production_id:    production.id,
+      production_name:  production.name,
+      forecast_id:      primaryForecast.id,
+      scenario_name:    primaryForecast.scenario_name,
+      forecast_total:   forecastTotal,
+      actual_total:     actualTotal,
+      variance_amount:  parseFloat(varianceAmount.toFixed(2)),
+      variance_pct:     variancePct !== null ? parseFloat(variancePct.toFixed(2)) : null,
+      status:           varianceAmount > 0 ? 'over_forecast' : varianceAmount < 0 ? 'under_forecast' : 'on_track',
+    });
+  } catch (err) {
+    console.error('getForecastVariance:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getAllProductions, createProduction, getProductionById, updateProduction,
   transitionStatus,
@@ -761,4 +854,5 @@ module.exports = {
   getSets, createSet, updateSet, patchSet, deleteSet,
   sendHandoverAlerts,
   getDocuments, uploadDocument, deleteDocument,
+  getForecastVariance,
 };

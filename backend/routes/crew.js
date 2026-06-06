@@ -1,7 +1,15 @@
 const express    = require('express');
 const router     = express.Router();
+const multer     = require('multer');
 const ctrl       = require('../Controllers/crewController');
 const { upload } = require('../Middleware/upload');
+
+const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+// ── Import (specific paths before /:id) ───────────────────────────────────────
+router.get('/import/template',                                ctrl.getImportTemplate);
+router.post('/import/preview', csvUpload.single('csv'),       ctrl.previewImport);
+router.post('/import',         csvUpload.single('csv'),       ctrl.importCSV);
 
 router.get('/trades',                  ctrl.getTrades);
 router.get('/',                        ctrl.getAllCrew);
