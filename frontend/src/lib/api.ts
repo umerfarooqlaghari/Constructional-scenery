@@ -712,4 +712,220 @@ export const crewRatesApi = {
     }),
 };
 
+// ─── Pay Run types & API ───────────────────────────────────────────────────────
+export type PayRunStatus = 'draft' | 'processed';
+export type PayRun = {
+  id: string;
+  production_id: string;
+  week_ending_date: string;
+  status: PayRunStatus;
+  created_by: string;
+  processed_at: string | null;
+  created_at: string;
+  prod_name?: string;
+};
+export type PayRunItem = {
+  timesheet_id: string;
+  crew_number: string;
+  crew_name: string;
+  employment_type: 'paye' | 'self_employed';
+  gross_amount: number;
+  withholding_amount: number;
+  net_amount: number;
+  sort_code: string | null;
+  account_number: string | null;
+  account_name: string | null;
+  payment_reference: string;
+};
+export type PayRunPreview = {
+  production_name: string;
+  week_ending_date: string;
+  items: PayRunItem[];
+  total_gross: number;
+  total_net: number;
+};
+export const payRunsApi = {
+  getAvailableWeeks: (production_id: string) =>
+    request<Array<{ week_ending_date: string; timesheet_count: number; pay_run_id: string | null; pay_run_status: string | null; processed_at: string | null }>>(
+      `/api/pay-runs/available-weeks?production_id=${production_id}`
+    ),
+  getPreview: (production_id: string, week_ending_date: string) =>
+    request<PayRunPreview>(`/api/pay-runs/preview?production_id=${production_id}&week_ending_date=${week_ending_date}`),
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<PayRun[]>(`/api/pay-runs${qs}`);
+  },
+  getById: (id: string) =>
+    request<PayRun & { items: PayRunItem[] }>(`/api/pay-runs/${id}`),
+  create: (data: { production_id: string; week_ending_date: string }) =>
+    request<PayRun>('/api/pay-runs', { method: 'POST', body: data }),
+  process: (id: string) =>
+    request<{ message: string; pay_run: PayRun }>(`/api/pay-runs/${id}/process`, { method: 'POST', body: {} }),
+  exportCsv: (id: string) =>
+    fetch(`/api/pay-runs/${id}/export-csv`, {
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+    }),
+};
+
+// ─── Supplier Catalogue types & API ───────────────────────────────────────────
+export type SupplierCatalogueItem = {
+  id: string;
+  supplier_name: string;
+  product_description: string;
+  unit_of_measure: string;
+  unit_price: number;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export const supplierCatalogueApi = {
+  list: (params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<SupplierCatalogueItem[]>(`/api/supplier-catalogue${qs}`);
+  },
+  getSuppliers: () => request<string[]>('/api/supplier-catalogue/suppliers'),
+  create: (data: Partial<SupplierCatalogueItem>) =>
+    request<SupplierCatalogueItem>('/api/supplier-catalogue', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<SupplierCatalogueItem>) =>
+    request<SupplierCatalogueItem>(`/api/supplier-catalogue/${id}`, { method: 'PATCH', body: data }),
+  delete: (id: string) =>
+    request<{ message: string }>(`/api/supplier-catalogue/${id}`, { method: 'DELETE' }),
+  importCSV: (formData: FormData) =>
+    fetch('/api/supplier-catalogue/import', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+      body: formData,
+    }).then(async r => { if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); } return r.json() as Promise<{ imported: number }>; }),
+};
+
+// ─── Percentometer new API (versioned ratios + actuals) ────────────────────────
+export type PercentometerActualsRow = {
+  cost_type: string;
+  historical_pct: number;
+  estimated_gbp: number;
+  actual_gbp: number;
+  actual_pct: number;
+  variance_gbp: number;
+  variance_pct: number | null;
+  rag: 'green' | 'amber' | 'red' | 'unknown';
+};
+export const percentometerApi = {
+  getRatios: (current = true) =>
+    request<Array<{ id: string; cost_type: string; percentage: number; effective_from: string; effective_to: string | null }>>(`/api/percentometer/ratios${current ? '?current=true' : ''}`),
+  calculate: (known_cost: number, known_cost_type = 'Carpenters') =>
+    request<{ known_cost: number; total_estimated_job_cost: number; breakdown: Array<{ cost_type: string; percentage: number; estimated_value: number }> }>(
+      '/api/percentometer/calculate', { method: 'POST', body: { known_cost, known_cost_type } }
+    ),
+  updateRatio: (id: string, percentage: number) =>
+    request<{ id: string; cost_type: string; percentage: number; effective_from: string }>(`/api/percentometer/ratios/${id}`, { method: 'PATCH', body: { percentage } }),
+  getActuals: (productionId: string) =>
+    request<{ status: string; grand_total?: number; computed_at?: string; comparison?: PercentometerActualsRow[]; message?: string }>(`/api/percentometer/actuals/${productionId}`),
+};
+
+// ─── Crew Import API ───────────────────────────────────────────────────────────
+export type CrewImportPreviewRow = {
+  row: number; first_name: string; last_name: string;
+  crew_trade: string; crew_rank: string;
+  employment_status: string | null;
+  is_duplicate: boolean; errors: string[]; valid: boolean;
+};
+export const crewImportApi = {
+  preview: (formData: FormData) =>
+    fetch('/api/crew/import/preview', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+      body: formData,
+    }).then(async r => { if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); }
+      return r.json() as Promise<{ total_rows: number; valid_rows: number; invalid_rows: number; preview: CrewImportPreviewRow[] }>; }),
+  import: (formData: FormData) =>
+    fetch('/api/crew/import', {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+      body: formData,
+    }).then(async r => { if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); }
+      return r.json() as Promise<{ total_rows: number; created: number; skipped: number; created_records: Array<{ row: number; crew_number: string; first_name: string; last_name: string }>; skipped_records: Array<{ row: number; first_name: string; last_name: string; reason: string }> }>; }),
+};
+
+// ─── App Settings API ─────────────────────────────────────────────────────────
+export const settingsApi = {
+  get: () => request<Record<string, { value: unknown; updated_at: string }>>('/api/settings'),
+  patch: (key: string, value: unknown) =>
+    request<{ key: string; value: unknown; updated_at: string }>(`/api/settings/${key}`, { method: 'PATCH', body: { value } }),
+};
+
+// ─── Dashboard new dedicated endpoints ────────────────────────────────────────
+export type CostSummaryItem = {
+  production_id: string; production_name: string; contract_type: ContractType;
+  total_budget: number | null; total_costs_to_date: number;
+  amount_remaining: number | null; budget_utilisation_pct: number | null;
+  rag_status: 'green' | 'amber' | 'red' | 'unknown';
+};
+export type ForecastVarianceItem = {
+  production_id: string; production_name: string;
+  forecast_total: number; actual_total: number;
+  variance_amount: number; variance_pct: number | null;
+};
+export type WeeklyPLProduction = {
+  production_id: string; production_name: string;
+  weeks: Array<{ week_ending_date: string; margin_earned: number; warrens_salary: number; luton_uplift: number; box_rental_uplift: number; weekly_profit: number; running_total_profit: number }>;
+};
+export const dashboardNewApi = {
+  costSummary: () => request<CostSummaryItem[]>('/api/dashboard/cost-summary'),
+  labourCosts: () => request<{ current_week_ending: string; total_labour_this_week: number; breakdown: Array<{ production_name: string; amount: number; status: 'approved' | 'pending' }> }>('/api/dashboard/labour-costs'),
+  crewHeadcount: () => request<{ total_active_crew: number; breakdown: Array<{ production_name: string; crew_count: number }>; note?: string }>('/api/dashboard/crew-headcount'),
+  forecastVariance: () => request<ForecastVarianceItem[]>('/api/dashboard/forecast-variance'),
+  weeklyPL: () => request<WeeklyPLProduction[]>('/api/dashboard/weekly-pl'),
+  poSpend: () => request<{ total_approved_today: number; total_approved_this_week: number; breakdown: Array<{ production_name: string; amount: number }> }>('/api/dashboard/po-spend'),
+};
+
+// ─── Extended Forecast API (link + forecast variance per production) ──────────
+export const forecastLinkApi = {
+  link: (id: string, production_id: string, is_primary: boolean) =>
+    request<{ id: string; scenario_name: string; production_id: string; is_primary: boolean; combined_total: number }>(`/api/forecasting/forecasts/${id}/link`, { method: 'PATCH', body: { production_id, is_primary } }),
+  getProductionVariance: (productionId: string) =>
+    request<{ linked: boolean; production_id?: string; scenario_name?: string; forecast_total?: number; actual_total?: number; variance_amount?: number; variance_pct?: number; status?: string; message?: string }>(`/api/productions/${productionId}/forecast-variance`),
+};
+
+// ─── Extended Cost Report API ──────────────────────────────────────────────────
+export const costReportExtApi = {
+  getType1: (productionId: string, params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<unknown>(`/api/cost-reports/${productionId}/type1${qs}`);
+  },
+  getType2: (productionId: string, params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return request<unknown>(`/api/cost-reports/${productionId}/type2${qs}`);
+  },
+  getSnapshot: (productionId: string, asAtDate: string) =>
+    request<{ as_at_date: string; total_supplier_costs: number; total_labour_costs: number; total_costs_to_date: number }>(`/api/cost-reports/${productionId}/snapshot?as_at_date=${asAtDate}`),
+  exportCSV: (productionId: string, params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return fetch(`/api/cost-reports/${productionId}/export/csv${qs}`, {
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+    });
+  },
+  exportPDF: (productionId: string, params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return fetch(`/api/cost-reports/${productionId}/export/pdf${qs}`, {
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+    });
+  },
+  omitEntry: (productionId: string, data: { entry_id: string; week_ending_date: string; omit_reason?: string }) =>
+    request<unknown>(`/api/cost-reports/${productionId}/omit-entry`, { method: 'POST', body: data }),
+  unomitEntry: (productionId: string, entryId: string, week_ending_date?: string) => {
+    const qs = week_ending_date ? `?week_ending_date=${week_ending_date}` : '';
+    return request<{ message: string }>(`/api/cost-reports/${productionId}/omit-entry/${entryId}${qs}`, { method: 'DELETE' });
+  },
+  updatePoBilling: (productionId: string, sourceId: string, data: { cs_invoice_number?: string; amount_invoiced?: number; notes?: string }) =>
+    request<unknown>(`/api/cost-reports/${productionId}/po-billing/${sourceId}`, { method: 'PATCH', body: data }),
+  updateMarginsReference: (productionId: string, data: { items?: string[]; notes?: string }) =>
+    request<unknown>(`/api/cost-reports/${productionId}/margins-reference`, { method: 'PUT', body: data }),
+  upsertWeeklyPL: (productionId: string, weekEndingDate: string, data: { warrens_salary?: number; luton_uplift?: number; box_rental_uplift?: number; notes?: string }) =>
+    request<unknown>(`/api/cost-reports/${productionId}/weekly-pl/${weekEndingDate}`, { method: 'PUT', body: data }),
+  deleteInvoice: (productionId: string, invoiceId: string) =>
+    request<{ message: string }>(`/api/cost-reports/${productionId}/invoices/${invoiceId}`, { method: 'DELETE' }),
+  upsertBudget: (productionId: string, data: { margin_rate?: number; contracted_weeks?: number; budget_lines?: unknown[] }) =>
+    request<unknown>(`/api/cost-reports/${productionId}/budget`, { method: 'POST', body: data }),
+};
+
 export default request;

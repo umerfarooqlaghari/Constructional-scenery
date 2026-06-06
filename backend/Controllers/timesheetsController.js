@@ -330,8 +330,13 @@ const getTimesheetById = async (req, res) => {
 };
 
 // ─── PUT /api/timesheets/:id/entries — save daily entries + recalculate totals
+// Gap 3: accepts rank_override and rate_override at the timesheet level.
+//   rank_override: overrides crew rank for this week's rate lookup (does not affect Crew DB).
+//   rate_override: directly sets daily_rate for this week (skips rate card lookup).
+// Gap 6: each entry accepts meal_allowance_breakfast, meal_allowance_lunch,
+//   meal_allowance_supper as explicit £ amounts (null/blank, 5, or 10).
 const saveEntries = async (req, res) => {
-  const { entries } = req.body;
+  const { entries, rank_override, rate_override } = req.body;
   if (!Array.isArray(entries) || !entries.length)
     return res.status(400).json({ error: 'entries array is required' });
 
@@ -353,56 +358,73 @@ const saveEntries = async (req, res) => {
       return res.status(403).json({ error: 'Finalised timesheets are locked and cannot be edited' });
     }
 
-    // Fetch the BECTU rate in effect at the timesheet's week_ending_date.
-    // Falls back to most-recent rate if no exact year match (e.g. future rate card not yet loaded).
-    const rateYear = getRateYear(ts.week_ending_date);
-    let { rows: [rateRow] } = await client.query(
-      'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2 AND rate_year = $3',
-      [ts.crew_trade, ts.crew_rank, rateYear]
-    );
-    if (!rateRow) {
-      ({ rows: [rateRow] } = await client.query(
-        'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2 ORDER BY rate_year DESC LIMIT 1',
-        [ts.crew_trade, ts.crew_rank]
-      ));
+    // Gap 3: persist rank/rate override fields on the timesheet row
+    const effectiveRank = rank_override || ts.crew_rank;
+    if (rank_override !== undefined || rate_override !== undefined) {
+      await client.query(
+        `UPDATE timesheets SET rank_override = $1, rate_override = $2 WHERE id = $3`,
+        [rank_override || null, rate_override ? parseFloat(rate_override) : null, req.params.id]
+      );
     }
-    const dailyRate = parseFloat(rateRow?.daily_rate || 0);
-    const otRate    = parseFloat(rateRow?.overtime_rate || 0);
+
+    // Rate resolution: rate_override → rank_override rate → default rank rate
+    let dailyRate, otRate;
+    if (rate_override != null) {
+      dailyRate = parseFloat(rate_override);
+      otRate    = 0; // OT rate not overridden separately; caller can set it via entries if needed
+    } else {
+      const rateYear = getRateYear(ts.week_ending_date);
+      let { rows: [rateRow] } = await client.query(
+        'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2 AND rate_year = $3',
+        [ts.crew_trade, effectiveRank, rateYear]
+      );
+      if (!rateRow) {
+        ({ rows: [rateRow] } = await client.query(
+          'SELECT daily_rate, overtime_rate FROM bectu_rates WHERE trade = $1 AND rank = $2 ORDER BY effective_from DESC LIMIT 1',
+          [ts.crew_trade, effectiveRank]
+        ));
+      }
+      dailyRate = parseFloat(rateRow?.daily_rate || 0);
+      otRate    = parseFloat(rateRow?.overtime_rate || 0);
+    }
 
     // Delete old entries and re-insert
     await client.query('DELETE FROM timesheet_entries WHERE timesheet_id = $1', [req.params.id]);
 
     const rows = entries.map(e => ({
-      timesheet_id:    req.params.id,
-      date:            e.date,
-      day_of_week:     e.day_of_week,
-      full_day_worked: e.full_day_worked || false,
-      overtime_hours:  parseFloat(e.overtime_hours || 0),
-      set_number:      e.set_number || null,
-      site:            e.site || null,
-      travel:          parseFloat(e.travel || 0),
-      meal_breakfast:  e.meal_breakfast || false,
-      meal_lunch:      e.meal_lunch || false,
-      meal_supper:     e.meal_supper || false,
+      timesheet_id:              req.params.id,
+      date:                      e.date,
+      day_of_week:               e.day_of_week,
+      full_day_worked:           e.full_day_worked || false,
+      overtime_hours:            parseFloat(e.overtime_hours || 0),
+      set_number:                e.set_number || null,
+      site:                      e.site || null,
+      travel:                    parseFloat(e.travel || 0),
+      meal_breakfast:            e.meal_breakfast || false,
+      meal_lunch:                e.meal_lunch || false,
+      meal_supper:               e.meal_supper || false,
+      meal_allowance_breakfast:  e.meal_allowance_breakfast != null ? parseFloat(e.meal_allowance_breakfast) : null,
+      meal_allowance_lunch:      e.meal_allowance_lunch     != null ? parseFloat(e.meal_allowance_lunch)     : null,
+      meal_allowance_supper:     e.meal_allowance_supper    != null ? parseFloat(e.meal_allowance_supper)    : null,
     }));
 
     if (rows.length) {
       const valuePlaceholders = rows.map((_, idx) => {
-        const base = idx * 11;
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11})`;
+        const base = idx * 14;
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13},$${base+14})`;
       }).join(',');
-
-      const flatValues = rows.flatMap(r => [
-        r.timesheet_id, r.date, r.day_of_week, r.full_day_worked, r.overtime_hours,
-        r.set_number, r.site, r.travel, r.meal_breakfast, r.meal_lunch, r.meal_supper,
-      ]);
 
       await client.query(
         `INSERT INTO timesheet_entries
            (timesheet_id, date, day_of_week, full_day_worked, overtime_hours,
-            set_number, site, travel, meal_breakfast, meal_lunch, meal_supper)
+            set_number, site, travel, meal_breakfast, meal_lunch, meal_supper,
+            meal_allowance_breakfast, meal_allowance_lunch, meal_allowance_supper)
          VALUES ${valuePlaceholders}`,
-        flatValues
+        rows.flatMap(r => [
+          r.timesheet_id, r.date, r.day_of_week, r.full_day_worked, r.overtime_hours,
+          r.set_number, r.site, r.travel, r.meal_breakfast, r.meal_lunch, r.meal_supper,
+          r.meal_allowance_breakfast, r.meal_allowance_lunch, r.meal_allowance_supper,
+        ])
       );
     }
 
@@ -412,20 +434,25 @@ const saveEntries = async (req, res) => {
     const sunday    = rows.find(e => e.day_of_week === 'Sunday'    && e.full_day_worked);
     const stdDays   = worked.filter(e => !['Saturday', 'Sunday'].includes(e.day_of_week)).length;
 
-    const weeklyRate         = dailyRate * stdDays;
-    const sixthDayPayment    = saturday ? dailyRate * 1.5 : 0;
-    const seventhDayPayment  = sunday   ? dailyRate * 2.0 : 0;
-    const totalOT            = rows.reduce((s, e) => s + e.overtime_hours, 0);
-    const overtimeAmount     = totalOT * otRate;
-    const mealAllowance      = rows.reduce((s, e) =>
-      s + (e.meal_breakfast ? MEAL_RATES.breakfast : 0)
-        + (e.meal_lunch     ? MEAL_RATES.lunch     : 0)
-        + (e.meal_supper    ? MEAL_RATES.supper    : 0), 0);
-    const mileageAndTravel   = rows.reduce((s, e) => s + e.travel, 0);
-    const grossTotal         = weeklyRate + sixthDayPayment + seventhDayPayment + overtimeAmount + mealAllowance + mileageAndTravel;
-    const vatRegistered      = ts.employment_status === 'self_employed' && !!ts.vat_registration_number;
-    const vat                = vatRegistered ? grossTotal * 0.20 : 0;
-    const grandTotal         = grossTotal + vat;
+    const weeklyRate        = dailyRate * stdDays;
+    const sixthDayPayment   = saturday ? dailyRate * 1.5 : 0;
+    const seventhDayPayment = sunday   ? dailyRate * 2.0 : 0;
+    const totalOT           = rows.reduce((s, e) => s + e.overtime_hours, 0);
+    const overtimeAmount    = totalOT * otRate;
+
+    // Gap 6: use explicit amounts if provided; fall back to legacy boolean+MEAL_RATES
+    const mealAllowance = rows.reduce((s, e) => {
+      const b = e.meal_allowance_breakfast != null ? e.meal_allowance_breakfast : (e.meal_breakfast ? MEAL_RATES.breakfast : 0);
+      const l = e.meal_allowance_lunch     != null ? e.meal_allowance_lunch     : (e.meal_lunch     ? MEAL_RATES.lunch     : 0);
+      const sup = e.meal_allowance_supper  != null ? e.meal_allowance_supper    : (e.meal_supper    ? MEAL_RATES.supper    : 0);
+      return s + b + l + sup;
+    }, 0);
+
+    const mileageAndTravel = rows.reduce((s, e) => s + e.travel, 0);
+    const grossTotal       = weeklyRate + sixthDayPayment + seventhDayPayment + overtimeAmount + mealAllowance + mileageAndTravel;
+    const vatRegistered    = ts.employment_status === 'self_employed' && !!ts.vat_registration_number;
+    const vat              = vatRegistered ? grossTotal * 0.20 : 0;
+    const grandTotal       = grossTotal + vat;
 
     const { rows: [updated] } = await client.query(
       `UPDATE timesheets SET

@@ -77,10 +77,13 @@ const getLabourCosts = async (productionId, filters = {}, db) => {
   const params = [productionId];
   let i = 2;
 
-  if (filters.as_at_date)       { conds.push(`cre.date <= $${i++}`);             params.push(filters.as_at_date); }
-  if (filters.week_ending_date) { conds.push(`cre.week_ending_date = $${i++}`);  params.push(filters.week_ending_date); }
-  if (filters.trade)            { conds.push(`cre.trade = $${i++}`);             params.push(filters.trade); }
-  if (filters.crew_member_id)   { conds.push(`cre.crew_member_id = $${i++}`);    params.push(filters.crew_member_id); }
+  if (filters.as_at_date)       { conds.push(`cre.date <= $${i++}`);                                              params.push(filters.as_at_date); }
+  if (filters.week_ending_date) { conds.push(`cre.week_ending_date = $${i++}`);                                  params.push(filters.week_ending_date); }
+  if (filters.date_from)        { conds.push(`cre.week_ending_date >= $${i++}`);                                 params.push(filters.date_from); }
+  if (filters.date_to)          { conds.push(`cre.week_ending_date <= $${i++}`);                                 params.push(filters.date_to); }
+  if (filters.trade)            { conds.push(`cre.trade = $${i++}`);                                             params.push(filters.trade); }
+  if (filters.crew_member_id)   { conds.push(`cre.crew_member_id = $${i++}`);                                   params.push(filters.crew_member_id); }
+  if (filters.crew_member)      { conds.push(`(cm.first_name || ' ' || cm.last_name) ILIKE $${i++}`);           params.push(`%${filters.crew_member}%`); }
 
   const { rows } = await db.query(
     `SELECT cre.*,

@@ -6,7 +6,8 @@ const ctrl = require('../Controllers/forecastingController');
 router.get('/forecasts',        ctrl.getAllForecasts);
 router.post('/forecasts',       ctrl.createForecast);
 router.get('/forecasts/:id',    ctrl.getForecastById);
-router.put('/forecasts/:id',    ctrl.updateForecast);
+router.patch('/forecasts/:id',       ctrl.updateForecast);
+router.patch('/forecasts/:id/link',  ctrl.linkForecast);
 router.delete('/forecasts/:id', ctrl.deleteForecast);
 
 // Percentometer
