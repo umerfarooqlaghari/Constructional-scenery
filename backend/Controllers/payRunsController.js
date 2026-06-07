@@ -93,20 +93,25 @@ const getPayRunPreview = async (req, res) => {
         account_name:       decrypt(ts.account_name),
         gross_total:        gross,
         withholding_amount: withholdAmt,
-        pay_run_amount:     netAmount,
-        reference:          `${shortCode}-${week_ending_date}-${ts.crew_number}`,
+        net_amount:         netAmount,
+        payment_reference:  `${shortCode}-${week_ending_date}-${ts.crew_number}`,
       };
     });
+
+    const total_gross = items.reduce((s, i) => s + i.gross_total,        0);
+    const total_net   = items.reduce((s, i) => s + i.net_amount,         0);
 
     res.json({
       production_id,
       week_ending_date,
       production_name: prodName,
+      total_gross,
+      total_net,
       summary: {
         total_crew:     items.length,
-        total_gross:    items.reduce((s, i) => s + i.gross_total,        0),
+        total_gross,
         total_withheld: items.reduce((s, i) => s + i.withholding_amount, 0),
-        total_net:      items.reduce((s, i) => s + i.pay_run_amount,     0),
+        total_net,
       },
       items,
     });
