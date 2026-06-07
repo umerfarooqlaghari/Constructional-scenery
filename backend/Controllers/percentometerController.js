@@ -13,6 +13,7 @@ const getRatios = async (req, res) => {
        FROM percentometer_ratios
        ${where}
        ORDER BY percentage DESC, cost_type`,
+      []
     );
     res.json(rows);
   } catch (err) {

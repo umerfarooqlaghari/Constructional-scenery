@@ -52,13 +52,14 @@ const login = async (req, res) => {
 
   try {
     const { rows } = await db.query(
-      'SELECT id, email, password_hash, full_name, role FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, full_name, role, is_active FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = rows[0];
 
     // Same generic error for both "not found" and "wrong password" (security: no user enumeration)
     if (!user) return res.status(401).json({ error: 'Invalid email or password' });
+    if (!user.is_active) return res.status(403).json({ error: 'Account is deactivated. Please contact your administrator.' });
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
@@ -105,6 +106,7 @@ const logout = async (req, res) => {
 // ─── GET /api/auth/me ──────────────────────────────────────────────────────────
 // Returns the authenticated user's identity from the JWT payload (no DB hit)
 const getMe = (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
   const { id, email, role, full_name } = req.user;
   res.json({ user: { id, email, role, full_name } });
 };

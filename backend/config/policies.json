@@ -158,6 +158,8 @@
       "DELETE /api/crew/:id/documents/:docId",
       "POST /api/crew/:id/productions",
 
+      "GET /api/crew-rates",
+
       "GET /api/forecasting/catalogue",
       "POST /api/forecasting/catalogue",
       "PUT /api/forecasting/catalogue/:id",

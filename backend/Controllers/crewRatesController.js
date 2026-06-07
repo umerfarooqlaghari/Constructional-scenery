@@ -239,7 +239,7 @@ const importCSV = async (req, res) => {
     }
 
     await client.query('COMMIT');
-    res.json({ message: `${rate_year} rate card imported successfully`, inserted, expired, effective_from });
+    res.json({ message: `${rate_year} rate card imported successfully`, rate_year, inserted, expired, effective_from });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('importCSV:', err);
