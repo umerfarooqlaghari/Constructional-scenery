@@ -527,8 +527,10 @@ export const crewApi = {
   uploadDocument: (id: string, formData: FormData) =>
     fetch(`/api/crew/${id}/documents`, {
       method: 'POST',
+      headers: {
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
+      },
       body: formData,
-      credentials: 'include',
     }).then(async r => {
       if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); }
       return r.json() as Promise<CrewDocument>;
