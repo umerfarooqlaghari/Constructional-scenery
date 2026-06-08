@@ -111,14 +111,32 @@ app.use((err, req, res, next) => {
 });
 
 // ─── START ────────────────────────────────────────────────────────────────────
+const db   = require('./config/db');
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`
+
+async function start() {
+  // Ensure any columns that might be missing from older DB instances exist
+  // before the server accepts requests.
+  try {
+    await db.query(`
+      ALTER TABLE users
+      ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE
+    `);
+    console.log('✅ Schema guard: users.is_active ensured');
+  } catch (err) {
+    console.error('⚠️  Schema guard failed (is_active):', err.message);
+  }
+
+  app.listen(PORT, () => {
+    console.log(`
 ╔══════════════════════════════════════╗
 ║       Deepsian API — Running          ║
 ║  Port  : ${PORT}                          ║
 ║  Auth  : JWT (bcrypt + pg)           ║
 ║  Policy: OPA-style policies.json     ║
 ╚══════════════════════════════════════╝
-  `);
-});
+    `);
+  });
+}
+
+start();
