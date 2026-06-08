@@ -59,7 +59,7 @@ const login = async (req, res) => {
 
     // Same generic error for both "not found" and "wrong password" (security: no user enumeration)
     if (!user) return res.status(401).json({ error: 'Invalid email or password' });
-    if (!user.is_active) return res.status(403).json({ error: 'Account is deactivated. Please contact your administrator.' });
+    if (user.is_active === false) return res.status(403).json({ error: 'Account is deactivated. Please contact your administrator.' });
 
     const valid = await bcrypt.compare(password, user.password_hash);
     if (!valid) return res.status(401).json({ error: 'Invalid email or password' });
