@@ -387,7 +387,12 @@ export type PurchaseOrder = {
   po_number: string;
   supplier_name: string;
   supplier_email: string | null;
+  supplier_code: string | null;
   supplier_address: string | null;
+  street_name: string | null;
+  zip_code: string | null;
+  city: string | null;
+  county: string | null;
   date_of_po: string;
   production_id: string;
   set_code: string | null;

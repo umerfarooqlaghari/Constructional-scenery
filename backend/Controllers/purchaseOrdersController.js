@@ -177,14 +177,14 @@ const exportPDFList = async (req, res) => {
 // ─── POST /api/purchase-orders ────────────────────────────────────────────────
 const createPO = async (req, res) => {
   const {
-    supplier_name, supplier_address, date_of_po, production_id,
+    supplier_name, supplier_email, supplier_code, supplier_address,
+    street_name, zip_code, city, county,
+    date_of_po, production_id,
     set_code, account_code, description, net_amount, vat, gross_amount, paid_from,
   } = req.body;
 
   if (!supplier_name || !production_id || !net_amount)
     return res.status(400).json({ error: 'supplier_name, production_id, and net_amount are required' });
-
-  const { supplier_email } = req.body;
 
   try {
     // Block POs on complete or archived productions
@@ -205,13 +205,17 @@ const createPO = async (req, res) => {
 
     const { rows } = await db.query(
       `INSERT INTO purchase_orders
-         (po_number, supplier_name, supplier_email, supplier_address, date_of_po, production_id,
+         (po_number, supplier_name, supplier_email, supplier_code, supplier_address,
+          street_name, zip_code, city, county,
+          date_of_po, production_id,
           set_code, account_code, description, net_amount, vat, gross_amount, paid_from,
           status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft',$14)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'draft',$19)
        RETURNING *`,
       [
-        po_number, supplier_name, supplier_email || null, supplier_address,
+        po_number, supplier_name, supplier_email || null, supplier_code || null,
+        supplier_address || null,
+        street_name || null, zip_code || null, city || null, county || null,
         date_of_po || new Date().toISOString().split('T')[0],
         production_id, set_code, account_code, description,
         net, vatAmount, grossAmount,
@@ -246,7 +250,9 @@ const getPOById = async (req, res) => {
 // ─── PUT / PATCH /api/purchase-orders/:id ────────────────────────────────────
 const updatePO = async (req, res) => {
   const allowed = [
-    'supplier_name', 'supplier_email', 'supplier_address', 'date_of_po', 'production_id',
+    'supplier_name', 'supplier_email', 'supplier_code', 'supplier_address',
+    'street_name', 'zip_code', 'city', 'county',
+    'date_of_po', 'production_id',
     'set_code', 'account_code', 'description', 'net_amount', 'vat', 'gross_amount', 'paid_from',
   ];
   const updates = {};
