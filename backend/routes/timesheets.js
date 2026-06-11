@@ -31,7 +31,7 @@ router.get('/:id',               ctrl.getTimesheetById);
 router.patch('/:id',             ctrl.patchTimesheet);
 router.put('/:id/entries',       ctrl.saveEntries);
 router.post('/:id/resend',       ctrl.resendTimesheet);
-router.post('/:id/attach-invoice', upload.single('file'), ctrl.attachInvoice);
+router.post('/:id/attach-invoice', upload.single('invoice'), ctrl.attachInvoice);
 router.post('/:id/verify',       ctrl.verifyTimesheet);
 
 module.exports = router;

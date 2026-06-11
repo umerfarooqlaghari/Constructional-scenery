@@ -372,7 +372,7 @@ export const timesheetsApi = {
 };
 
 export type GatewayError = {
-  error_code: 'CREW_NOT_FOUND' | 'CREW_INACTIVE' | 'CREW_RECORD_INCOMPLETE' | 'NO_PRODUCTION_ENGAGEMENT' | 'RATE_NOT_CONFIGURED';
+  error_code: 'CREW_NOT_FOUND' | 'CREW_INACTIVE' | 'CREW_RECORD_INCOMPLETE' | 'NO_PRODUCTION_ENGAGEMENT' | 'RATE_NOT_CONFIGURED' | 'PRODUCTION_NOT_ACTIVE';
   error: string;
   missing_fields?: string[];
   crew_member_id?: string;

@@ -20,7 +20,7 @@ const NAV_GROUPS = [
   {
     label: 'Finance',
     items: [
-      { href: '/purchase-orders',    label: 'Purchase Orders',   icon: ShoppingCart, roles: ['managing_director', 'construction_coordinator'] },
+      { href: '/purchase-orders',    label: 'Purchase Orders',   icon: ShoppingCart, roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
       { href: '/cost-report',        label: 'Cost Report',       icon: BarChart2,    roles: ['managing_director', 'construction_accountant'] },
       { href: '/pay-runs',           label: 'Pay Runs',          icon: Banknote,     roles: ['managing_director', 'construction_accountant'] },
       { href: '/forecasting',        label: 'Forecasting',       icon: TrendingUp,   roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
@@ -31,8 +31,8 @@ const NAV_GROUPS = [
     label: 'People',
     items: [
       { href: '/crew',        label: 'Crew Database', icon: Users,        roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
-      { href: '/crew/import', label: 'Crew Import',   icon: Upload,       roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
-      { href: '/timesheets',  label: 'Timesheets',    icon: ClipboardList, roles: ['managing_director', 'construction_accountant'] },
+      { href: '/crew/import', label: 'Crew Import',   icon: Upload,       roles: ['construction_accountant', 'construction_coordinator'] },
+      { href: '/timesheets',  label: 'Timesheets',    icon: ClipboardList, roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
   {

@@ -6,7 +6,7 @@ import TopBar from '@/components/TopBar';
 import Link from 'next/link';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
-  Mail, Paperclip, ShieldCheck, X, Plus, ExternalLink, UserX,
+  Mail, Paperclip, ShieldCheck, X, Plus, ExternalLink, UserX, Send, FileText,
 } from 'lucide-react';
 import {
   timesheetsApi, productionsApi, crewApi,
@@ -71,7 +71,10 @@ function nextSunday(d: Date): Date {
 }
 
 function toISODate(d: Date): string {
-  return d.toISOString().split('T')[0];
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 function fmtWeek(d: Date): string {
@@ -98,7 +101,14 @@ function AttachInvoiceModal({ timesheetId, crewName, onClose, onAttached }: Atta
   const [file, setFile] = useState<File | null>(null);
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState('');
+  const [dragging, setDragging] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault(); setDragging(false);
+    const dropped = e.dataTransfer.files[0];
+    if (dropped) setFile(dropped);
+  };
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -131,11 +141,16 @@ function AttachInvoiceModal({ timesheetId, crewName, onClose, onAttached }: Atta
             <label className="block text-xs font-medium text-slate-600 mb-1">Invoice File</label>
             <div
               onClick={() => inputRef.current?.click()}
-              className="border-2 border-dashed border-slate-200 rounded-lg px-4 py-6 text-center cursor-pointer hover:border-blue-400 transition-colors"
+              onDragOver={e => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={handleDrop}
+              className={`border-2 border-dashed rounded-lg px-4 py-8 text-center cursor-pointer transition-colors ${dragging ? 'border-blue-500 bg-blue-50' : file ? 'border-green-400 bg-green-50' : 'border-slate-200 hover:border-blue-400'}`}
             >
-              {file
-                ? <p className="text-slate-700 text-sm font-medium">{file.name}</p>
-                : <><Paperclip size={20} className="text-slate-300 mx-auto mb-2" /><p className="text-slate-400 text-sm">Click to select PDF or image</p></>}
+              {file ? (
+                <><CheckCircle2 size={20} className="text-green-500 mx-auto mb-2" /><p className="text-slate-700 text-sm font-medium">{file.name}</p><p className="text-slate-400 text-xs mt-0.5">Click to change file</p></>
+              ) : (
+                <><Paperclip size={20} className="text-slate-300 mx-auto mb-2" /><p className="text-slate-600 text-sm font-medium">Drag &amp; drop or click to select</p><p className="text-slate-400 text-xs mt-0.5">PDF, JPG, PNG — max 25 MB</p></>
+              )}
             </div>
             <input
               ref={inputRef}
@@ -173,6 +188,7 @@ function GatewayErrorBanner({ gatewayErr, onClose }: { gatewayErr: GatewayError;
     CREW_RECORD_INCOMPLETE: `${gatewayErr.crew_name ?? 'Crew record'} is incomplete — missing: ${gatewayErr.missing_fields?.join(', ')}.`,
     RATE_NOT_CONFIGURED: gatewayErr.error,
     CREW_NOT_FOUND: 'Crew member not found. Register them in the Crew Database.',
+    PRODUCTION_NOT_ACTIVE: gatewayErr.error,
   };
   return (
     <div className="bg-amber-50 border border-amber-200 rounded-xl px-4 py-3 flex items-start gap-3">
@@ -213,7 +229,7 @@ function NewTimesheetModal({ productions, weekEndingDate, onClose, onCreated }: 
       onCreated();
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : '';
-      const codes = ['CREW_NOT_FOUND','CREW_INACTIVE','CREW_RECORD_INCOMPLETE','NO_PRODUCTION_ENGAGEMENT','RATE_NOT_CONFIGURED'] as const;
+      const codes = ['CREW_NOT_FOUND','CREW_INACTIVE','CREW_RECORD_INCOMPLETE','NO_PRODUCTION_ENGAGEMENT','RATE_NOT_CONFIGURED','PRODUCTION_NOT_ACTIVE'] as const;
       const matchCode = codes.find(k => msg.includes(k));
       const crew = allCrew.find(c => c.id === crewId);
       setGatewayErr({ error_code: matchCode ?? 'CREW_NOT_FOUND', error: msg, crew_member_id: crewId, crew_name: crew ? `${crew.first_name} ${crew.last_name}` : undefined });
@@ -259,7 +275,7 @@ function NewTimesheetModal({ productions, weekEndingDate, onClose, onCreated }: 
 
 export default function TimesheetsPage() {
   const { user } = useAuth();
-  const canAct = user?.role === 'managing_director' || user?.role === 'construction_accountant';
+  const canAct = user?.role === 'construction_accountant';
 
   // Week state — start on current week-ending Sunday
   const [weekEnding, setWeekEnding] = useState<Date>(() => nextSunday(new Date()));
@@ -278,6 +294,10 @@ export default function TimesheetsPage() {
   const [chasing, setChasing]       = useState(false);
   const [chaseMsg, setChaseMsg]     = useState('');
   const [attachModal, setAttachModal] = useState<{ id: string; name: string } | null>(null);
+  const [bulkSending, setBulkSending] = useState(false);
+  const [bulkMsg, setBulkMsg]         = useState('');
+  const [packGenerating, setPackGenerating] = useState(false);
+  const [packMsg, setPackMsg]               = useState('');
 
   // Filter state (client-side, applied to the fetched week's data)
   const [statusFilter, setStatusFilter] = useState<TimesheetStatus | 'all'>('all');
@@ -316,6 +336,11 @@ export default function TimesheetsPage() {
   }, [selectedProd, weekEndingISO]);
 
   useEffect(() => { loadSheets(); }, [loadSheets]);
+
+  // Auto-dismiss success messages after 3 seconds
+  useEffect(() => { if (!bulkMsg)  return; const t = setTimeout(() => setBulkMsg(''),  3000); return () => clearTimeout(t); }, [bulkMsg]);
+  useEffect(() => { if (!chaseMsg) return; const t = setTimeout(() => setChaseMsg(''), 3000); return () => clearTimeout(t); }, [chaseMsg]);
+  useEffect(() => { if (!packMsg)  return; const t = setTimeout(() => setPackMsg(''),  3000); return () => clearTimeout(t); }, [packMsg]);
 
   // Week navigation
   const prevWeek = () => setWeekEnding(d => { const n = new Date(d); n.setDate(n.getDate() - 7); return n; });
@@ -370,6 +395,77 @@ export default function TimesheetsPage() {
       setChaseMsg(err instanceof Error ? err.message : 'Failed to send chase emails');
     } finally {
       setChasing(false);
+    }
+  };
+
+  const handleBulkSend = async () => {
+    if (!selectedProd) return;
+    const draftCount = sheets.filter(s => s.status === 'draft').length;
+    if (draftCount === 0) { setBulkMsg('No draft timesheets to send this week.'); return; }
+    if (!confirm(`Send ${draftCount} timesheet${draftCount !== 1 ? 's' : ''} to crew members in one action?`)) return;
+    setBulkSending(true); setBulkMsg('');
+    try {
+      const res = await fetch('/api/timesheets/bulk-distribute', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+        },
+        body: JSON.stringify({ week_ending_date: weekEndingISO, production_id: selectedProd }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Bulk send failed');
+      setBulkMsg(`${data.results?.sent?.length ?? 0} timesheet(s) sent successfully.`);
+      await loadSheets();
+    } catch (err: unknown) {
+      setBulkMsg(err instanceof Error ? err.message : 'Bulk send failed');
+    } finally {
+      setBulkSending(false);
+    }
+  };
+
+  const handleGeneratePack = async () => {
+    if (!selectedProd) return;
+    setPackGenerating(true); setPackMsg('');
+    try {
+      const res = await fetch('/api/timesheets/verification-pack', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+        },
+        body: JSON.stringify({ week_ending_date: weekEndingISO, production_id: selectedProd }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const notDone = (data as { not_verified?: string[] }).not_verified;
+        if (notDone?.length) {
+          setPackMsg(`Not yet verified: ${notDone.join(', ')}`);
+        } else {
+          setPackMsg((data as { error?: string }).error ?? 'Failed to generate pack');
+        }
+        return;
+      }
+      // Trigger browser download
+      const blob = await res.blob();
+      const summary = res.headers.get('X-Pack-Summary');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const prodName = productions.find(p => p.id === selectedProd)?.name ?? 'Production';
+      a.download = `VerificationPack_${prodName.replace(/[^a-zA-Z0-9]+/g,'_')}_w-e-${weekEndingISO}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (summary) {
+        const s = JSON.parse(summary);
+        setPackMsg(`Pack downloaded — ${s.crew_count} crew, ${s.total_pages} pages`);
+      } else {
+        setPackMsg('Verification pack downloaded');
+      }
+    } catch (err: unknown) {
+      setPackMsg(err instanceof Error ? err.message : 'Failed to generate pack');
+    } finally {
+      setPackGenerating(false);
     }
   };
 
@@ -438,9 +534,11 @@ export default function TimesheetsPage() {
 
           {/* Actions */}
           {canAct && (
-            <div className="flex items-center gap-2">
-              {chaseMsg && (
-                <span className="text-blue-700 text-xs bg-blue-50 border border-blue-200 rounded-lg px-3 py-1.5">{chaseMsg}</span>
+            <div className="flex items-center gap-2 flex-wrap">
+              {(chaseMsg || bulkMsg) && (
+                <span className={`text-xs rounded-lg px-3 py-1.5 border ${bulkMsg && !chaseMsg ? 'bg-green-50 border-green-200 text-green-700' : 'bg-blue-50 border-blue-200 text-blue-700'}`}>
+                  {bulkMsg || chaseMsg}
+                </span>
               )}
               <button
                 onClick={handleChase}
@@ -449,6 +547,14 @@ export default function TimesheetsPage() {
               >
                 {chasing ? <Loader2 size={14} className="animate-spin" /> : <Mail size={14} />}
                 Chase Invoices
+              </button>
+              <button
+                onClick={handleBulkSend}
+                disabled={bulkSending || !selectedProd}
+                className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-3 py-2 hover:bg-blue-700 shadow-sm disabled:opacity-60 transition-colors font-medium"
+              >
+                {bulkSending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}
+                Send All
               </button>
               <button
                 onClick={() => setShowNewTs(true)}
@@ -633,8 +739,8 @@ export default function TimesheetsPage() {
                         {canAct && (
                           <td className="px-4 py-3.5">
                             <div className="flex items-center gap-2">
-                              {/* Verify — only if invoice_received */}
-                              {ts.status === 'invoice_received' && (
+                              {/* Verify — sent (PAYE), invoice_received (SE), or reviewed */}
+                              {(ts.status === 'sent' || ts.status === 'invoice_received' || ts.status === 'reviewed') && (
                                 <button
                                   onClick={() => handleVerify(ts.id)}
                                   disabled={verifying === ts.id}
@@ -646,8 +752,8 @@ export default function TimesheetsPage() {
                                   Verify
                                 </button>
                               )}
-                              {/* Edit entries link */}
-                              {(ts.status as string) !== 'finalised' && ts.status !== 'verified' && (
+                              {/* Edit entries link — not for verified */}
+                              {ts.status !== 'verified' && (
                                 <Link
                                   href={`/timesheets/${ts.id}`}
                                   className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
@@ -656,14 +762,14 @@ export default function TimesheetsPage() {
                                   Edit Entries
                                 </Link>
                               )}
-                              {/* Attach Invoice — only if sent or reviewed */}
-                              {(ts.status === 'sent' || ts.status === 'reviewed') && (
+                              {/* Attach Invoice — sent, reviewed, or replace on invoice_received */}
+                              {(ts.status === 'sent' || ts.status === 'reviewed' || ts.status === 'invoice_received') && (
                                 <button
                                   onClick={() => setAttachModal({ id: ts.id, name: fullName })}
                                   className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
                                 >
                                   <Paperclip size={12} />
-                                  Attach Invoice
+                                  {ts.status === 'invoice_received' ? 'Replace Invoice' : 'Attach Invoice'}
                                 </button>
                               )}
                             </div>
@@ -677,14 +783,36 @@ export default function TimesheetsPage() {
             </table>
           </div>
 
-          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50">
+          <div className="px-5 py-3 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-3">
             <span className="text-slate-400 text-xs">
               {loading
                 ? 'Loading…'
                 : filteredSheets.length === sheets.length
                   ? `${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} this week`
                   : `${filteredSheets.length} of ${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} (filtered)`}
+              {!loading && sheets.length > 0 && (
+                <span className="ml-2 text-slate-400">
+                  · {sheets.filter(s => s.status === 'verified').length}/{sheets.length} verified
+                </span>
+              )}
             </span>
+            {canAct && !loading && sheets.length > 0 && (
+              <div className="flex items-center gap-2">
+                {packMsg && (
+                  <span className={`text-xs px-3 py-1 rounded-lg border ${packMsg.startsWith('Not yet') ? 'bg-amber-50 border-amber-200 text-amber-700' : 'bg-green-50 border-green-200 text-green-700'}`}>
+                    {packMsg}
+                  </span>
+                )}
+                <button
+                  onClick={handleGeneratePack}
+                  disabled={packGenerating || !selectedProd}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors font-medium"
+                >
+                  {packGenerating ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
+                  Generate Verification Pack
+                </button>
+              </div>
+            )}
           </div>
         </div>
 

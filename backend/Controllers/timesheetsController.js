@@ -243,21 +243,23 @@ const createTimesheet = async (req, res) => {
     );
     if (!prod) return res.status(400).json({ error: 'Production not found' });
     if (prod.status === 'pre_production')
-      return res.status(400).json({ error: 'Cannot create timesheets for a pre-production project — activate the build first' });
+      return res.status(400).json({ error: 'PRODUCTION_NOT_ACTIVE', message: 'This production is still in Pre Production — change its status to Active Build before creating timesheets' });
     if (prod.status === 'complete')
-      return res.status(400).json({ error: 'Cannot create new timesheets on a completed production' });
+      return res.status(400).json({ error: 'PRODUCTION_NOT_ACTIVE', message: 'Cannot create timesheets on a completed production' });
     if (prod.status === 'archived')
-      return res.status(400).json({ error: 'Cannot create timesheets on an archived production' });
+      return res.status(400).json({ error: 'PRODUCTION_NOT_ACTIVE', message: 'Cannot create timesheets on an archived production' });
 
     // GATEWAY RULE — crew member must exist and be active
-    const { rows: [crew] } = await db.query(
-      'SELECT * FROM crew_members WHERE id = $1 AND is_active = true',
+    const { rows: [crewAny] } = await db.query(
+      'SELECT id, first_name, last_name, is_active FROM crew_members WHERE id = $1',
       [crew_member_id]
     );
-    if (!crew)
-      return res.status(400).json({
-        error: 'Crew member not found or not active. Register the crew member first (Crew Database Gateway Rule).',
-      });
+    if (!crewAny)
+      return res.status(400).json({ error: 'CREW_NOT_FOUND', message: 'Crew member not found. Register them in the Crew Database.' });
+    if (!crewAny.is_active)
+      return res.status(400).json({ error: 'CREW_INACTIVE', message: `${crewAny.first_name} ${crewAny.last_name} is deactivated. Reactivate them in the Crew Database first.` });
+
+    const crew = crewAny;
 
     // Prevent duplicate timesheet
     const { rows: [existing] } = await db.query(
@@ -302,7 +304,15 @@ const getTimesheetById = async (req, res) => {
               cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank,
               cm.employment_status, cm.company_name, cm.paye_withholding_rate,
               cm.vat_registration_number,
-              p.id AS prod_id, p.name AS prod_name
+              p.id AS prod_id, p.name AS prod_name,
+              (SELECT br.daily_rate   FROM bectu_rates br
+               WHERE  br.trade = cm.crew_trade
+               AND    br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER  BY br.effective_from DESC LIMIT 1) AS daily_rate,
+              (SELECT br.overtime_rate FROM bectu_rates br
+               WHERE  br.trade = cm.crew_trade
+               AND    br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER  BY br.effective_from DESC LIMIT 1) AS overtime_rate
        FROM   timesheets t
        JOIN   crew_members cm ON t.crew_member_id = cm.id
        JOIN   productions p  ON t.production_id   = p.id
@@ -353,9 +363,9 @@ const saveEntries = async (req, res) => {
       [req.params.id]
     );
     if (!ts) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Timesheet not found' }); }
-    if (ts.status === 'finalised') {
+    if (ts.status === 'verified') {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Finalised timesheets are locked and cannot be edited' });
+      return res.status(403).json({ error: 'Verified timesheets are locked and cannot be edited' });
     }
 
     // Gap 3: persist rank/rate override fields on the timesheet row
@@ -524,7 +534,7 @@ const bulkDistribute = async (req, res) => {
     for (const ts of timesheets) {
       if (!ts.email) {
         // Advance to distributed even without email (accountant can still finalise)
-        await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
+        await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
         results.no_email.push(`${ts.first_name} ${ts.last_name}`);
         continue;
       }
@@ -536,7 +546,7 @@ const bulkDistribute = async (req, res) => {
 
       try {
         await sendTimesheetEmail(ts, entries);
-        await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
+        await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
         await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
         results.sent.push(`${ts.first_name} ${ts.last_name}`);
       } catch (emailErr) {
@@ -574,8 +584,8 @@ const resendTimesheet = async (req, res) => {
       [req.params.id]
     );
     if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
-    if (ts.status !== 'amendment_requested')
-      return res.status(409).json({ error: 'Only amendment_requested timesheets can be resent' });
+    if (ts.status !== 'reviewed')
+      return res.status(409).json({ error: 'Only reviewed timesheets can be resent' });
     if (!ts.email)
       return res.status(400).json({ error: 'Crew member has no email address on file' });
 
@@ -585,7 +595,7 @@ const resendTimesheet = async (req, res) => {
     );
 
     await sendTimesheetEmail(ts, entries);
-    await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [req.params.id]);
+    await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [req.params.id]);
     await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
 
     res.json({ message: 'Timesheet resent to crew member', timesheet_id: ts.id });
@@ -609,12 +619,17 @@ const attachInvoice = async (req, res) => {
     return res.status(400).json({ error: 'Provide a file upload or invoice_attachment_url' });
 
   try {
+    const { rows: [existing] } = await db.query('SELECT status FROM timesheets WHERE id = $1', [req.params.id]);
+    if (!existing) return res.status(404).json({ error: 'Timesheet not found' });
+    // Advance status to invoice_received when attaching to a sent or reviewed timesheet
+    const newStatus = (existing.status === 'sent' || existing.status === 'reviewed') ? 'invoice_received' : existing.status;
+
     const { rows: [ts] } = await db.query(
       `UPDATE timesheets
-       SET invoice_attachment_url = $1, invoice_attachment_name = $2
-       WHERE id = $3
+       SET invoice_attachment_url = $1, invoice_attachment_name = $2, status = $3
+       WHERE id = $4
        RETURNING *`,
-      [invoice_attachment_url, invoice_attachment_name, req.params.id]
+      [invoice_attachment_url, invoice_attachment_name, newStatus, req.params.id]
     );
     res.json({ message: 'Invoice attached', timesheet: ts });
   } catch (err) {
@@ -629,7 +644,7 @@ const chaseInvoices = async (req, res) => {
   const { week_ending_date } = req.body;
   try {
     const conditions = [
-      "t.status IN ('distributed', 'amendment_requested')",
+      "t.status IN ('sent', 'reviewed', 'invoice_received')",
       't.invoice_attachment_url IS NULL',
       "cm.employment_status = 'self_employed'",  // PAYE crew do not invoice
     ];
@@ -708,10 +723,10 @@ const verifyTimesheet = async (req, res) => {
     );
     if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
 
-    const readyStatuses = ['distributed', 'amendment_requested'];
+    const readyStatuses = ['sent', 'invoice_received', 'reviewed'];
     if (!readyStatuses.includes(ts.status))
       return res.status(409).json({
-        error: 'Timesheet must be distributed or amendment_requested before it can be finalised',
+        error: 'Timesheet must be sent (or have invoice received) before it can be verified',
       });
 
     if (ts.employment_status === 'self_employed' && !ts.invoice_attachment_url)
@@ -721,10 +736,10 @@ const verifyTimesheet = async (req, res) => {
       });
 
     const { rows: [updated] } = await db.query(
-      `UPDATE timesheets SET status = 'finalised' WHERE id = $1 RETURNING *`,  // TimesheetStatus.FINALISED
+      `UPDATE timesheets SET status = 'verified' WHERE id = $1 RETURNING *`,  // TimesheetStatus.VERIFIED
       [req.params.id]
     );
-    res.json({ message: 'Timesheet finalised', timesheet: updated });
+    res.json({ message: 'Timesheet verified', timesheet: updated });
   } catch (err) {
     console.error('verifyTimesheet:', err);
     res.status(500).json({ error: err.message });
@@ -733,7 +748,7 @@ const verifyTimesheet = async (req, res) => {
 
 // ─── PATCH /api/timesheets/:id ────────────────────────────────────────────────
 const patchTimesheet = async (req, res) => {
-  const VALID_STATUSES = ['draft', 'distributed', 'amendment_requested', 'finalised'];  // TimesheetStatus
+  const VALID_STATUSES = ['draft', 'sent', 'reviewed', 'invoice_received', 'verified'];  // TimesheetStatus
   const { status } = req.body;
 
   if (!status)
@@ -741,16 +756,16 @@ const patchTimesheet = async (req, res) => {
   if (!VALID_STATUSES.includes(status))
     return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
 
-  if (status === 'finalised')
-    return res.status(400).json({ error: 'Use POST /:id/verify to finalise a timesheet' });
+  if (status === 'verified')
+    return res.status(400).json({ error: 'Use POST /:id/verify to verify a timesheet' });
 
   try {
     const { rows: [existing] } = await db.query(
       'SELECT id, status FROM timesheets WHERE id = $1', [req.params.id]
     );
     if (!existing) return res.status(404).json({ error: 'Timesheet not found' });
-    if (existing.status === 'finalised')
-      return res.status(403).json({ error: 'Finalised timesheets are locked — status cannot be changed' });
+    if (existing.status === 'verified')
+      return res.status(403).json({ error: 'Verified timesheets are locked — status cannot be changed' });
 
     const { rows: [updated] } = await db.query(
       'UPDATE timesheets SET status = $1 WHERE id = $2 RETURNING *',
@@ -789,11 +804,11 @@ const generateVerificationPackPdf = async (req, res) => {
     if (!timesheets.length)
       return res.status(404).json({ error: 'No timesheets found for this week and production' });
 
-    const notFinalised = timesheets.filter(t => t.status !== 'finalised');
-    if (notFinalised.length)
+    const notVerified = timesheets.filter(t => t.status !== 'verified');
+    if (notVerified.length)
       return res.status(409).json({
-        error:         `${notFinalised.length} timesheet(s) are not yet finalised`,
-        not_finalised: notFinalised.map(t => `${t.first_name} ${t.last_name}`),
+        error:        `${notVerified.length} timesheet(s) are not yet verified`,
+        not_verified: notVerified.map(t => `${t.first_name} ${t.last_name}`),
       });
 
     // Attach entries to each timesheet row

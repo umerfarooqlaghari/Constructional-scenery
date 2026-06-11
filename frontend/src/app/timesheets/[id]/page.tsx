@@ -4,7 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import { timesheetsApi, crewApi, type Timesheet } from '@/lib/api';
-import { ChevronLeft, Save, Loader2, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { ChevronLeft, Save, Loader2, AlertCircle } from 'lucide-react';
 
 const DAYS_OF_WEEK = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
 const MEAL_OPTIONS = [
@@ -13,14 +13,35 @@ const MEAL_OPTIONS = [
   { label: '£10', value: '10' },
 ];
 
-const inputCls =
-  'w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500';
-
 const selectCls =
   'border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500';
 
-const fmtDate = (d: string) =>
-  new Date(d).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+function fmtDate(d: string) {
+  const [y, m, day] = d.split('T')[0].split('-').map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' });
+}
+
+function fmtShort(d: string) {
+  const [y, m, day] = d.split('T')[0].split('-').map(Number);
+  return new Date(y, m - 1, day).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' });
+}
+
+function fmtGBP(n: number | string | null | undefined) {
+  const v = typeof n === 'string' ? parseFloat(n) : (n ?? 0);
+  return `£${(isNaN(v) ? 0 : v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+// Use local date parts to avoid UTC timezone shift
+function getWeekDates(weekEndingDate: string): string[] {
+  const [y, m, d] = weekEndingDate.split('T')[0].split('-').map(Number);
+  return DAYS_OF_WEEK.map((_, i) => {
+    const dt = new Date(y, m - 1, d - 6 + i);
+    const yy = dt.getFullYear();
+    const mm = String(dt.getMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getDate()).padStart(2, '0');
+    return `${yy}-${mm}-${dd}`;
+  });
+}
 
 type DayEntry = {
   date: string;
@@ -30,36 +51,25 @@ type DayEntry = {
   set_number: string;
   site: string;
   travel: string;
-  meal_breakfast: boolean;
-  meal_lunch: boolean;
-  meal_supper: boolean;
   meal_allowance_breakfast: string;
   meal_allowance_lunch: string;
   meal_allowance_supper: string;
 };
 
-function getWeekDates(weekEndingDate: string): string[] {
-  const end = new Date(weekEndingDate);
-  return DAYS_OF_WEEK.map((_, i) => {
-    const d = new Date(end);
-    d.setDate(end.getDate() - 6 + i);
-    return d.toISOString().split('T')[0];
-  });
-}
+type TsRecord = Timesheet & Record<string, unknown>;
 
 export default function TimesheetDetailPage() {
   const params = useParams();
   const router = useRouter();
   const id = params.id as string;
 
-  const [ts, setTs] = useState<Timesheet & Record<string, unknown> | null>(null);
-  const [trades, setTrades] = useState<{ bectu: Record<string, string[]>; non_bectu: string[] } | null>(null);
+  const [ts, setTs]           = useState<TsRecord | null>(null);
+  const [trades, setTrades]   = useState<{ bectu: Record<string, string[]>; non_bectu: string[] } | null>(null);
   const [entries, setEntries] = useState<DayEntry[]>([]);
   const [rankOverride, setRankOverride] = useState('');
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [saved, setSaved] = useState(false);
-  const [error, setError] = useState('');
+  const [saving, setSaving]   = useState(false);
+  const [error, setError]     = useState('');
 
   const load = useCallback(async () => {
     try {
@@ -67,14 +77,17 @@ export default function TimesheetDetailPage() {
         timesheetsApi.getById(id),
         crewApi.getTrades(),
       ]);
-      setTs(tsData as Timesheet & Record<string, unknown>);
+      const ts = tsData as TsRecord;
+      setTs(ts);
       setTrades(tradesData);
-      setRankOverride((tsData as Record<string, unknown>).rank_override as string ?? '');
+      setRankOverride((ts.rank_override as string) ?? '');
 
-      // Build entries from week dates
-      const dates = getWeekDates((tsData as Timesheet).week_ending_date);
-      const existing = ((tsData as Record<string, unknown>).timesheet_entries as DayEntry[]) ?? [];
-      const existingMap = Object.fromEntries(existing.map((e) => [e.date, e]));
+      const dates = getWeekDates(ts.week_ending_date);
+      const existing = (ts.timesheet_entries as DayEntry[]) ?? [];
+      // Normalize date keys — DB may return full ISO timestamp "2026-06-07T00:00:00.000Z"
+      const existingMap = Object.fromEntries(
+        existing.map(e => [String(e.date).split('T')[0], e])
+      );
 
       setEntries(dates.map((date, i) => {
         const ex = existingMap[date];
@@ -86,9 +99,6 @@ export default function TimesheetDetailPage() {
           set_number:               ex?.set_number ?? '',
           site:                     ex?.site ?? '',
           travel:                   String(ex?.travel ?? '0'),
-          meal_breakfast:           ex?.meal_breakfast ?? false,
-          meal_lunch:               ex?.meal_lunch ?? false,
-          meal_supper:              ex?.meal_supper ?? false,
           meal_allowance_breakfast: String(ex?.meal_allowance_breakfast ?? ''),
           meal_allowance_lunch:     String(ex?.meal_allowance_lunch ?? ''),
           meal_allowance_supper:    String(ex?.meal_allowance_supper ?? ''),
@@ -107,35 +117,47 @@ export default function TimesheetDetailPage() {
     setEntries(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
-      // Sync boolean flag with amount field
-      if (field === 'meal_allowance_breakfast') next[idx].meal_breakfast = value !== '';
-      if (field === 'meal_allowance_lunch')     next[idx].meal_lunch = value !== '';
-      if (field === 'meal_allowance_supper')    next[idx].meal_supper = value !== '';
       return next;
     });
   };
 
   const handleSave = async () => {
-    setSaving(true); setError(''); setSaved(false);
+    setSaving(true); setError('');
     try {
       const payload: Record<string, unknown> = {
-        entries: entries.filter(e => e.full_day_worked || parseFloat(e.overtime_hours || '0') > 0 || parseFloat(e.travel || '0') > 0 || e.meal_allowance_breakfast || e.meal_allowance_lunch || e.meal_allowance_supper).map(e => ({
-          date:                     e.date,
-          day_of_week:              e.day_of_week,
-          full_day_worked:          e.full_day_worked,
-          overtime_hours:           parseFloat(e.overtime_hours || '0'),
-          set_number:               e.set_number || null,
-          site:                     e.site || null,
-          travel:                   parseFloat(e.travel || '0'),
-          meal_breakfast:           e.meal_breakfast,
-          meal_lunch:               e.meal_lunch,
-          meal_supper:              e.meal_supper,
-          meal_allowance_breakfast: e.meal_allowance_breakfast ? parseFloat(e.meal_allowance_breakfast) : null,
-          meal_allowance_lunch:     e.meal_allowance_lunch ? parseFloat(e.meal_allowance_lunch) : null,
-          meal_allowance_supper:    e.meal_allowance_supper ? parseFloat(e.meal_allowance_supper) : null,
-        })),
+        entries: entries
+          .filter(e =>
+            e.full_day_worked ||
+            parseFloat(e.overtime_hours || '0') > 0 ||
+            parseFloat(e.travel || '0') > 0 ||
+            e.meal_allowance_breakfast ||
+            e.meal_allowance_lunch ||
+            e.meal_allowance_supper
+          )
+          .map(e => ({
+            date:                     e.date,
+            day_of_week:              e.day_of_week,
+            full_day_worked:          e.full_day_worked,
+            overtime_hours:           parseFloat(e.overtime_hours || '0'),
+            set_number:               e.set_number || null,
+            site:                     e.site || null,
+            travel:                   parseFloat(e.travel || '0'),
+            meal_breakfast:           e.meal_allowance_breakfast !== '',
+            meal_lunch:               e.meal_allowance_lunch !== '',
+            meal_supper:              e.meal_allowance_supper !== '',
+            meal_allowance_breakfast: e.meal_allowance_breakfast ? parseFloat(e.meal_allowance_breakfast) : null,
+            meal_allowance_lunch:     e.meal_allowance_lunch     ? parseFloat(e.meal_allowance_lunch)     : null,
+            meal_allowance_supper:    e.meal_allowance_supper    ? parseFloat(e.meal_allowance_supper)    : null,
+          })),
       };
-      if (rankOverride && ts && rankOverride !== (ts as Record<string, unknown>).crew_rank) {
+
+      if (!payload.entries || (payload.entries as unknown[]).length === 0) {
+        setError('Please tick at least one day worked before saving.');
+        return;
+      }
+
+      const defaultRank = ts ? String(ts.crew_rank ?? '') : '';
+      if (rankOverride && rankOverride !== defaultRank) {
         payload.rank_override = rankOverride;
       }
 
@@ -147,11 +169,16 @@ export default function TimesheetDetailPage() {
         },
         body: JSON.stringify(payload),
       }).then(async r => {
-        if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? 'Save failed'); }
+        if (!r.ok) {
+          const e = await r.json().catch(() => ({}));
+          throw new Error((e as { error?: string }).error ?? 'Save failed');
+        }
         return r.json();
       });
-      setSaved(true);
-      setTimeout(() => setSaved(false), 3000);
+
+      // Invalidate Next.js router cache so the list page and this page re-fetch fresh data
+      router.refresh();
+      router.push('/timesheets');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -159,13 +186,39 @@ export default function TimesheetDetailPage() {
     }
   };
 
-  const currentTrade = ts ? String((ts as Record<string, unknown>).crew_trade ?? '') : '';
+  const defaultRank    = ts ? String(ts.crew_rank ?? '') : '';
+  const currentTrade   = ts ? String(ts.crew_trade ?? '') : '';
   const availableRanks: string[] = trades
     ? (trades.bectu[currentTrade] ?? []).concat(trades.non_bectu)
     : [];
-  const defaultRank = ts ? String((ts as Record<string, unknown>).crew_rank ?? '') : '';
 
-  const isLocked = (ts?.status as string) === 'finalised' || ts?.status === 'verified';
+  const isLocked       = ts?.status === 'verified';
+  const isSelfEmployed = ts ? String(ts.employment_status) === 'self_employed' : false;
+  const vatRegistered  = isSelfEmployed && !!ts?.vat_registration_number;
+
+  // Rates from backend (fetched on load)
+  const dailyRate = parseFloat(String(ts?.daily_rate    ?? '0')) || 0;
+  const otRate    = parseFloat(String(ts?.overtime_rate ?? '0')) || 0;
+
+  // ── Real-time totals calculated from current form state ────────────────────
+  const stdDays      = entries.filter(e => e.full_day_worked && !['Saturday','Sunday'].includes(e.day_of_week)).length;
+  const satWorked    = entries.some(e => e.day_of_week === 'Saturday' && e.full_day_worked);
+  const sunWorked    = entries.some(e => e.day_of_week === 'Sunday'   && e.full_day_worked);
+  const totalOTHours = entries.reduce((s, e) => s + (parseFloat(e.overtime_hours || '0') || 0), 0);
+  const mealTotal    = entries.reduce((s, e) =>
+    s + (parseFloat(e.meal_allowance_breakfast || '0') || 0)
+      + (parseFloat(e.meal_allowance_lunch     || '0') || 0)
+      + (parseFloat(e.meal_allowance_supper    || '0') || 0), 0);
+  const travelTotal  = entries.reduce((s, e) => s + (parseFloat(e.travel || '0') || 0), 0);
+
+  const weeklyRate     = dailyRate * stdDays;
+  const saturdayPay   = satWorked ? dailyRate * 1.5 : 0;
+  const sundayPay     = sunWorked ? dailyRate * 2.0  : 0;
+  const overtimeAmount = totalOTHours * otRate;
+  const grossTotal    = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal;
+  const vat           = vatRegistered ? grossTotal * 0.20 : 0;
+  const grandTotal    = grossTotal + vat;
+  const hasTotals     = dailyRate > 0; // show totals as soon as we have a rate
 
   if (loading) {
     return (
@@ -191,10 +244,8 @@ export default function TimesheetDetailPage() {
     );
   }
 
-  const firstName = String((ts as Record<string, unknown>).first_name ?? '');
-  const lastName  = String((ts as Record<string, unknown>).last_name ?? '');
-  const crewName  = `${firstName} ${lastName}`.trim() || 'Unknown';
-  const prodName  = String((ts as Record<string, unknown>).prod_name ?? '');
+  const crewName = `${ts.first_name ?? ''} ${ts.last_name ?? ''}`.trim() || 'Unknown';
+  const prodName = String(ts.prod_name ?? '');
 
   return (
     <>
@@ -211,7 +262,6 @@ export default function TimesheetDetailPage() {
           </button>
           {!isLocked && (
             <div className="flex items-center gap-3">
-              {saved && <span className="flex items-center gap-1.5 text-green-600 text-sm"><CheckCircle2 size={15} /> Saved</span>}
               {error && <span className="text-red-600 text-sm flex items-center gap-1.5"><AlertCircle size={14} />{error}</span>}
               <button
                 onClick={handleSave}
@@ -231,34 +281,32 @@ export default function TimesheetDetailPage() {
           </div>
         )}
 
-        {/* Rank override (Gap 3) */}
+        {/* Rank override */}
         {!isLocked && availableRanks.length > 0 && (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
-            <h2 className="text-slate-900 font-semibold text-sm mb-3">Rank Override This Week</h2>
+            <h2 className="text-slate-900 font-semibold text-sm mb-1">Rank Override This Week</h2>
             <p className="text-slate-500 text-xs mb-3">
-              Default rank: <span className="font-medium text-slate-700">{defaultRank}</span>.
+              Default rank: <span className="font-medium text-slate-700">{defaultRank}</span>.{' '}
               Select a different rank if this crew member was promoted or acted up this week.
               This only affects this week&apos;s rate — the Crew Database record is not changed.
             </p>
-            <div className="flex items-center gap-3">
-              <select
-                value={rankOverride || defaultRank}
-                onChange={e => setRankOverride(e.target.value === defaultRank ? '' : e.target.value)}
-                className={selectCls + ' w-64'}
-              >
-                <option value={defaultRank}>{defaultRank} (default)</option>
-                {availableRanks.filter(r => r !== defaultRank).map(r => (
-                  <option key={r} value={r}>{r}</option>
-                ))}
-              </select>
-              {rankOverride && rankOverride !== defaultRank && (
-                <span className="text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Override active</span>
-              )}
-            </div>
+            <select
+              value={rankOverride || defaultRank}
+              onChange={e => setRankOverride(e.target.value === defaultRank ? '' : e.target.value)}
+              className={selectCls + ' w-64'}
+            >
+              <option value={defaultRank}>{defaultRank} (default)</option>
+              {availableRanks.filter(r => r !== defaultRank).map(r => (
+                <option key={r} value={r}>{r}</option>
+              ))}
+            </select>
+            {rankOverride && rankOverride !== defaultRank && (
+              <span className="ml-3 text-xs bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full font-medium">Override active</span>
+            )}
           </div>
         )}
 
-        {/* Daily entries editor */}
+        {/* Daily entries table */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-slate-100">
             <h2 className="text-slate-900 font-semibold text-sm">Daily Entries</h2>
@@ -286,7 +334,7 @@ export default function TimesheetDetailPage() {
                     <tr key={e.date} className={`${isWeekend ? 'bg-slate-50/50' : ''} ${isLocked ? 'opacity-60' : ''}`}>
                       <td className="px-4 py-3">
                         <p className="text-slate-900 font-medium text-sm">{e.day_of_week}</p>
-                        <p className="text-slate-400 text-xs">{new Date(e.date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}</p>
+                        <p className="text-slate-400 text-xs">{fmtShort(e.date)}</p>
                       </td>
                       <td className="px-4 py-3 text-center">
                         <input
@@ -333,7 +381,6 @@ export default function TimesheetDetailPage() {
                           className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
-                      {/* Meal allowance dropdowns (Gap 6) */}
                       {(['meal_allowance_breakfast', 'meal_allowance_lunch', 'meal_allowance_supper'] as const).map(field => (
                         <td key={field} className="px-4 py-3">
                           <select
@@ -354,9 +401,62 @@ export default function TimesheetDetailPage() {
           </div>
         </div>
 
-        {/* Save reminder at bottom */}
+        {/* Weekly Totals — live, updates as form changes */}
+        {hasTotals && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+            <h2 className="text-slate-900 font-semibold text-sm mb-4">Weekly Totals</h2>
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+              <div>
+                <p className="text-slate-400 text-xs mb-0.5">Weekly Rate</p>
+                <p className="text-slate-900 font-semibold">{fmtGBP(weeklyRate)}</p>
+                <p className="text-slate-400 text-[10px]">{stdDays} day{stdDays !== 1 ? 's' : ''} × {fmtGBP(dailyRate)}</p>
+              </div>
+              {(saturdayPay > 0 || sundayPay > 0) && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">Weekend Premium</p>
+                  <p className="text-slate-900 font-semibold">{fmtGBP(saturdayPay + sundayPay)}</p>
+                  <p className="text-slate-400 text-[10px]">{satWorked ? 'Sat ×1.5' : ''}{satWorked && sunWorked ? ' · ' : ''}{sunWorked ? 'Sun ×2' : ''}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-slate-400 text-xs mb-0.5">OT Amount</p>
+                <p className="text-slate-900 font-semibold">{fmtGBP(overtimeAmount)}</p>
+                <p className="text-slate-400 text-[10px]">{totalOTHours}h × {fmtGBP(otRate)}</p>
+              </div>
+              <div>
+                <p className="text-slate-400 text-xs mb-0.5">Meal Total</p>
+                <p className="text-slate-900 font-semibold">{fmtGBP(mealTotal)}</p>
+              </div>
+              {travelTotal > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">Travel</p>
+                  <p className="text-slate-900 font-semibold">{fmtGBP(travelTotal)}</p>
+                </div>
+              )}
+              <div>
+                <p className="text-slate-400 text-xs mb-0.5">Gross Total</p>
+                <p className="text-slate-900 font-bold text-lg">{fmtGBP(grossTotal)}</p>
+              </div>
+              {vatRegistered && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">VAT (20%)</p>
+                  <p className="text-slate-900 font-semibold">{fmtGBP(vat)}</p>
+                </div>
+              )}
+              {vatRegistered && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">Grand Total (inc. VAT)</p>
+                  <p className="text-blue-700 font-bold text-lg">{fmtGBP(grandTotal)}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* Bottom save bar */}
         {!isLocked && (
-          <div className="flex justify-end">
+          <div className="flex items-center justify-end gap-3">
+            {error && <span className="text-red-600 text-sm flex items-center gap-1.5"><AlertCircle size={14} />{error}</span>}
             <button
               onClick={handleSave}
               disabled={saving}
