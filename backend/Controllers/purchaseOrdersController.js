@@ -47,14 +47,15 @@ const buildFilterSummary = (query) => {
   return parts.length ? parts.join('  ·  ') : null;
 };
 
-// ─── Helper: generate unique PO number (sequential per production) ────────────
-const generatePoNumber = async (production_id) => {
+// ─── Helper: generate unique PO number (global max, deletion-safe) ───────────
+const generatePoNumber = async () => {
   const { rows } = await db.query(
-    'SELECT COUNT(*) AS cnt FROM purchase_orders WHERE production_id = $1',
-    [production_id]
+    `SELECT MAX(CAST(SUBSTRING(po_number FROM 4) AS INTEGER)) AS max_num
+     FROM purchase_orders
+     WHERE po_number ~ '^PO-[0-9]+$'`
   );
-  const count = parseInt(rows[0].cnt, 10) || 0;
-  return `PO-${String(count + 1).padStart(4, '0')}`;
+  const max = parseInt(rows[0]?.max_num, 10) || 0;
+  return `PO-${String(max + 1).padStart(4, '0')}`;
 };
 
 // ─── Helper: write a PO status transition to the audit log ───────────────────
@@ -196,7 +197,7 @@ const createPO = async (req, res) => {
     if (prod.status === 'archived')
       return res.status(400).json({ error: 'Cannot raise new POs on an archived production' });
 
-    const po_number = await generatePoNumber(production_id);
+    const po_number = await generatePoNumber();
     const net = parseFloat(net_amount);
     // Auto-calculate VAT at 20% if not provided; auto-calculate gross if not provided
     const vatAmount   = vat          !== undefined ? parseFloat(vat)          : Math.round(net * 0.20 * 100) / 100;
@@ -328,7 +329,7 @@ const issuePO = async (req, res) => {
 };
 
 // ─── POST /api/purchase-orders/:id/submit ────────────────────────────────────
-// Advances issued → pending_approval to signal the PO is ready for review.
+// Advances draft → submitted to signal the PO is ready for approval.
 const submitPO = async (req, res) => {
   const client = await db.connect();
   try {
@@ -337,14 +338,14 @@ const submitPO = async (req, res) => {
     const { rows: [po] } = await client.query(
       'SELECT * FROM purchase_orders WHERE id = $1', [req.params.id]
     );
-    if (!po)                     { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Purchase order not found' }); }
-    if (po.status !== 'issued')  { await client.query('ROLLBACK'); return res.status(409).json({ error: 'PO must be issued before submitting for approval' }); }
+    if (!po)                    { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Purchase order not found' }); }
+    if (po.status !== 'draft')  { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Only draft purchase orders can be submitted' }); }
 
     const { rows: [updated] } = await client.query(
-      `UPDATE purchase_orders SET status = 'pending_approval' WHERE id = $1 RETURNING *`,
+      `UPDATE purchase_orders SET status = 'submitted' WHERE id = $1 RETURNING *`,
       [req.params.id]
     );
-    await logStatusTransition(client, po.id, po.production_id, 'issued', 'pending_approval', req.user.id);
+    await logStatusTransition(client, po.id, po.production_id, 'draft', 'submitted', req.user.id);
 
     await client.query('COMMIT');
     res.json({ message: 'PO submitted for approval', purchase_order: updated });
@@ -377,13 +378,15 @@ const attachInvoice = async (req, res) => {
     if (existing.status === 'approved')
       return res.status(400).json({ error: 'Cannot replace invoice on an approved purchase order' });
 
+    const newStatus = existing.status === 'submitted' ? 'invoice_received' : existing.status;
     const { rows: [updated] } = await db.query(
       `UPDATE purchase_orders
        SET invoice_attachment_url  = $1,
-           invoice_attachment_name = $2
-       WHERE id = $3
+           invoice_attachment_name = $2,
+           status = $3
+       WHERE id = $4
        RETURNING *`,
-      [invoice_attachment_url, invoice_attachment_name, req.params.id]
+      [invoice_attachment_url, invoice_attachment_name, newStatus, req.params.id]
     );
     res.json({ message: 'Invoice attached successfully', purchase_order: updated });
   } catch (err) {
@@ -450,10 +453,10 @@ const approvePO = async (req, res) => {
       [req.params.id]
     );
 
-    if (!po)                              { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Purchase order not found' }); }
-    if (po.status === 'approved')         { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Purchase order is already approved' }); }
-    if (po.status !== 'pending_approval') { await client.query('ROLLBACK'); return res.status(409).json({ error: 'PO must be in pending_approval status before it can be approved' }); }
-    if (!po.invoice_attachment_url)       { await client.query('ROLLBACK'); return res.status(409).json({ error: 'INVOICE_MISSING', message: 'An invoice must be attached before this PO can be approved' }); }
+    if (!po)                                                                         { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Purchase order not found' }); }
+    if (po.status === 'approved')                                                    { await client.query('ROLLBACK'); return res.status(400).json({ error: 'Purchase order is already approved' }); }
+    if (po.status !== 'submitted' && po.status !== 'invoice_received')               { await client.query('ROLLBACK'); return res.status(409).json({ error: 'PO must be submitted before it can be approved' }); }
+    if (!po.invoice_attachment_url)                                                  { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Invoice must be attached before this PO can be approved' }); }
 
     // Update PO status
     const { rows: [updated] } = await client.query(
@@ -468,7 +471,7 @@ const approvePO = async (req, res) => {
     await recordSupplierCost({ ...po, ...updated }, client);
 
     // Audit log
-    await logStatusTransition(client, po.id, po.production_id, 'pending_approval', 'approved', req.user.id);
+    await logStatusTransition(client, po.id, po.production_id, po.status, 'approved', req.user.id);
 
     await client.query('COMMIT');
     res.json({ message: 'PO approved. Costs fed into Cost Report.', purchase_order: updated });

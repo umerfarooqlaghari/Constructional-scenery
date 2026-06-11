@@ -26,7 +26,8 @@ const buildDayRows = (weekEndingDate, entries) => {
   const byDay = {};
   entries.forEach(e => { byDay[e.day_of_week] = e; });
 
-  const sunday = new Date(weekEndingDate + 'T00:00:00Z');
+  const dateOnly = (weekEndingDate instanceof Date ? weekEndingDate.toISOString() : String(weekEndingDate)).split('T')[0];
+  const sunday = new Date(dateOnly + 'T00:00:00Z');
   return DAYS_ORDER.map((day, i) => {
     const d   = new Date(sunday);
     d.setUTCDate(sunday.getUTCDate() - (6 - i)); // Mon = sunday-6 … Sun = sunday+0

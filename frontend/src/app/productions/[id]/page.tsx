@@ -1333,9 +1333,9 @@ export default function ProductionDetailPage() {
                   </thead>
                   <tbody>
                     {groupKeys.map(gk => (
-                      <>
+                      <React.Fragment key={gk}>
                         {/* Shoot week group header */}
-                        <tr key={`grp-${gk}`} className="bg-slate-50/80">
+                        <tr className="bg-slate-50/80">
                           <td colSpan={canEdit && !isArchived ? 6 : 5} className="px-5 py-2">
                             <span className="text-xs font-semibold text-slate-500 uppercase tracking-wider">
                               {gk === '__none__' ? 'No Shoot Week' : `Shoot Week: ${gk}`}
@@ -1430,7 +1430,7 @@ export default function ProductionDetailPage() {
                             </tr>
                           );
                         })}
-                      </>
+                      </React.Fragment>
                     ))}
                   </tbody>
                 </table>

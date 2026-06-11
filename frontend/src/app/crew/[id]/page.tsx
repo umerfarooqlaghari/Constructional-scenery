@@ -429,7 +429,7 @@ export default function CrewDetailPage() {
   const { id } = useParams<{ id: string }>();
   const router = useRouter();
   const { user } = useAuth();
-  const canEdit = true; // Coordinator, Accountant, and MD can all edit
+  const canEdit = user?.role === 'construction_coordinator' || user?.role === 'construction_accountant';
   const canSeeBankDetails = user?.role === 'construction_coordinator' || user?.role === 'construction_accountant';
 
   const [member, setMember]           = useState<CrewDetail | null>(null);
@@ -699,7 +699,7 @@ export default function CrewDetailPage() {
                             </div>
                             <div className="flex items-center gap-2 flex-shrink-0 ml-3">
                               <a href={doc.file_url} target="_blank" rel="noreferrer" className="text-blue-600 text-xs hover:underline">View</a>
-                              {isCoordinator && (
+                              {canEdit && (
                                 <button onClick={() => deleteDoc(doc)} disabled={deletingDoc === doc.id} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50">
                                   {deletingDoc === doc.id ? <Loader2 size={13} className="animate-spin" /> : <Trash2 size={13} />}
                                 </button>

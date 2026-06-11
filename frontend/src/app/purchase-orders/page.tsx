@@ -140,7 +140,7 @@ export default function PurchaseOrdersPage() {
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
-  const [statusFilter, setStatusFilter] = useState<TabFilter>('all');
+  const [statusFilter, setStatusFilter] = useState<TabFilter>(isMD ? 'approved' : 'all');
   const [actionError, setActionError] = useState<{ id: string; msg: string } | null>(null);
   const [search, setSearch] = useState('');
   const [page, setPage] = useState(1);
@@ -221,6 +221,7 @@ export default function PurchaseOrdersPage() {
   }, [loadData]);
 
   const filteredPos = pos.filter((po) => {
+    if (isMD && po.status !== 'approved') return false;
     const matchStatus =
       statusFilter === 'all' ? true :
       statusFilter === 'pending' ? (po.status === 'submitted' || po.status === 'invoice_received') :
@@ -248,10 +249,12 @@ export default function PurchaseOrdersPage() {
 
   async function handleSubmit(id: string) {
     setActionLoading(id + ':submit');
+    setActionError(null);
     try {
       await purchaseOrdersApi.submit(id);
       await loadData();
-    } catch {
+    } catch (err: unknown) {
+      setActionError({ id, msg: err instanceof Error ? err.message : 'Submit failed' });
     } finally {
       setActionLoading(null);
     }
@@ -273,10 +276,12 @@ export default function PurchaseOrdersPage() {
   async function handleDelete(id: string) {
     if (!confirm('Delete this draft purchase order?')) return;
     setActionLoading(id + ':delete');
+    setActionError(null);
     try {
       await purchaseOrdersApi.delete(id);
       await loadData();
-    } catch {
+    } catch (err: unknown) {
+      setActionError({ id, msg: err instanceof Error ? err.message : 'Delete failed' });
     } finally {
       setActionLoading(null);
     }
@@ -428,7 +433,10 @@ export default function PurchaseOrdersPage() {
             <div className="flex items-center gap-2 flex-wrap">
               {/* Status tabs */}
               <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
-                {STATUS_TABS.filter(tab => tab.value !== 'pending' || user?.role === 'managing_director').map((tab) => (
+                {STATUS_TABS.filter(tab =>
+                !isMD &&
+                (tab.value !== 'pending' || isAccountant)
+              ).map((tab) => (
                   <button
                     key={tab.value}
                     onClick={() => { setStatusFilter(tab.value); setPage(1); }}
@@ -458,25 +466,27 @@ export default function PurchaseOrdersPage() {
                   </button>
                 )}
               </div>
-              {/* Filter toggle */}
-              <button
-                onClick={() => setShowFilters(v => !v)}
-                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
-                  showFilters || activeFilterCount > 0
-                    ? 'bg-blue-50 border-blue-300 text-blue-700'
-                    : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <SlidersHorizontal size={13} />
-                Filters
-                {activeFilterCount > 0 && (
-                  <span className="ml-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
+              {/* Filter toggle — hidden for MD (view-only approved) */}
+              {!isMD && (
+                <button
+                  onClick={() => setShowFilters(v => !v)}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
+                    showFilters || activeFilterCount > 0
+                      ? 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <SlidersHorizontal size={13} />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+              )}
             </div>
-            {!isAccountant && (
+            {isCoordinator && (
               <button
                 onClick={() => { setShowNewModal(true); setFormError(''); setNewForm(EMPTY_FORM); }}
                 className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium"
@@ -749,8 +759,8 @@ export default function PurchaseOrdersPage() {
                         </td>
                         <td className="px-4 py-3.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            {/* Edit: MD + Coordinator, draft only */}
-                            {(isMD || isCoordinator) && po.status === 'draft' && (
+                            {/* Edit: Coordinator (James) only, draft only */}
+                            {isCoordinator && po.status === 'draft' && (
                               <button
                                 disabled={!!busy}
                                 onClick={() => openEdit(po)}
@@ -760,8 +770,8 @@ export default function PurchaseOrdersPage() {
                                 Edit
                               </button>
                             )}
-                            {/* Submit: MD + Coordinator, draft only */}
-                            {(isMD || isCoordinator) && po.status === 'draft' && (
+                            {/* Submit: Coordinator (James) only, draft only */}
+                            {isCoordinator && po.status === 'draft' && (
                               <button
                                 disabled={!!busy}
                                 onClick={() => handleSubmit(po.id)}
@@ -773,8 +783,8 @@ export default function PurchaseOrdersPage() {
                                 Submit
                               </button>
                             )}
-                            {/* Approve: MD only, submitted or invoice_received */}
-                            {isMD && (po.status === 'submitted' || po.status === 'invoice_received') && (
+                            {/* Approve: Accountant (Sarah) only, submitted or invoice_received */}
+                            {isAccountant && (po.status === 'submitted' || po.status === 'invoice_received') && (
                               <button
                                 disabled={!!busy}
                                 onClick={() => handleApprove(po.id)}
@@ -786,24 +796,23 @@ export default function PurchaseOrdersPage() {
                                 Approve
                               </button>
                             )}
-                            {/* Attach Invoice: accountant + coordinator + MD, any status except draft */}
-                            {(isMD || isCoordinator || isAccountant) &&
-                              po.status !== 'draft' && (
-                                <button
-                                  disabled={!!busy}
-                                  onClick={() => {
-                                    setInvoiceModal({ id: po.id, poNumber: po.po_number });
-                                    setInvoiceFile(null);
-                                    setInvoiceError('');
-                                  }}
-                                  className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors font-medium disabled:opacity-50"
-                                >
-                                  <Upload size={11} />
-                                  Invoice
-                                </button>
-                              )}
-                            {/* Delete: Coordinator + MD, draft only */}
-                            {(isMD || isCoordinator) && po.status === 'draft' && (
+                            {/* Attach Invoice: Coordinator + Accountant, any status except draft */}
+                            {(isCoordinator || isAccountant) && po.status !== 'draft' && (
+                              <button
+                                disabled={!!busy}
+                                onClick={() => {
+                                  setInvoiceModal({ id: po.id, poNumber: po.po_number });
+                                  setInvoiceFile(null);
+                                  setInvoiceError('');
+                                }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-purple-50 text-purple-700 hover:bg-purple-100 transition-colors font-medium disabled:opacity-50"
+                              >
+                                <Upload size={11} />
+                                Invoice
+                              </button>
+                            )}
+                            {/* Delete: Coordinator (James) only, draft only */}
+                            {isCoordinator && po.status === 'draft' && (
                               <button
                                 disabled={!!busy}
                                 onClick={() => handleDelete(po.id)}

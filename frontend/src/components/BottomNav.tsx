@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clapperboard, ShoppingCart, Users,
-  ClipboardList, BarChart2, TrendingUp, MoreHorizontal, X, LogOut,
+  ClipboardList, BarChart2, TrendingUp, MoreHorizontal, X, LogOut, Upload,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -19,9 +19,9 @@ const PRIMARY: Record<string, NavItem[]> = {
     { href: '/purchase-orders', label: 'Orders',      icon: ShoppingCart },
   ],
   construction_accountant: [
-    { href: '/dashboard',   label: 'Dashboard',  icon: LayoutDashboard },
-    { href: '/timesheets',  label: 'Timesheets', icon: ClipboardList },
-    { href: '/cost-report', label: 'Cost Report', icon: BarChart2 },
+    { href: '/dashboard',       label: 'Dashboard',   icon: LayoutDashboard },
+    { href: '/timesheets',      label: 'Timesheets',  icon: ClipboardList },
+    { href: '/purchase-orders', label: 'Orders',      icon: ShoppingCart },
   ],
   construction_coordinator: [
     { href: '/dashboard',       label: 'Dashboard',   icon: LayoutDashboard },
@@ -42,17 +42,21 @@ const ALL_ITEMS: Record<string, NavItem[]> = {
     { href: '/timesheets',      label: 'Timesheets & Pay',   icon: ClipboardList },
   ],
   construction_accountant: [
-    { href: '/dashboard',   label: 'Dashboard',          icon: LayoutDashboard },
-    { href: '/timesheets',  label: 'Timesheets & Pay',   icon: ClipboardList },
-    { href: '/cost-report', label: 'Cost Report',        icon: BarChart2 },
-    { href: '/crew',        label: 'Crew',               icon: Users },
-    { href: '/productions', label: 'Productions',        icon: Clapperboard },
+    { href: '/dashboard',       label: 'Dashboard',          icon: LayoutDashboard },
+    { href: '/timesheets',      label: 'Timesheets & Pay',   icon: ClipboardList },
+    { href: '/purchase-orders', label: 'Purchase Orders',    icon: ShoppingCart },
+    { href: '/cost-report',     label: 'Cost Report',        icon: BarChart2 },
+    { href: '/crew',            label: 'Crew',               icon: Users },
+    { href: '/crew/import',     label: 'Crew Import',        icon: Upload },
+    { href: '/productions',     label: 'Productions',        icon: Clapperboard },
   ],
   construction_coordinator: [
     { href: '/dashboard',       label: 'Dashboard',       icon: LayoutDashboard },
     { href: '/productions',     label: 'Productions',     icon: Clapperboard },
     { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
+    { href: '/timesheets',      label: 'Timesheets',      icon: ClipboardList },
     { href: '/crew',            label: 'Crew',            icon: Users },
+    { href: '/crew/import',     label: 'Crew Import',     icon: Upload },
     { href: '/forecasting',     label: 'Forecasting',     icon: TrendingUp },
   ],
 };

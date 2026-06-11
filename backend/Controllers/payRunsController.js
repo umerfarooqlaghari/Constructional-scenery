@@ -23,7 +23,7 @@ const getAvailableWeeks = async (req, res) => {
 
   try {
     const { rows } = await db.query(
-      `SELECT t.week_ending_date,
+      `SELECT TO_CHAR(t.week_ending_date, 'YYYY-MM-DD') AS week_ending_date,
               COUNT(t.id)::int                                AS timesheet_count,
               pr.id                                           AS pay_run_id,
               pr.status                                       AS pay_run_status,
@@ -33,7 +33,7 @@ const getAvailableWeeks = async (req, res) => {
               ON pr.production_id    = t.production_id
              AND pr.week_ending_date = t.week_ending_date
        WHERE t.production_id = $1
-         AND t.status = 'finalised'
+         AND t.status = 'verified'
        GROUP BY t.week_ending_date, pr.id, pr.status, pr.processed_at
        ORDER BY t.week_ending_date DESC`,
       [production_id]
@@ -49,7 +49,8 @@ const getAvailableWeeks = async (req, res) => {
 // Returns the pay run table data (calculated amounts, bank details) for a given
 // week without creating or persisting a pay_run record.
 const getPayRunPreview = async (req, res) => {
-  const { production_id, week_ending_date } = req.query;
+  const { production_id } = req.query;
+  const week_ending_date = String(req.query.week_ending_date || '').split('T')[0];
   if (!production_id || !week_ending_date)
     return res.status(400).json({ error: 'production_id and week_ending_date are required' });
 
@@ -65,13 +66,13 @@ const getPayRunPreview = async (req, res) => {
        JOIN productions  p  ON t.production_id  = p.id
        WHERE t.production_id    = $1
          AND t.week_ending_date = $2
-         AND t.status = 'finalised'
+         AND t.status = 'verified'
        ORDER BY cm.last_name, cm.first_name`,
       [production_id, week_ending_date]
     );
 
     if (!timesheets.length)
-      return res.status(404).json({ error: 'No finalised timesheets found for this week' });
+      return res.status(404).json({ error: 'No verified timesheets found for this week' });
 
     const prodName  = timesheets[0].prod_name;
     const shortCode = prodShortCode(prodName);
@@ -91,14 +92,14 @@ const getPayRunPreview = async (req, res) => {
         sort_code:          decrypt(ts.sort_code),
         account_number:     decrypt(ts.account_number),
         account_name:       decrypt(ts.account_name),
-        gross_total:        gross,
+        gross_amount:       gross,
         withholding_amount: withholdAmt,
         net_amount:         netAmount,
         payment_reference:  `${shortCode}-${week_ending_date}-${ts.crew_number}`,
       };
     });
 
-    const total_gross = items.reduce((s, i) => s + i.gross_total,        0);
+    const total_gross = items.reduce((s, i) => s + i.gross_amount,       0);
     const total_net   = items.reduce((s, i) => s + i.net_amount,         0);
 
     res.json({
@@ -148,7 +149,8 @@ const getAllPayRuns = async (req, res) => {
 
 // ─── POST /api/pay-runs ───────────────────────────────────────────────────────
 const createPayRun = async (req, res) => {
-  const { production_id, week_ending_date } = req.body;
+  const { production_id } = req.body;
+  const week_ending_date = String(req.body.week_ending_date || '').split('T')[0];
   if (!production_id || !week_ending_date)
     return res.status(400).json({ error: 'production_id and week_ending_date are required' });
 
@@ -158,13 +160,18 @@ const createPayRun = async (req, res) => {
 
     // 409 if this week has already been processed
     const { rows: [existing] } = await client.query(
-      `SELECT id FROM pay_runs
-       WHERE production_id = $1 AND week_ending_date = $2 AND status = 'processed'`,
+      `SELECT id, status FROM pay_runs
+       WHERE production_id = $1 AND week_ending_date = $2`,
       [production_id, week_ending_date]
     );
-    if (existing) {
+    if (existing?.status === 'processed') {
       await client.query('ROLLBACK');
       return res.status(409).json({ error: 'ALREADY_PROCESSED', message: 'A pay run for this week has already been processed and cannot be reprocessed' });
+    }
+    // Delete any existing draft so we can recreate cleanly
+    if (existing?.status === 'draft') {
+      await client.query(`DELETE FROM pay_run_items WHERE pay_run_id = $1`, [existing.id]);
+      await client.query(`DELETE FROM pay_runs WHERE id = $1`, [existing.id]);
     }
 
     // Get all timesheets with crew bank details (bank fields are encrypted at rest)
@@ -184,11 +191,11 @@ const createPayRun = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No timesheets found for this week' });
     }
-    const unverified = timesheets.filter(t => t.status !== 'finalised');  // TimesheetStatus.FINALISED
+    const unverified = timesheets.filter(t => t.status !== 'verified');  // TimesheetStatus.VERIFIED
     if (unverified.length) {
       await client.query('ROLLBACK');
       return res.status(400).json({
-        error: `${unverified.length} timesheet(s) not yet finalised. All must be finalised before processing a pay run.`,
+        error: `${unverified.length} timesheet(s) not yet verified. All must be verified before processing a pay run.`,
       });
     }
 
@@ -361,9 +368,14 @@ const exportCsv = async (req, res) => {
     );
     if (!payRun) return res.status(404).json({ error: 'Pay run not found' });
 
+    // COALESCE: if bank fields were NULL at pay run creation, fall back to current crew_members values
     const { rows: items } = await db.query(
-      `SELECT pri.sort_code, pri.account_number, pri.account_name, pri.net_amount, pri.reference
+      `SELECT COALESCE(pri.sort_code,      cm.sort_code)      AS sort_code,
+              COALESCE(pri.account_number, cm.account_number) AS account_number,
+              COALESCE(pri.account_name,   cm.account_name)   AS account_name,
+              pri.net_amount, pri.reference
        FROM pay_run_items pri
+       JOIN crew_members cm ON pri.crew_member_id = cm.id
        WHERE pri.pay_run_id = $1
        ORDER BY pri.reference`,
       [req.params.id]

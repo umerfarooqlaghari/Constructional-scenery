@@ -351,6 +351,9 @@ export default function CrewPage() {
   const router = useRouter();
   const { user } = useAuth();
   const isMD = user?.role === 'managing_director';
+  const isCoordinator = user?.role === 'construction_coordinator';
+  const isAccountant = user?.role === 'construction_accountant';
+  const canWrite = isCoordinator || isAccountant;
   const [crew, setCrew]               = useState<CrewMember[]>([]);
   const [loading, setLoading]         = useState(true);
   const [error, setError]             = useState('');
@@ -492,13 +495,15 @@ export default function CrewPage() {
                     <button onClick={() => setSearch('')} className="text-slate-400 hover:text-slate-600"><X size={13} /></button>
                   )}
                 </div>
-                <button
-                  onClick={() => setShowModal(true)}
-                  className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
-                >
-                  <Plus size={14} />
-                  Register Crew Member
-                </button>
+                {canWrite && (
+                  <button
+                    onClick={() => setShowModal(true)}
+                    className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+                  >
+                    <Plus size={14} />
+                    Register Crew Member
+                  </button>
+                )}
               </div>
             </div>
             {/* Secondary filter row */}
@@ -625,7 +630,7 @@ export default function CrewPage() {
                             >
                               <ChevronRight size={15} />
                             </button>
-                            {isMD && (
+                            {canWrite && (
                               <button
                                 onClick={e => handleDelete(c, e)}
                                 disabled={deletingId === c.id}
