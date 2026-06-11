@@ -71,29 +71,29 @@ function ContractTypeSelector({
           <span className="text-slate-400 text-xs">🔒 Locked — {lockedReason ?? 'linked records exist'}</span>
         </div>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-2 gap-2">
           {(['on_a_price', 'cost_plus'] as ContractType[]).map(ct => (
             <button
               key={ct}
               type="button"
               onClick={() => onChange(ct)}
-              className={`text-left p-3 rounded-xl border-2 transition-all ${
+              className={`text-left px-3 py-2 rounded-lg border-2 transition-all ${
                 value === ct
                   ? 'border-blue-500 bg-blue-50'
                   : 'border-slate-200 hover:border-slate-300 bg-white'
               }`}
             >
-              <div className="flex items-center justify-between mb-1">
-                <span className="text-sm font-semibold text-slate-800">{CONTRACT_TYPE_INFO[ct].label}</span>
-                {value === ct && <span className="text-[10px] text-blue-600 font-semibold bg-blue-100 px-1.5 py-0.5 rounded">selected</span>}
+              <div className="flex items-center justify-between mb-0.5">
+                <span className="text-xs font-semibold text-slate-800">{CONTRACT_TYPE_INFO[ct].label}</span>
+                {value === ct && <span className="text-[9px] text-blue-600 font-semibold bg-blue-100 px-1 py-0.5 rounded">✓</span>}
               </div>
-              <p className="text-xs text-slate-500 leading-snug">{CONTRACT_TYPE_INFO[ct].desc}</p>
+              <p className="text-[11px] text-slate-500 leading-snug">{CONTRACT_TYPE_INFO[ct].desc}</p>
             </button>
           ))}
         </div>
       )}
-      <p className="flex items-start gap-1.5 mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
-        <span className="flex-shrink-0 mt-0.5">⚠</span>
+      <p className="flex items-start gap-1.5 mt-1.5 text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5">
+        <span className="flex-shrink-0">⚠</span>
         Contract type cannot be changed once a purchase order or timesheet has been linked to this production.
       </p>
     </div>
@@ -144,18 +144,18 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
 
   return (
     <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-          <h2 className="text-slate-900 font-semibold text-base">New Production</h2>
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={18} /></button>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+          <h2 className="text-slate-900 font-semibold text-sm">New Production</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={16} /></button>
         </div>
-        <form onSubmit={submit} className="px-6 py-5 space-y-4">
-          {error && <p className="text-red-600 text-sm bg-red-50 rounded-lg px-3 py-2">{error}</p>}
+        <form onSubmit={submit} className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
+          {error && <p className="text-red-600 text-xs bg-red-50 rounded-lg px-3 py-2">{error}</p>}
           <div>
             <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
             <input className={inputCls} placeholder="e.g. Meridian" value={form.name} onChange={set('name')} />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="grid grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
               <input className={inputCls} placeholder="e.g. Lionsgate UK" value={form.production_company} onChange={set('production_company')} />
@@ -164,16 +164,17 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Designer</label>
               <input className={inputCls} placeholder="e.g. Helena Portman" value={form.production_designer} onChange={set('production_designer')} />
             </div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
-            <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
-          </div>
-          <ContractTypeSelector
-            value={form.contract_type as ContractType | ''}
-            onChange={v => setForm(f => ({ ...f, contract_type: v }))}
-          />
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
+              <input className={inputCls} placeholder="e.g. Feature Film" value={form.production_type} onChange={set('production_type')} />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Initial Status</label>
+              <select className={inputCls} value={form.status} onChange={set('status')}>
+                <option value="pre_production">Pre-Production</option>
+                <option value="active_build">Active Build</option>
+              </select>
+            </div>
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
               <input type="date" className={inputCls} value={form.start_date} onChange={set('start_date')} />
@@ -183,14 +184,11 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
               <input type="date" className={inputCls} value={form.end_date} onChange={set('end_date')} />
             </div>
           </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Initial Status</label>
-            <select className={inputCls} value={form.status} onChange={set('status')}>
-              <option value="pre_production">Pre-Production</option>
-              <option value="active_build">Active Build</option>
-            </select>
-          </div>
-          <div className="flex items-center justify-end gap-3 pt-2">
+          <ContractTypeSelector
+            value={form.contract_type as ContractType | ''}
+            onChange={v => setForm(f => ({ ...f, contract_type: v }))}
+          />
+          <div className="flex items-center justify-end gap-3 pt-1">
             <button type="button" onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
             <button type="submit" disabled={saving}
               className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"

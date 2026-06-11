@@ -23,7 +23,6 @@ import {
   ChevronRight,
   FileText,
   Pencil,
-  Filter,
   SlidersHorizontal,
 } from 'lucide-react';
 
@@ -88,7 +87,11 @@ function fmtDate(iso: string): string {
 type NewPOForm = {
   supplier_name: string;
   supplier_email: string;
-  supplier_address: string;
+  supplier_code: string;
+  street_name: string;
+  zip_code: string;
+  city: string;
+  county: string;
   date_of_po: string;
   production_id: string;
   set_code: string;
@@ -103,7 +106,11 @@ type NewPOForm = {
 const EMPTY_FORM: NewPOForm = {
   supplier_name: '',
   supplier_email: '',
-  supplier_address: '',
+  supplier_code: '',
+  street_name: '',
+  zip_code: '',
+  city: '',
+  county: '',
   date_of_po: new Date().toISOString().slice(0, 10),
   production_id: '',
   set_code: '',
@@ -176,8 +183,6 @@ export default function PurchaseOrdersPage() {
   const [editError, setEditError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
 
-  const [fileViewer, setFileViewer] = useState<{ url: string; name: string } | null>(null);
-
   // Sets cache: production_id → sets
   const [setsCache, setSetsCache] = useState<Record<string, ProductionSet[]>>({});
 
@@ -230,7 +235,8 @@ export default function PurchaseOrdersPage() {
     const matchSearch =
       !q ||
       po.supplier_name.toLowerCase().includes(q) ||
-      po.po_number.toLowerCase().includes(q);
+      po.po_number.toLowerCase().includes(q) ||
+      (po.description ?? '').toLowerCase().includes(q);
     return matchStatus && matchSearch;
   });
 
@@ -290,18 +296,22 @@ export default function PurchaseOrdersPage() {
   function openEdit(po: PurchaseOrder) {
     setEditPO(po);
     setEditForm({
-      supplier_name:    po.supplier_name,
-      supplier_email:   po.supplier_email ?? '',
-      supplier_address: po.supplier_address ?? '',
-      date_of_po:       po.date_of_po?.split('T')[0] ?? '',
-      production_id:    po.production_id,
-      set_code:         po.set_code ?? '',
-      account_code:     po.account_code ?? '',
-      description:      po.description ?? '',
-      net_amount:       po.net_amount,
-      vat:              po.vat,
-      gross_amount:     po.gross_amount,
-      paid_from:        po.paid_from,
+      supplier_name:  po.supplier_name,
+      supplier_email: po.supplier_email ?? '',
+      supplier_code:  (po as unknown as Record<string, string>).supplier_code ?? '',
+      street_name:    (po as unknown as Record<string, string>).street_name ?? '',
+      zip_code:       (po as unknown as Record<string, string>).zip_code ?? '',
+      city:           (po as unknown as Record<string, string>).city ?? '',
+      county:         (po as unknown as Record<string, string>).county ?? '',
+      date_of_po:     po.date_of_po?.split('T')[0] ?? '',
+      production_id:  po.production_id,
+      set_code:       po.set_code ?? '',
+      account_code:   po.account_code ?? '',
+      description:    po.description ?? '',
+      net_amount:     po.net_amount,
+      vat:            po.vat,
+      gross_amount:   po.gross_amount,
+      paid_from:      po.paid_from,
     });
     setEditError('');
   }
@@ -316,18 +326,22 @@ export default function PurchaseOrdersPage() {
     setEditLoading(true);
     try {
       await purchaseOrdersApi.update(editPO.id, {
-        supplier_name:    editForm.supplier_name,
-        supplier_email:   editForm.supplier_email || null,
-        supplier_address: editForm.supplier_address || null,
-        date_of_po:       editForm.date_of_po,
-        production_id:    editForm.production_id,
-        set_code:         editForm.set_code || null,
-        account_code:     editForm.account_code || null,
-        description:      editForm.description || null,
-        net_amount:       editForm.net_amount,
-        vat:              editForm.vat || '0',
-        gross_amount:     editForm.gross_amount,
-        paid_from:        editForm.paid_from,
+        supplier_name:  editForm.supplier_name,
+        supplier_email: editForm.supplier_email || null,
+        supplier_code:  editForm.supplier_code  || null,
+        street_name:    editForm.street_name    || null,
+        zip_code:       editForm.zip_code       || null,
+        city:           editForm.city           || null,
+        county:         editForm.county         || null,
+        date_of_po:     editForm.date_of_po,
+        production_id:  editForm.production_id,
+        set_code:       editForm.set_code       || null,
+        account_code:   editForm.account_code   || null,
+        description:    editForm.description    || null,
+        net_amount:     editForm.net_amount,
+        vat:            editForm.vat            || '0',
+        gross_amount:   editForm.gross_amount,
+        paid_from:      editForm.paid_from,
       });
       setEditPO(null);
       await loadData();
@@ -347,18 +361,22 @@ export default function PurchaseOrdersPage() {
     setFormLoading(true);
     try {
       await purchaseOrdersApi.create({
-        supplier_name: newForm.supplier_name,
-        supplier_email: newForm.supplier_email || null,
-        supplier_address: newForm.supplier_address || null,
-        date_of_po: newForm.date_of_po,
-        production_id: newForm.production_id,
-        set_code: newForm.set_code || null,
-        account_code: newForm.account_code || null,
-        description: newForm.description || null,
-        net_amount: newForm.net_amount,
-        vat: newForm.vat || '0',
-        gross_amount: newForm.gross_amount,
-        paid_from: newForm.paid_from,
+        supplier_name:  newForm.supplier_name,
+        supplier_email: newForm.supplier_email  || null,
+        supplier_code:  newForm.supplier_code   || null,
+        street_name:    newForm.street_name     || null,
+        zip_code:       newForm.zip_code        || null,
+        city:           newForm.city            || null,
+        county:         newForm.county          || null,
+        date_of_po:     newForm.date_of_po,
+        production_id:  newForm.production_id,
+        set_code:       newForm.set_code        || null,
+        account_code:   newForm.account_code    || null,
+        description:    newForm.description     || null,
+        net_amount:     newForm.net_amount,
+        vat:            newForm.vat             || '0',
+        gross_amount:   newForm.gross_amount,
+        paid_from:      newForm.paid_from,
       });
       setShowNewModal(false);
       setNewForm(EMPTY_FORM);
@@ -457,7 +475,7 @@ export default function PurchaseOrdersPage() {
                   type="text"
                   value={search}
                   onChange={(e) => { setSearch(e.target.value); setPage(1); }}
-                  placeholder="Search PO, supplier..."
+                  placeholder="Search PO, supplier, description..."
                   className="bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none w-full"
                 />
                 {search && (
@@ -720,29 +738,20 @@ export default function PurchaseOrdersPage() {
                         </td>
                         <td className="px-4 py-3.5 text-center">
                           {po.invoice_attachment_url ? (() => {
-                            const url = po.invoice_attachment_url.startsWith('http')
+                            const rawPath = po.invoice_attachment_url.startsWith('http')
                               ? `/uploads/${po.invoice_attachment_url.split('/uploads/')[1]}`
                               : po.invoice_attachment_url;
-                            const name = po.invoice_attachment_name ?? url.split('/').pop() ?? 'invoice';
-                            const ext = name.split('.').pop()?.toLowerCase() ?? '';
-                            const viewable = ['pdf', 'jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
-                            return viewable ? (
+                            // encodeURI encodes spaces/special chars but preserves slashes
+                            const url = encodeURI(decodeURI(rawPath));
+                            const name = po.invoice_attachment_name ?? rawPath.split('/').pop() ?? 'invoice';
+                            return (
                               <button
-                                onClick={() => setFileViewer({ url, name })}
+                                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
                                 className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
                               >
                                 <CheckCircle2 size={15} className="text-green-500" />
                                 <span className="text-xs font-medium">View</span>
                               </button>
-                            ) : (
-                              <a
-                                href={url}
-                                download={name}
-                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                              >
-                                <CheckCircle2 size={15} className="text-green-500" />
-                                <span className="text-xs font-medium">Download</span>
-                              </a>
                             );
                           })() : (
                             <span title="No invoice attached"><AlertCircle size={16} className="text-orange-400 mx-auto" /></span>
@@ -904,7 +913,7 @@ export default function PurchaseOrdersPage() {
               <div className="space-y-3">
                 <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Supplier Details</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="col-span-2">
+                  <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
                     <input
                       type="text"
@@ -915,6 +924,16 @@ export default function PurchaseOrdersPage() {
                     />
                   </div>
                   <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
+                    <input
+                      type="text"
+                      value={newForm.supplier_code}
+                      onChange={(e) => updateField('supplier_code', e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                      placeholder="e.g. SUP-001"
+                    />
+                  </div>
+                  <div className="col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
                     <input
                       type="email"
@@ -924,14 +943,51 @@ export default function PurchaseOrdersPage() {
                       placeholder="orders@supplier.com"
                     />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Address</label>
+                </div>
+              </div>
+
+              {/* Address */}
+              <div className="space-y-3">
+                <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Address</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Street Name</label>
                     <input
                       type="text"
-                      value={newForm.supplier_address}
-                      onChange={(e) => updateField('supplier_address', e.target.value)}
+                      value={newForm.street_name}
+                      onChange={(e) => updateField('street_name', e.target.value)}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="Town, County"
+                      placeholder="e.g. 12 Industrial Way"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
+                    <input
+                      type="text"
+                      value={newForm.city}
+                      onChange={(e) => updateField('city', e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                      placeholder="e.g. Manchester"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">County</label>
+                    <input
+                      type="text"
+                      value={newForm.county}
+                      onChange={(e) => updateField('county', e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                      placeholder="e.g. Greater Manchester"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Zip / Post Code</label>
+                    <input
+                      type="text"
+                      value={newForm.zip_code}
+                      onChange={(e) => updateField('zip_code', e.target.value)}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                      placeholder="e.g. M1 2AB"
                     />
                   </div>
                 </div>
@@ -1178,17 +1234,39 @@ export default function PurchaseOrdersPage() {
               <div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Supplier Details</p>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  <div className="sm:col-span-2">
+                  <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name *</label>
                     <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.supplier_name} onChange={e => setEditForm(f => ({ ...f, supplier_name: e.target.value }))} />
                   </div>
                   <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.supplier_code} onChange={e => setEditForm(f => ({ ...f, supplier_code: e.target.value }))} placeholder="e.g. SUP-001" />
+                  </div>
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
                     <input type="email" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.supplier_email} onChange={e => setEditForm(f => ({ ...f, supplier_email: e.target.value }))} />
                   </div>
+                </div>
+              </div>
+              {/* Address */}
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Address</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Street Name</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.street_name} onChange={e => setEditForm(f => ({ ...f, street_name: e.target.value }))} placeholder="e.g. 12 Industrial Way" />
+                  </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Address</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.supplier_address} onChange={e => setEditForm(f => ({ ...f, supplier_address: e.target.value }))} />
+                    <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.city} onChange={e => setEditForm(f => ({ ...f, city: e.target.value }))} placeholder="e.g. Manchester" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">County</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.county} onChange={e => setEditForm(f => ({ ...f, county: e.target.value }))} placeholder="e.g. Greater Manchester" />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Zip / Post Code</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.zip_code} onChange={e => setEditForm(f => ({ ...f, zip_code: e.target.value }))} placeholder="e.g. M1 2AB" />
                   </div>
                 </div>
               </div>
@@ -1266,55 +1344,6 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
 
-      {/* File Viewer Modal */}
-      {fileViewer && (() => {
-        const ext = fileViewer.name.split('.').pop()?.toLowerCase() ?? '';
-        const isImage = ['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext);
-        return (
-          <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-            <div className="absolute inset-0 bg-black/70" onClick={() => setFileViewer(null)} />
-            <div className="relative bg-white rounded-2xl shadow-2xl flex flex-col overflow-hidden"
-                 style={{ width: '90vw', maxWidth: 900, maxHeight: '90vh' }}>
-              {/* Header */}
-              <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 bg-white flex-shrink-0">
-                <span className="text-sm font-medium text-slate-700 truncate max-w-lg">{fileViewer.name}</span>
-                <div className="flex items-center gap-2">
-                  <a
-                    href={fileViewer.url}
-                    download={fileViewer.name}
-                    className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200 transition-colors font-medium"
-                  >
-                    Download
-                  </a>
-                  <button
-                    onClick={() => setFileViewer(null)}
-                    className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-500 transition-colors"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              </div>
-              {/* Content */}
-              <div className="flex-1 overflow-auto flex items-center justify-center bg-slate-50 min-h-0">
-                {isImage ? (
-                  <img
-                    src={fileViewer.url}
-                    alt={fileViewer.name}
-                    className="max-w-full max-h-full object-contain p-4"
-                  />
-                ) : (
-                  <iframe
-                    src={fileViewer.url}
-                    title={fileViewer.name}
-                    className="w-full h-full border-none"
-                    style={{ minHeight: '70vh' }}
-                  />
-                )}
-              </div>
-            </div>
-          </div>
-        );
-      })()}
     </>
   );
 }
