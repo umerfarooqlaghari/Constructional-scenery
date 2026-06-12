@@ -277,6 +277,60 @@ const createTimesheet = async (req, res) => {
       [crew_member_id, production_id, week_ending_date, req.user.id]
     );
 
+    // ── Roll-forward: copy entries from previous week if they exist ───────────
+    try {
+      const prevSunday = new Date(week_ending_date + 'T00:00:00Z');
+      prevSunday.setUTCDate(prevSunday.getUTCDate() - 7);
+      const prevDate = prevSunday.toISOString().split('T')[0];
+
+      const { rows: [prevTs] } = await db.query(
+        `SELECT id FROM timesheets WHERE crew_member_id = $1 AND production_id = $2 AND week_ending_date = $3`,
+        [crew_member_id, production_id, prevDate]
+      );
+
+      if (prevTs) {
+        const { rows: prevEntries } = await db.query(
+          'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+          [prevTs.id]
+        );
+        if (prevEntries.length) {
+          const vph = prevEntries.map((_, idx) => {
+            const b = idx * 17;
+            return `($${b+1},$${b+2},$${b+3},$${b+4},$${b+5},$${b+6},$${b+7},$${b+8},$${b+9},$${b+10},$${b+11},$${b+12},$${b+13},$${b+14},$${b+15},$${b+16},$${b+17})`;
+          }).join(',');
+
+          const flatValues = prevEntries.flatMap(e => {
+            // Shift the date forward by 7 days
+            const d = new Date(String(e.date).split('T')[0] + 'T00:00:00Z');
+            d.setUTCDate(d.getUTCDate() + 7);
+            const newDate = d.toISOString().split('T')[0];
+            return [
+              ts.id, newDate, e.day_of_week, e.full_day_worked, parseFloat(e.overtime_hours || 0),
+              e.set_number || null, e.site || null, parseFloat(e.travel || 0),
+              e.meal_breakfast || false, e.meal_lunch || false, e.meal_supper || false,
+              e.meal_allowance_breakfast != null ? parseFloat(e.meal_allowance_breakfast) : null,
+              e.meal_allowance_lunch     != null ? parseFloat(e.meal_allowance_lunch)     : null,
+              e.meal_allowance_supper    != null ? parseFloat(e.meal_allowance_supper)    : null,
+              parseFloat(e.mileage || 0), parseFloat(e.per_diem || 0), parseFloat(e.ad_hoc_reimbursement || 0),
+            ];
+          });
+
+          await db.query(
+            `INSERT INTO timesheet_entries
+               (timesheet_id, date, day_of_week, full_day_worked, overtime_hours,
+                set_number, site, travel, meal_breakfast, meal_lunch, meal_supper,
+                meal_allowance_breakfast, meal_allowance_lunch, meal_allowance_supper,
+                mileage, per_diem, ad_hoc_reimbursement)
+             VALUES ${vph}`,
+            flatValues
+          );
+        }
+      }
+    } catch (rollErr) {
+      // Roll-forward failure is non-fatal — timesheet still created with empty entries
+      console.warn('Roll-forward copy failed (non-fatal):', rollErr.message);
+    }
+
     // Return with joined crew and production info
     const { rows: [full] } = await db.query(
       `SELECT t.*,
@@ -416,24 +470,29 @@ const saveEntries = async (req, res) => {
       meal_allowance_breakfast:  e.meal_allowance_breakfast != null ? parseFloat(e.meal_allowance_breakfast) : null,
       meal_allowance_lunch:      e.meal_allowance_lunch     != null ? parseFloat(e.meal_allowance_lunch)     : null,
       meal_allowance_supper:     e.meal_allowance_supper    != null ? parseFloat(e.meal_allowance_supper)    : null,
+      mileage:                   parseFloat(e.mileage              || 0),
+      per_diem:                  parseFloat(e.per_diem             || 0),
+      ad_hoc_reimbursement:      parseFloat(e.ad_hoc_reimbursement || 0),
     }));
 
     if (rows.length) {
       const valuePlaceholders = rows.map((_, idx) => {
-        const base = idx * 14;
-        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13},$${base+14})`;
+        const base = idx * 17;
+        return `($${base+1},$${base+2},$${base+3},$${base+4},$${base+5},$${base+6},$${base+7},$${base+8},$${base+9},$${base+10},$${base+11},$${base+12},$${base+13},$${base+14},$${base+15},$${base+16},$${base+17})`;
       }).join(',');
 
       await client.query(
         `INSERT INTO timesheet_entries
            (timesheet_id, date, day_of_week, full_day_worked, overtime_hours,
             set_number, site, travel, meal_breakfast, meal_lunch, meal_supper,
-            meal_allowance_breakfast, meal_allowance_lunch, meal_allowance_supper)
+            meal_allowance_breakfast, meal_allowance_lunch, meal_allowance_supper,
+            mileage, per_diem, ad_hoc_reimbursement)
          VALUES ${valuePlaceholders}`,
         rows.flatMap(r => [
           r.timesheet_id, r.date, r.day_of_week, r.full_day_worked, r.overtime_hours,
           r.set_number, r.site, r.travel, r.meal_breakfast, r.meal_lunch, r.meal_supper,
           r.meal_allowance_breakfast, r.meal_allowance_lunch, r.meal_allowance_supper,
+          r.mileage, r.per_diem, r.ad_hoc_reimbursement,
         ])
       );
     }
@@ -458,7 +517,7 @@ const saveEntries = async (req, res) => {
       return s + b + l + sup;
     }, 0);
 
-    const mileageAndTravel = rows.reduce((s, e) => s + e.travel, 0);
+    const mileageAndTravel = rows.reduce((s, e) => s + e.travel + e.mileage + e.per_diem + e.ad_hoc_reimbursement, 0);
     const grossTotal       = weeklyRate + sixthDayPayment + seventhDayPayment + overtimeAmount + mealAllowance + mileageAndTravel;
     const vatRegistered    = ts.employment_status === 'self_employed' && !!ts.vat_registration_number;
     const vat              = vatRegistered ? grossTotal * 0.20 : 0;
@@ -779,9 +838,9 @@ const patchTimesheet = async (req, res) => {
 };
 
 // ─── POST /api/timesheets/verification-pack ───────────────────────────────────
-// Returns a merged PDF: each crew member's timesheet + invoice (or placeholder).
-// All timesheets for the week must be finalised — returns 409 if any are not.
-// Filename: VerificationPack_[ProductionName]_w-e-[WeekEndingDate].pdf
+// Returns a CSV in the weekly timesheet grid format (like the Excel verification sheet).
+// All timesheets for the week must be verified — returns 409 if any are not.
+// Filename: VerificationPack_[ProductionName]_w-e-[WeekEndingDate].csv
 const generateVerificationPackPdf = async (req, res) => {
   const { week_ending_date, production_id } = req.body;
   if (!week_ending_date || !production_id)
@@ -792,12 +851,21 @@ const generateVerificationPackPdf = async (req, res) => {
       `SELECT t.*,
               cm.crew_number, cm.first_name, cm.last_name,
               cm.employment_status, cm.company_name, cm.crew_trade, cm.crew_rank,
-              p.name AS prod_name
+              cm.vat_registration_number,
+              p.name AS prod_name,
+              (SELECT br.daily_rate    FROM bectu_rates br
+               WHERE  br.trade = cm.crew_trade
+               AND    br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER  BY br.effective_from DESC LIMIT 1) AS daily_rate,
+              (SELECT br.overtime_rate FROM bectu_rates br
+               WHERE  br.trade = cm.crew_trade
+               AND    br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER  BY br.effective_from DESC LIMIT 1) AS overtime_rate
        FROM timesheets t
        JOIN crew_members cm ON t.crew_member_id = cm.id
        JOIN productions p   ON t.production_id  = p.id
        WHERE t.week_ending_date = $1 AND t.production_id = $2
-       ORDER BY cm.last_name, cm.first_name`,
+       ORDER BY cm.crew_trade, cm.last_name, cm.first_name`,
       [week_ending_date, production_id]
     );
 
@@ -821,22 +889,116 @@ const generateVerificationPackPdf = async (req, res) => {
     }));
 
     const prodName = timesheets[0]?.prod_name || 'Production';
-    const { pdfBytes, timesheetPageCount, invoicePageCount, crewCount } =
-      await generateVerificationPack(withEntries, prodName);
 
+    // ── Week commencing (Monday) ───────────────────────────────────────────────
+    const sunday = new Date(week_ending_date + 'T00:00:00Z');
+    const monday = new Date(sunday);
+    monday.setUTCDate(sunday.getUTCDate() - 6);
+    const wc = monday.toLocaleDateString('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'UTC' });
+
+    const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const DAY_SHORT = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
+
+    const esc = (v) => {
+      const s = String(v ?? '');
+      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
+    };
+    const row = (...cols) => cols.map(esc).join(',');
+
+    const lines = [];
+
+    // Header rows
+    lines.push(row(`Production: ${prodName}`));
+    lines.push(row(`W/C: ${wc}`));
+    lines.push('');
+
+    // Column header row
+    const dayHeaders = DAY_SHORT.flatMap(d => [`${d} IN`, `${d} OT`, `${d} TRAVEL £`]);
+    lines.push(row(
+      'CREW NO.', 'NAME', 'COMPANY', 'TRADE', 'RANK',
+      ...dayHeaders,
+      'TOTAL DAYS', 'TOTAL OT HRS', 'TOTAL TRAVEL £', 'MILEAGE £', 'PER DIEM £', 'AD HOC £',
+      'DAILY RATE', 'OT RATE', 'NET TOTAL', 'VAT', 'GROSS'
+    ));
+
+    // Group by trade
+    const byTrade = {};
+    withEntries.forEach(ts => {
+      const trade = ts.crew_trade || 'Other';
+      if (!byTrade[trade]) byTrade[trade] = [];
+      byTrade[trade].push(ts);
+    });
+
+    let grandNet = 0, grandVat = 0, grandGross = 0;
+
+    for (const [trade, crew] of Object.entries(byTrade)) {
+      lines.push('');
+      lines.push(row(trade.toUpperCase()));
+
+      for (const ts of crew) {
+        const entryByDay = {};
+        (ts.entries || []).forEach(e => { entryByDay[e.day_of_week] = e; });
+
+        const dayCols = DAYS.flatMap(day => {
+          const e = entryByDay[day];
+          const worked = e?.full_day_worked ? 'X' : '';
+          const ot     = e ? parseFloat(e.overtime_hours || 0) || '' : '';
+          const travel = e ? (parseFloat(e.travel || 0) > 0 ? parseFloat(e.travel || 0).toFixed(2) : '') : '';
+          return [worked, ot, travel];
+        });
+
+        const totalDays   = (ts.entries || []).filter(e => e.full_day_worked).length;
+        const totalOT     = (ts.entries || []).reduce((s, e) => s + parseFloat(e.overtime_hours || 0), 0);
+        const totalTravel = (ts.entries || []).reduce((s, e) => s + parseFloat(e.travel || 0), 0);
+        const totalMileage = (ts.entries || []).reduce((s, e) => s + parseFloat(e.mileage || 0), 0);
+        const totalPerDiem = (ts.entries || []).reduce((s, e) => s + parseFloat(e.per_diem || 0), 0);
+        const totalAdHoc   = (ts.entries || []).reduce((s, e) => s + parseFloat(e.ad_hoc_reimbursement || 0), 0);
+
+        const netTotal  = parseFloat(ts.gross_total  || 0);
+        const vat       = parseFloat(ts.vat          || 0);
+        const gross     = parseFloat(ts.grand_total  || 0);
+        const dailyRate = parseFloat(ts.daily_rate   || 0);
+        const otRate    = parseFloat(ts.overtime_rate || 0);
+
+        grandNet   += netTotal;
+        grandVat   += vat;
+        grandGross += gross;
+
+        lines.push(row(
+          ts.crew_number,
+          `${ts.first_name} ${ts.last_name}`,
+          ts.company_name || '',
+          ts.crew_trade   || '',
+          ts.crew_rank    || '',
+          ...dayCols,
+          totalDays,
+          totalOT   > 0 ? totalOT.toFixed(1)   : 0,
+          totalTravel > 0 ? totalTravel.toFixed(2) : 0,
+          totalMileage > 0 ? totalMileage.toFixed(2) : 0,
+          totalPerDiem > 0 ? totalPerDiem.toFixed(2) : 0,
+          totalAdHoc   > 0 ? totalAdHoc.toFixed(2)  : 0,
+          dailyRate > 0 ? dailyRate.toFixed(2) : '',
+          otRate    > 0 ? otRate.toFixed(2)    : '',
+          netTotal.toFixed(2),
+          vat > 0 ? vat.toFixed(2) : '',
+          gross.toFixed(2)
+        ));
+      }
+    }
+
+    // Grand total row
+    lines.push('');
+    const blankDayCols = Array(21).fill('');
+    lines.push(row('', 'TOTAL', '', '', '', ...blankDayCols, '', '', '', '', '', '', '', '', grandNet.toFixed(2), grandVat > 0 ? grandVat.toFixed(2) : '', grandGross.toFixed(2)));
+
+    const csv = lines.join('\n');
     const safeName = prodName.replace(/[^a-zA-Z0-9]+/g, '_');
-    const filename = `VerificationPack_${safeName}_w-e-${week_ending_date}.pdf`;
+    const filename = `VerificationPack_${safeName}_w-e-${week_ending_date}.csv`;
 
-    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Type', 'text/csv');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    // Summary header allows frontend to show the page-count toast
-    res.setHeader('X-Pack-Summary', JSON.stringify({
-      crew_count:       crewCount,
-      timesheet_pages:  timesheetPageCount,
-      invoice_pages:    invoicePageCount,
-      total_pages:      timesheetPageCount + invoicePageCount,
-    }));
-    res.send(Buffer.from(pdfBytes));
+    res.setHeader('X-Pack-Summary', JSON.stringify({ crew_count: withEntries.length }));
+    res.send(csv);
   } catch (err) {
     console.error('generateVerificationPackPdf:', err);
     res.status(500).json({ error: err.message });

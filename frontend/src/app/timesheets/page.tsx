@@ -453,12 +453,12 @@ export default function TimesheetsPage() {
       const a = document.createElement('a');
       a.href = url;
       const prodName = productions.find(p => p.id === selectedProd)?.name ?? 'Production';
-      a.download = `VerificationPack_${prodName.replace(/[^a-zA-Z0-9]+/g,'_')}_w-e-${weekEndingISO}.pdf`;
+      a.download = `VerificationPack_${prodName.replace(/[^a-zA-Z0-9]+/g,'_')}_w-e-${weekEndingISO}.csv`;
       a.click();
       URL.revokeObjectURL(url);
       if (summary) {
-        const s = JSON.parse(summary);
-        setPackMsg(`Pack downloaded — ${s.crew_count} crew, ${s.total_pages} pages`);
+        const s = JSON.parse(summary) as { crew_count?: number };
+        setPackMsg(`Pack downloaded — ${s.crew_count} crew`);
       } else {
         setPackMsg('Verification pack downloaded');
       }

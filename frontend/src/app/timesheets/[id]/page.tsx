@@ -51,6 +51,9 @@ type DayEntry = {
   set_number: string;
   site: string;
   travel: string;
+  mileage: string;
+  per_diem: string;
+  ad_hoc_reimbursement: string;
   meal_allowance_breakfast: string;
   meal_allowance_lunch: string;
   meal_allowance_supper: string;
@@ -99,6 +102,9 @@ export default function TimesheetDetailPage() {
           set_number:               ex?.set_number ?? '',
           site:                     ex?.site ?? '',
           travel:                   String(ex?.travel ?? '0'),
+          mileage:                  String(ex?.mileage ?? '0'),
+          per_diem:                 String(ex?.per_diem ?? '0'),
+          ad_hoc_reimbursement:     String(ex?.ad_hoc_reimbursement ?? '0'),
           meal_allowance_breakfast: String(ex?.meal_allowance_breakfast ?? ''),
           meal_allowance_lunch:     String(ex?.meal_allowance_lunch ?? ''),
           meal_allowance_supper:    String(ex?.meal_allowance_supper ?? ''),
@@ -130,6 +136,9 @@ export default function TimesheetDetailPage() {
             e.full_day_worked ||
             parseFloat(e.overtime_hours || '0') > 0 ||
             parseFloat(e.travel || '0') > 0 ||
+            parseFloat(e.mileage || '0') > 0 ||
+            parseFloat(e.per_diem || '0') > 0 ||
+            parseFloat(e.ad_hoc_reimbursement || '0') > 0 ||
             e.meal_allowance_breakfast ||
             e.meal_allowance_lunch ||
             e.meal_allowance_supper
@@ -142,6 +151,9 @@ export default function TimesheetDetailPage() {
             set_number:               e.set_number || null,
             site:                     e.site || null,
             travel:                   parseFloat(e.travel || '0'),
+            mileage:                  parseFloat(e.mileage || '0'),
+            per_diem:                 parseFloat(e.per_diem || '0'),
+            ad_hoc_reimbursement:     parseFloat(e.ad_hoc_reimbursement || '0'),
             meal_breakfast:           e.meal_allowance_breakfast !== '',
             meal_lunch:               e.meal_allowance_lunch !== '',
             meal_supper:              e.meal_allowance_supper !== '',
@@ -210,12 +222,15 @@ export default function TimesheetDetailPage() {
       + (parseFloat(e.meal_allowance_lunch     || '0') || 0)
       + (parseFloat(e.meal_allowance_supper    || '0') || 0), 0);
   const travelTotal  = entries.reduce((s, e) => s + (parseFloat(e.travel || '0') || 0), 0);
+  const mileageTotal = entries.reduce((s, e) => s + (parseFloat(e.mileage || '0') || 0), 0);
+  const perDiemTotal = entries.reduce((s, e) => s + (parseFloat(e.per_diem || '0') || 0), 0);
+  const adHocTotal   = entries.reduce((s, e) => s + (parseFloat(e.ad_hoc_reimbursement || '0') || 0), 0);
 
   const weeklyRate     = dailyRate * stdDays;
   const saturdayPay   = satWorked ? dailyRate * 1.5 : 0;
   const sundayPay     = sunWorked ? dailyRate * 2.0  : 0;
   const overtimeAmount = totalOTHours * otRate;
-  const grossTotal    = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal;
+  const grossTotal    = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal + mileageTotal + perDiemTotal + adHocTotal;
   const vat           = vatRegistered ? grossTotal * 0.20 : 0;
   const grandTotal    = grossTotal + vat;
   const hasTotals     = dailyRate > 0; // show totals as soon as we have a rate
@@ -313,7 +328,7 @@ export default function TimesheetDetailPage() {
             <p className="text-slate-400 text-xs mt-0.5">Tick days worked, set OT hours, site, and meal allowances</p>
           </div>
           <div className="overflow-x-auto">
-            <table className="w-full text-sm min-w-[860px]">
+            <table className="w-full text-sm min-w-[1100px]">
               <thead>
                 <tr className="bg-slate-50">
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-28">Day</th>
@@ -322,6 +337,9 @@ export default function TimesheetDetailPage() {
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left">Set No.</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left">Site</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-20">Travel £</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-24">Mileage £</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-24">Per Diem £</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-24">Ad Hoc £</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-24">Breakfast</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-24">Lunch</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-left w-24">Supper</th>
@@ -381,6 +399,33 @@ export default function TimesheetDetailPage() {
                           className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
                         />
                       </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number" min="0" step="0.01"
+                          value={e.mileage}
+                          onChange={ev => !isLocked && updateEntry(i, 'mileage', ev.target.value)}
+                          disabled={isLocked}
+                          className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number" min="0" step="0.01"
+                          value={e.per_diem}
+                          onChange={ev => !isLocked && updateEntry(i, 'per_diem', ev.target.value)}
+                          disabled={isLocked}
+                          className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
+                      <td className="px-4 py-3">
+                        <input
+                          type="number" min="0" step="0.01"
+                          value={e.ad_hoc_reimbursement}
+                          onChange={ev => !isLocked && updateEntry(i, 'ad_hoc_reimbursement', ev.target.value)}
+                          disabled={isLocked}
+                          className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        />
+                      </td>
                       {(['meal_allowance_breakfast', 'meal_allowance_lunch', 'meal_allowance_supper'] as const).map(field => (
                         <td key={field} className="px-4 py-3">
                           <select
@@ -431,6 +476,24 @@ export default function TimesheetDetailPage() {
                 <div>
                   <p className="text-slate-400 text-xs mb-0.5">Travel</p>
                   <p className="text-slate-900 font-semibold">{fmtGBP(travelTotal)}</p>
+                </div>
+              )}
+              {mileageTotal > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">Mileage</p>
+                  <p className="text-slate-900 font-semibold">{fmtGBP(mileageTotal)}</p>
+                </div>
+              )}
+              {perDiemTotal > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">Per Diem</p>
+                  <p className="text-slate-900 font-semibold">{fmtGBP(perDiemTotal)}</p>
+                </div>
+              )}
+              {adHocTotal > 0 && (
+                <div>
+                  <p className="text-slate-400 text-xs mb-0.5">Ad Hoc</p>
+                  <p className="text-slate-900 font-semibold">{fmtGBP(adHocTotal)}</p>
                 </div>
               )}
               <div>
