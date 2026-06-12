@@ -722,72 +722,70 @@ const getAuditLog = async (req, res) => {
   }
 };
 
-// POST /api/productions/handover-alerts  (called by cron/scheduler — daily)
-// Gap 9: alert thresholds are read from app_settings.handover_alert_days (default [14, 7]).
-const sendHandoverAlerts = async (req, res) => {
+// Core handover alert logic — called by the daily cron job AND the POST route.
+const runHandoverAlerts = async () => {
   const { sendEmail, templates } = require('../config/email');
-  try {
-    // Load configurable alert thresholds from app_settings
-    const { rows: [settingRow] } = await db.query(
-      `SELECT value FROM app_settings WHERE key = 'handover_alert_days'`
+
+  const { rows: [settingRow] } = await db.query(
+    `SELECT value FROM app_settings WHERE key = 'handover_alert_days'`
+  );
+  const alertDays = Array.isArray(settingRow?.value) ? settingRow.value : [14, 7];
+
+  const allAlerts = [];
+  for (const days of alertDays) {
+    const { rows: sets } = await db.query(
+      `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
+       FROM sets s
+       JOIN productions p ON s.production_id = p.id
+       WHERE s.handover_date = CURRENT_DATE + ($1 || ' days')::interval
+         AND s.completion_status != 'handed_over'`,
+      [days]
     );
-    const alertDays = Array.isArray(settingRow?.value) ? settingRow.value : [14, 7];
+    sets.forEach(s => allAlerts.push({ set: s, days }));
+  }
 
-    // Collect sets hitting each configured threshold today
-    const allAlerts = [];
-    for (const days of alertDays) {
-      const { rows: sets } = await db.query(
-        `SELECT s.*, p.name AS production_name, p.production_company, p.production_designer, p.id AS prod_id
-         FROM sets s
-         JOIN productions p ON s.production_id = p.id
-         WHERE s.handover_date = CURRENT_DATE + ($1 || ' days')::interval
-           AND s.completion_status != 'handed_over'`,
-        [days]
-      );
-      sets.forEach(s => allAlerts.push({ set: s, days }));
-    }
+  if (!allAlerts.length) return { message: 'No handover alerts due today', sent: 0, skipped: 0 };
 
-    if (!allAlerts.length) {
-      return res.json({ message: 'No handover alerts due today', sent: 0, skipped: 0 });
-    }
+  const { rows: recipientUsers } = await db.query(
+    `SELECT email FROM users
+     WHERE role IN ('construction_coordinator', 'managing_director')
+       AND email IS NOT NULL`
+  );
+  const recipients = recipientUsers.map(u => u.email).filter(Boolean);
 
-    // Build recipient list: all coordinators + MD (Warren)
-    const { rows: recipientUsers } = await db.query(
-      `SELECT email FROM users
-       WHERE role IN ('construction_coordinator', 'managing_director')
-         AND email IS NOT NULL`
+  if (!recipients.length) return { message: 'No recipients configured', sent: 0, skipped: 0 };
+
+  let sent = 0; let skipped = 0;
+
+  for (const { set, days } of allAlerts) {
+    const { rows: [existing] } = await db.query(
+      `SELECT 1 FROM handover_alerts_sent WHERE set_id = $1 AND days_mark = $2 AND sent_date = CURRENT_DATE`,
+      [set.id, days]
     );
-    const recipients = recipientUsers.map(u => u.email).filter(Boolean);
+    if (existing) { skipped++; continue; }
 
-    if (!recipients.length) {
-      return res.json({ message: 'No recipients configured', sent: 0, skipped: 0 });
-    }
-
-    let sent = 0; let skipped = 0;
-
-    for (const { set, days } of allAlerts) {
-      // Deduplication: skip if already sent today
-      const { rows: [existing] } = await db.query(
-        `SELECT 1 FROM handover_alerts_sent WHERE set_id = $1 AND days_mark = $2 AND sent_date = CURRENT_DATE`,
+    const { subject, html } = templates.handoverAlert(set, days);
+    try {
+      await sendEmail({ to: recipients, subject, html });
+      await db.query(
+        `INSERT INTO handover_alerts_sent (set_id, days_mark, sent_date) VALUES ($1, $2, CURRENT_DATE)
+         ON CONFLICT DO NOTHING`,
         [set.id, days]
       );
-      if (existing) { skipped++; continue; }
-
-      const { subject, html } = templates.handoverAlert(set, days);
-      try {
-        await sendEmail({ to: recipients, subject, html });
-        await db.query(
-          `INSERT INTO handover_alerts_sent (set_id, days_mark, sent_date) VALUES ($1, $2, CURRENT_DATE)
-           ON CONFLICT DO NOTHING`,
-          [set.id, days]
-        );
-        sent++;
-      } catch (emailErr) {
-        console.error(`Handover alert email failed for set ${set.id}:`, emailErr.message);
-      }
+      sent++;
+    } catch (emailErr) {
+      console.error(`Handover alert email failed for set ${set.id}:`, emailErr.message);
     }
+  }
 
-    res.json({ message: 'Handover alerts processed', sent, skipped, total: allAlerts.length });
+  return { message: 'Handover alerts processed', sent, skipped, total: allAlerts.length };
+};
+
+// POST /api/productions/handover-alerts  (called by cron/scheduler — daily)
+const sendHandoverAlerts = async (req, res) => {
+  try {
+    const result = await runHandoverAlerts();
+    res.json(result);
   } catch (err) {
     console.error('sendHandoverAlerts:', err);
     res.status(500).json({ error: err.message });
@@ -852,7 +850,7 @@ module.exports = {
   transitionStatus,
   getArchivePreview, archiveProduction, unarchiveProduction, getAuditLog,
   getSets, createSet, updateSet, patchSet, deleteSet,
-  sendHandoverAlerts,
+  sendHandoverAlerts, runHandoverAlerts,
   getDocuments, uploadDocument, deleteDocument,
   getForecastVariance,
 };
