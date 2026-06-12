@@ -18,7 +18,9 @@
   },
   "jest": {
     "testEnvironment": "node",
-    "testMatch": ["**/tests/**/*.test.js"],
+    "testMatch": [
+      "**/tests/**/*.test.js"
+    ],
     "testTimeout": 10000,
     "coverageDirectory": "coverage",
     "collectCoverageFrom": [
@@ -51,6 +53,7 @@
     "express-validator": "^7.0.1",
     "jsonwebtoken": "^9.0.3",
     "multer": "^2.1.1",
+    "node-cron": "^4.2.1",
     "nodemailer": "^8.0.9",
     "pdf-lib": "^1.17.1",
     "pdfkit": "^0.18.0",

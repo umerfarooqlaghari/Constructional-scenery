@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors    = require('cors');
 const path    = require('path');
+const cron    = require('node-cron');
 
 const { authenticate } = require('./Middleware/auth');
 const { checkPolicy  } = require('./Middleware/roleCheck');
@@ -137,6 +138,19 @@ async function start() {
 ╚══════════════════════════════════════╝
     `);
   });
+
+  // ── Daily handover alert cron — 07:00 UTC every day ──────────────────────────
+  const { runHandoverAlerts } = require('./Controllers/productionsController');
+  cron.schedule('0 7 * * *', async () => {
+    console.log(`[CRON] Running handover alerts — ${new Date().toISOString()}`);
+    try {
+      const result = await runHandoverAlerts();
+      console.log(`[CRON] Handover alerts: sent=${result.sent} skipped=${result.skipped}`);
+    } catch (err) {
+      console.error('[CRON] Handover alerts failed:', err.message);
+    }
+  }, { timezone: 'UTC' });
+  console.log('✅ Cron: handover alerts scheduled at 07:00 UTC daily');
 }
 
 start();
