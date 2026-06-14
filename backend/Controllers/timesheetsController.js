@@ -605,7 +605,6 @@ const bulkDistribute = async (req, res) => {
 
       try {
         await sendTimesheetEmail(ts, entries);
-        await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
         await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
         results.sent.push(`${ts.first_name} ${ts.last_name}`);
       } catch (emailErr) {
@@ -613,6 +612,8 @@ const bulkDistribute = async (req, res) => {
         await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, false, emailErr.message);
         results.failed.push(`${ts.first_name} ${ts.last_name}`);
       }
+      // Always advance to sent so the workflow is not blocked by SMTP failures
+      await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
     }
 
     res.json({

@@ -415,7 +415,13 @@ export default function TimesheetsPage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? 'Bulk send failed');
-      setBulkMsg(`${data.results?.sent?.length ?? 0} timesheet(s) sent successfully.`);
+      const sentCount   = data.results?.sent?.length   ?? 0;
+      const failedNames = data.results?.failed          ?? [];
+      const noEmail     = data.results?.no_email        ?? [];
+      let msg = `${sentCount} timesheet(s) sent.`;
+      if (noEmail.length)   msg += ` ${noEmail.length} had no email (status updated).`;
+      if (failedNames.length) msg += ` Email failed for: ${failedNames.join(', ')} (status still updated).`;
+      setBulkMsg(msg);
       await loadSheets();
     } catch (err: unknown) {
       setBulkMsg(err instanceof Error ? err.message : 'Bulk send failed');
