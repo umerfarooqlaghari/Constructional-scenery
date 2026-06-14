@@ -29,27 +29,24 @@ const buildWeeklyCostSummary = (supplierEntries, labourEntries) => {
     }));
 };
 
-// ─── Helper: group labour entries by week_ending_date then by trade ───────────
+// ─── Helper: group labour entries by week — flat crew list per week ───────────
+// Returns the shape the frontend cost-report page expects: { week_ending_date, total, crew[] }
 const groupLabourByWeekAndTrade = (labourEntries) => {
   const byWeek = {};
   labourEntries.forEach(e => {
-    const week  = String(e.week_ending_date).split('T')[0];
-    const trade = e.trade || 'Unknown';
-    if (!byWeek[week]) byWeek[week] = { week_ending_date: week, by_trade: {}, total_gross: 0 };
-    if (!byWeek[week].by_trade[trade]) byWeek[week].by_trade[trade] = { trade, entries: [], subtotal: 0 };
-    byWeek[week].by_trade[trade].entries.push(e);
-    byWeek[week].by_trade[trade].subtotal += parseFloat(e.gross_amount || 0);
-    byWeek[week].total_gross += parseFloat(e.gross_amount || 0);
+    const week = String(e.week_ending_date).split('T')[0];
+    if (!byWeek[week]) byWeek[week] = { week_ending_date: week, total: 0, crew: [] };
+    byWeek[week].total += parseFloat(e.gross_amount || 0);
+    byWeek[week].crew.push({
+      crew_number: e.crew_number || null,
+      name:        `${e.first_name || ''} ${e.last_name || ''}`.trim(),
+      trade:       e.trade || null,
+      rank:        e.rank  || null,
+      grand_total: parseFloat(e.gross_amount || 0),
+    });
   });
-
-  // Convert inner maps to sorted arrays
   return Object.values(byWeek)
-    .sort((a, b) => b.week_ending_date.localeCompare(a.week_ending_date))
-    .map(w => ({
-      week_ending_date: w.week_ending_date,
-      total_gross:      w.total_gross,
-      by_trade:         Object.values(w.by_trade).sort((a, b) => a.trade.localeCompare(b.trade)),
-    }));
+    .sort((a, b) => b.week_ending_date.localeCompare(a.week_ending_date));
 };
 
 // ─── GET /api/cost-reports/:productionId/type1 ───────────────────────────────
