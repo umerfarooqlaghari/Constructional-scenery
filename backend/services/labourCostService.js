@@ -37,7 +37,7 @@ const recordWeeklyLabour = async (weekEndingDate, productionId, client) => {
      JOIN crew_members cm ON t.crew_member_id = cm.id
      WHERE t.production_id    = $1
        AND t.week_ending_date = $2
-       AND t.status           = 'finalised'`,
+       AND t.status           = 'verified'`,
     [productionId, weekEndingDate]
   );
 
