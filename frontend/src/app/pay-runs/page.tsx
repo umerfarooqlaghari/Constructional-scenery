@@ -331,9 +331,10 @@ function PreviewModal({
           )}
 
           {actionError && (
-            <p className="text-red-600 text-xs bg-red-50 border border-red-200 rounded-lg px-3 py-2 mb-3">
+            <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-lg px-4 py-3 text-red-700 text-sm mb-3">
+              <AlertTriangle size={15} className="flex-shrink-0" />
               {actionError}
-            </p>
+            </div>
           )}
 
           {/* Pay run status indicator */}
