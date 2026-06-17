@@ -373,21 +373,24 @@ const exportCsv = async (req, res) => {
       `SELECT COALESCE(pri.sort_code,      cm.sort_code)      AS sort_code,
               COALESCE(pri.account_number, cm.account_number) AS account_number,
               COALESCE(pri.account_name,   cm.account_name)   AS account_name,
-              pri.net_amount, pri.reference
+              pri.net_amount, cm.crew_number
        FROM pay_run_items pri
        JOIN crew_members cm ON pri.crew_member_id = cm.id
        WHERE pri.pay_run_id = $1
-       ORDER BY pri.reference`,
+       ORDER BY cm.crew_number`,
       [req.params.id]
     );
 
+    const weekEnding = String(payRun.week_ending_date).split('T')[0];
+
     // No header row — bank upload format
+    // Reference = crew_number + week_ending_date (e.g. C001-2026-01-19)
     const csvRows = items.map(item => [
       decrypt(item.sort_code)      || '',
       decrypt(item.account_number) || '',
       decrypt(item.account_name)   || '',
-      parseFloat(item.net_amount).toFixed(2),  // raw decimal, no £
-      item.reference               || '',
+      parseFloat(item.net_amount).toFixed(2),
+      `${item.crew_number || ''}-${weekEnding}`,
     ].join(','));
 
     const safeName = (payRun.prod_name || 'Production').replace(/[^a-zA-Z0-9]+/g, '_');
