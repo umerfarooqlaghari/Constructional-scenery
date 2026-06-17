@@ -459,7 +459,7 @@ export default function TimesheetsPage() {
       const a = document.createElement('a');
       a.href = url;
       const prodName = productions.find(p => p.id === selectedProd)?.name ?? 'Production';
-      a.download = `VerificationPack_${prodName.replace(/[^a-zA-Z0-9]+/g,'_')}_w-e-${weekEndingISO}.csv`;
+      a.download = `VerificationPack_${prodName.replace(/[^a-zA-Z0-9]+/g,'_')}_w-e-${weekEndingISO}.xlsx`;
       a.click();
       URL.revokeObjectURL(url);
       if (summary) {
@@ -604,10 +604,10 @@ export default function TimesheetsPage() {
             <div className="flex flex-wrap items-center gap-2">
               {/* Status tabs */}
               <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
-                {(['all', 'draft', 'sent', 'invoice_received', 'verified'] as const).map(s => (
+                {(['all', ...(canAct ? ['draft'] : []), 'sent', 'invoice_received', 'verified'] as const).map(s => (
                   <button
                     key={s}
-                    onClick={() => setStatusFilter(s)}
+                    onClick={() => setStatusFilter(s as TimesheetStatus | 'all')}
                     className={`text-xs px-2.5 py-1 rounded-md font-medium transition-colors capitalize ${
                       statusFilter === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                     }`}

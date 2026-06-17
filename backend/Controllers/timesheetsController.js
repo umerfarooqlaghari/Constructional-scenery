@@ -839,9 +839,10 @@ const patchTimesheet = async (req, res) => {
 };
 
 // ─── POST /api/timesheets/verification-pack ───────────────────────────────────
-// Returns a CSV in the weekly timesheet grid format (like the Excel verification sheet).
+// Returns an XLSX workbook in the weekly timesheet grid format.
+// First 3 columns (Crew No., Name, Company) are highlighted in light blue.
 // All timesheets for the week must be verified — returns 409 if any are not.
-// Filename: VerificationPack_[ProductionName]_w-e-[WeekEndingDate].csv
+// Filename: VerificationPack_[ProductionName]_w-e-[WeekEndingDate].xlsx
 const generateVerificationPackPdf = async (req, res) => {
   const { week_ending_date, production_id } = req.body;
   if (!week_ending_date || !production_id)
@@ -900,27 +901,47 @@ const generateVerificationPackPdf = async (req, res) => {
     const DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const DAY_SHORT = ['MON', 'TUE', 'WED', 'THU', 'FRI', 'SAT', 'SUN'];
 
-    const esc = (v) => {
-      const s = String(v ?? '');
-      return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g, '""')}"` : s;
-    };
-    const row = (...cols) => cols.map(esc).join(',');
+    // ── Build XLSX workbook ───────────────────────────────────────────────────
+    const ExcelJS = require('exceljs');
+    const wb = new ExcelJS.Workbook();
+    const ws = wb.addWorksheet('Verification Pack');
 
-    const lines = [];
+    // Colours
+    const BLUE_HEADER = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF4472C4' } };  // col header bg
+    const BLUE_DATA   = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFDCE6F1' } };  // first-3 col data bg
+    const GREY_TRADE  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD9D9D9' } };  // trade group row
+    const YELLOW_TOT  = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF2CC' } };  // grand total row
+    const WHITE_FONT  = { color: { argb: 'FFFFFFFF' }, bold: true };
+    const BOLD        = { bold: true };
 
-    // Header rows
-    lines.push(row(`Production: ${prodName}`));
-    lines.push(row(`W/C: ${wc}`));
-    lines.push('');
+    // Row 1-2: meta
+    ws.addRow([`Production: ${prodName}`]).getCell(1).font = BOLD;
+    ws.addRow([`W/C: ${wc}`]).getCell(1).font = BOLD;
+    ws.addRow([]);  // blank
 
-    // Column header row
+    // Column headers
     const dayHeaders = DAY_SHORT.flatMap(d => [`${d} IN`, `${d} OT`, `${d} TRAVEL £`]);
-    lines.push(row(
+    const headers = [
       'CREW NO.', 'NAME', 'COMPANY', 'TRADE', 'RANK',
       ...dayHeaders,
       'TOTAL DAYS', 'TOTAL OT HRS', 'TOTAL TRAVEL £', 'MILEAGE £', 'PER DIEM £', 'AD HOC £',
-      'DAILY RATE', 'OT RATE', 'NET TOTAL', 'VAT', 'GROSS'
-    ));
+      'DAILY RATE', 'OT RATE', 'NET TOTAL', 'VAT', 'GROSS',
+    ];
+    const headerRow = ws.addRow(headers);
+    headerRow.eachCell((cell, colNum) => {
+      cell.fill = BLUE_HEADER;
+      cell.font = WHITE_FONT;
+      cell.alignment = { horizontal: 'center', vertical: 'middle' };
+      cell.border = { bottom: { style: 'thin', color: { argb: 'FF2F5597' } } };
+    });
+
+    // Helper: apply first-3-column highlight to a data row
+    const highlightIdCols = (row) => {
+      [1, 2, 3].forEach(c => {
+        row.getCell(c).fill = BLUE_DATA;
+        row.getCell(c).font = { bold: true };
+      });
+    };
 
     // Group by trade
     const byTrade = {};
@@ -933,8 +954,10 @@ const generateVerificationPackPdf = async (req, res) => {
     let grandNet = 0, grandVat = 0, grandGross = 0;
 
     for (const [trade, crew] of Object.entries(byTrade)) {
-      lines.push('');
-      lines.push(row(trade.toUpperCase()));
+      ws.addRow([]);
+      const tradeRow = ws.addRow([trade.toUpperCase()]);
+      tradeRow.getCell(1).fill = GREY_TRADE;
+      tradeRow.getCell(1).font = BOLD;
 
       for (const ts of crew) {
         const entryByDay = {};
@@ -943,29 +966,28 @@ const generateVerificationPackPdf = async (req, res) => {
         const dayCols = DAYS.flatMap(day => {
           const e = entryByDay[day];
           const worked = e?.full_day_worked ? 'X' : '';
-          const ot     = e ? parseFloat(e.overtime_hours || 0) || '' : '';
-          const travel = e ? (parseFloat(e.travel || 0) > 0 ? parseFloat(e.travel || 0).toFixed(2) : '') : '';
+          const ot     = e ? (parseFloat(e.overtime_hours || 0) || '') : '';
+          const travel = e ? (parseFloat(e.travel || 0) > 0 ? parseFloat(e.travel || 0) : '') : '';
           return [worked, ot, travel];
         });
 
-        const totalDays   = (ts.entries || []).filter(e => e.full_day_worked).length;
-        const totalOT     = (ts.entries || []).reduce((s, e) => s + parseFloat(e.overtime_hours || 0), 0);
-        const totalTravel = (ts.entries || []).reduce((s, e) => s + parseFloat(e.travel || 0), 0);
+        const totalDays    = (ts.entries || []).filter(e => e.full_day_worked).length;
+        const totalOT      = (ts.entries || []).reduce((s, e) => s + parseFloat(e.overtime_hours || 0), 0);
+        const totalTravel  = (ts.entries || []).reduce((s, e) => s + parseFloat(e.travel || 0), 0);
         const totalMileage = (ts.entries || []).reduce((s, e) => s + parseFloat(e.mileage || 0), 0);
         const totalPerDiem = (ts.entries || []).reduce((s, e) => s + parseFloat(e.per_diem || 0), 0);
         const totalAdHoc   = (ts.entries || []).reduce((s, e) => s + parseFloat(e.ad_hoc_reimbursement || 0), 0);
-
-        const netTotal  = parseFloat(ts.gross_total  || 0);
-        const vat       = parseFloat(ts.vat          || 0);
-        const gross     = parseFloat(ts.grand_total  || 0);
-        const dailyRate = parseFloat(ts.daily_rate   || 0);
-        const otRate    = parseFloat(ts.overtime_rate || 0);
+        const netTotal     = parseFloat(ts.gross_total  || 0);
+        const vat          = parseFloat(ts.vat          || 0);
+        const gross        = parseFloat(ts.grand_total  || 0);
+        const dailyRate    = parseFloat(ts.daily_rate   || 0);
+        const otRate       = parseFloat(ts.overtime_rate || 0);
 
         grandNet   += netTotal;
         grandVat   += vat;
         grandGross += gross;
 
-        lines.push(row(
+        const dataRow = ws.addRow([
           ts.crew_number,
           `${ts.first_name} ${ts.last_name}`,
           ts.company_name || '',
@@ -973,33 +995,51 @@ const generateVerificationPackPdf = async (req, res) => {
           ts.crew_rank    || '',
           ...dayCols,
           totalDays,
-          totalOT   > 0 ? totalOT.toFixed(1)   : 0,
-          totalTravel > 0 ? totalTravel.toFixed(2) : 0,
-          totalMileage > 0 ? totalMileage.toFixed(2) : 0,
-          totalPerDiem > 0 ? totalPerDiem.toFixed(2) : 0,
-          totalAdHoc   > 0 ? totalAdHoc.toFixed(2)  : 0,
-          dailyRate > 0 ? dailyRate.toFixed(2) : '',
-          otRate    > 0 ? otRate.toFixed(2)    : '',
-          netTotal.toFixed(2),
-          vat > 0 ? vat.toFixed(2) : '',
-          gross.toFixed(2)
-        ));
+          totalOT    > 0 ? totalOT    : 0,
+          totalTravel > 0 ? totalTravel : 0,
+          totalMileage > 0 ? totalMileage : 0,
+          totalPerDiem > 0 ? totalPerDiem : 0,
+          totalAdHoc   > 0 ? totalAdHoc   : 0,
+          dailyRate > 0 ? dailyRate : '',
+          otRate    > 0 ? otRate    : '',
+          netTotal,
+          vat > 0 ? vat : '',
+          gross,
+        ]);
+        highlightIdCols(dataRow);
       }
     }
 
     // Grand total row
-    lines.push('');
+    ws.addRow([]);
     const blankDayCols = Array(21).fill('');
-    lines.push(row('', 'TOTAL', '', '', '', ...blankDayCols, '', '', '', '', '', '', '', '', grandNet.toFixed(2), grandVat > 0 ? grandVat.toFixed(2) : '', grandGross.toFixed(2)));
+    const totalRow = ws.addRow([
+      '', 'TOTAL', '', '', '', ...blankDayCols,
+      '', '', '', '', '', '', '', '',
+      grandNet, grandVat > 0 ? grandVat : '', grandGross,
+    ]);
+    totalRow.eachCell(cell => { cell.fill = YELLOW_TOT; cell.font = BOLD; });
 
-    const csv = lines.join('\n');
+    // Column widths
+    ws.getColumn(1).width = 12;   // CREW NO.
+    ws.getColumn(2).width = 22;   // NAME
+    ws.getColumn(3).width = 20;   // COMPANY
+    ws.getColumn(4).width = 14;   // TRADE
+    ws.getColumn(5).width = 14;   // RANK
+    for (let c = 6; c <= 26; c++) ws.getColumn(c).width = 9;  // day cols
+    for (let c = 27; c <= 37; c++) ws.getColumn(c).width = 13; // totals
+
+    // Freeze top 4 rows and first 5 columns
+    ws.views = [{ state: 'frozen', xSplit: 5, ySplit: 4 }];
+
     const safeName = prodName.replace(/[^a-zA-Z0-9]+/g, '_');
-    const filename = `VerificationPack_${safeName}_w-e-${week_ending_date}.csv`;
+    const filename = `VerificationPack_${safeName}_w-e-${week_ending_date}.xlsx`;
+    const buffer = await wb.xlsx.writeBuffer();
 
-    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.setHeader('X-Pack-Summary', JSON.stringify({ crew_count: withEntries.length }));
-    res.send(csv);
+    res.send(buffer);
   } catch (err) {
     console.error('generateVerificationPackPdf:', err);
     res.status(500).json({ error: err.message });
