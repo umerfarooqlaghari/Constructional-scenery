@@ -386,12 +386,12 @@ interface DocumentsPanelProps {
   documents: ProductionDocument[];
   canUpload: boolean;
   userId: string;
-  isMD: boolean;
+  canManageAny: boolean;
   onUploaded: (doc: ProductionDocument) => void;
   onDeleted: (docId: string) => void;
 }
 
-function DocumentsPanel({ productionId, documents, canUpload, userId, isMD, onUploaded, onDeleted }: DocumentsPanelProps) {
+function DocumentsPanel({ productionId, documents, canUpload, userId, canManageAny, onUploaded, onDeleted }: DocumentsPanelProps) {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [dragging, setDragging]     = useState(false);
   const [uploadState, setUploadState] = useState<{ name: string; progress: number } | null>(null);
@@ -560,7 +560,7 @@ function DocumentsPanel({ productionId, documents, canUpload, userId, isMD, onUp
                 >
                   <Upload size={13} className="rotate-180" />
                 </a>
-                {(doc.uploaded_by === userId || isMD) && (
+                {(doc.uploaded_by === userId || canManageAny) && (
                   <button
                     onClick={() => handleDelete(doc)}
                     disabled={deletingId === doc.id}
@@ -721,10 +721,10 @@ export default function ProductionDetailPage() {
   const params  = useParams<{ id: string }>();
   const router  = useRouter();
   const { user } = useAuth();
-  const isMD         = user?.role === 'managing_director';
-  const isAccountant = user?.role === 'construction_accountant';
-  const canEdit      = !isAccountant;
-  const canArchive   = isMD || isAccountant;
+  const isCoordinator = user?.role === 'construction_coordinator';
+  // Productions: full manage = Coordinator only. MD has full read; Accountant has financial-read only.
+  const canEdit      = isCoordinator;
+  const canArchive   = isCoordinator;
   const id           = params.id;
 
   const [production, setProduction]   = useState<ProductionDetail | null>(null);
@@ -1160,7 +1160,7 @@ export default function ProductionDetailPage() {
               </button>
             )}
             {/* Advance status */}
-            {!isArchived && nextStatus && NEXT_LABEL[production.status] && (
+            {canEdit && !isArchived && nextStatus && NEXT_LABEL[production.status] && (
               <button
                 onClick={() => openTransition('forward')}
                 className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 transition-colors font-medium"
@@ -1168,8 +1168,8 @@ export default function ProductionDetailPage() {
                 {NEXT_LABEL[production.status]}
               </button>
             )}
-            {/* Roll back (MD only) */}
-            {isMD && !isArchived && prevStatus && PREV_LABEL[production.status] && (
+            {/* Roll back (Coordinator only) */}
+            {canEdit && !isArchived && prevStatus && PREV_LABEL[production.status] && (
               <button
                 onClick={() => openTransition('rollback')}
                 className="flex items-center gap-2 px-4 py-2 border border-orange-200 text-orange-700 bg-orange-50 text-sm rounded-lg hover:bg-orange-100 transition-colors text-xs"
@@ -1188,7 +1188,7 @@ export default function ProductionDetailPage() {
               </button>
             )}
             {/* Unarchive */}
-            {isMD && isArchived && (
+            {isCoordinator && isArchived && (
               <button
                 onClick={handleUnarchive}
                 disabled={unarchiveLoading}
@@ -1446,7 +1446,7 @@ export default function ProductionDetailPage() {
             documents={production.production_documents}
             canUpload={canEdit && !isArchived}
             userId={user?.id ?? ''}
-            isMD={isMD}
+            canManageAny={isCoordinator}
             onUploaded={doc => setProduction(p => p ? { ...p, production_documents: [doc, ...p.production_documents] } : p)}
             onDeleted={docId => setProduction(p => p ? { ...p, production_documents: p.production_documents.filter(d => d.id !== docId) } : p)}
           />

@@ -94,13 +94,6 @@ export const authApi = {
       skipAuth: true,
     }),
 
-  signup: (data: { email: string; password: string; full_name: string; role: string }) =>
-    request<{ message: string; user: AuthUser }>('/api/auth/signup', {
-      method: 'POST',
-      body: data,
-      skipAuth: true,
-    }),
-
   me: () => request<{ user: AuthUser }>('/api/auth/me'),
 
   logout: (refresh_token: string) =>
@@ -136,6 +129,29 @@ export type AuthUser = {
   email: string;
   full_name: string;
   role: 'managing_director' | 'construction_accountant' | 'construction_coordinator';
+};
+
+// ─── User administration (MD only) ─────────────────────────────────────────────
+export type ManagedUser = AuthUser & {
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+};
+
+export const usersApi = {
+  list: () => request<ManagedUser[]>('/api/users'),
+
+  create: (data: { email: string; password: string; full_name: string; role: string }) =>
+    request<{ message: string; user: ManagedUser }>('/api/users', {
+      method: 'POST',
+      body: data,
+    }),
+
+  update: (id: string, data: Partial<{ full_name: string; role: string; is_active: boolean }>) =>
+    request<{ message: string; user: ManagedUser }>(`/api/users/${id}`, {
+      method: 'PATCH',
+      body: data,
+    }),
 };
 
 // ─── Production types ──────────────────────────────────────────────────────────
@@ -337,8 +353,23 @@ export const productionsApi = {
 };
 
 // ─── Dashboard API ─────────────────────────────────────────────────────────────
+// get() backs Warren's Dashboard (MD only). Accountant/Coordinator use their
+// own scoped overview endpoints, which deliberately exclude Cost
+// Report/Forecasting financial data they're not permitted to see.
 export const dashboardApi = {
   get: () => request<DashboardData>('/api/dashboard'),
+
+  accountantOverview: () => request<{
+    current_week_labour: DashboardData['current_week_labour'];
+    active_productions:  DashboardData['active_productions'];
+  }>('/api/dashboard/accountant-overview'),
+
+  coordinatorOverview: () => request<{
+    active_count:        number;
+    crew_headcount:       DashboardData['crew_headcount'];
+    open_po_count:        number;
+    production_pipeline:  DashboardData['production_pipeline'];
+  }>('/api/dashboard/coordinator-overview'),
 };
 
 // ─── Timesheet types ───────────────────────────────────────────────────────────

@@ -19,12 +19,12 @@ const PRIMARY: Record<string, NavItem[]> = {
     { href: '/purchase-orders', label: 'Orders',      icon: ShoppingCart },
   ],
   construction_accountant: [
-    { href: '/dashboard',       label: 'Dashboard',   icon: LayoutDashboard },
+    { href: '/overview',        label: 'Overview',    icon: LayoutDashboard },
     { href: '/timesheets',      label: 'Timesheets',  icon: ClipboardList },
     { href: '/purchase-orders', label: 'Orders',      icon: ShoppingCart },
   ],
   construction_coordinator: [
-    { href: '/dashboard',       label: 'Dashboard',   icon: LayoutDashboard },
+    { href: '/overview',        label: 'Overview',    icon: LayoutDashboard },
     { href: '/productions',     label: 'Productions', icon: Clapperboard },
     { href: '/purchase-orders', label: 'Orders',      icon: ShoppingCart },
   ],
@@ -42,22 +42,22 @@ const ALL_ITEMS: Record<string, NavItem[]> = {
     { href: '/timesheets',      label: 'Timesheets & Pay',   icon: ClipboardList },
   ],
   construction_accountant: [
-    { href: '/dashboard',       label: 'Dashboard',          icon: LayoutDashboard },
+    { href: '/overview',        label: 'Overview',           icon: LayoutDashboard },
     { href: '/timesheets',      label: 'Timesheets & Pay',   icon: ClipboardList },
     { href: '/purchase-orders', label: 'Purchase Orders',    icon: ShoppingCart },
     { href: '/cost-report',     label: 'Cost Report',        icon: BarChart2 },
+    { href: '/forecasting',     label: 'Forecasting',        icon: TrendingUp },
     { href: '/crew',            label: 'Crew',               icon: Users },
     { href: '/crew/import',     label: 'Crew Import',        icon: Upload },
     { href: '/productions',     label: 'Productions',        icon: Clapperboard },
   ],
   construction_coordinator: [
-    { href: '/dashboard',       label: 'Dashboard',       icon: LayoutDashboard },
+    { href: '/overview',        label: 'Overview',        icon: LayoutDashboard },
     { href: '/productions',     label: 'Productions',     icon: Clapperboard },
     { href: '/purchase-orders', label: 'Purchase Orders', icon: ShoppingCart },
     { href: '/timesheets',      label: 'Timesheets',      icon: ClipboardList },
     { href: '/crew',            label: 'Crew',            icon: Users },
     { href: '/crew/import',     label: 'Crew Import',     icon: Upload },
-    { href: '/forecasting',     label: 'Forecasting',     icon: TrendingUp },
   ],
 };
 
@@ -81,7 +81,16 @@ export default function BottomNav() {
   const primary  = PRIMARY[role]  ?? PRIMARY.managing_director;
   const allItems = ALL_ITEMS[role] ?? ALL_ITEMS.managing_director;
 
-  const isActive = (href: string) => pathname === href || pathname.startsWith(href + '/');
+  // Nested routes (e.g. /crew and /crew/import) can both prefix-match the current
+  // pathname — only the longest (most specific) match in a given list should be active.
+  const bestMatch = (items: NavItem[]) =>
+    items
+      .map(i => i.href)
+      .filter(href => pathname === href || pathname.startsWith(href + '/'))
+      .sort((a, b) => b.length - a.length)[0];
+
+  const activePrimaryHref = bestMatch(primary);
+  const activeDrawerHref  = bestMatch(allItems);
 
   return (
     <>
@@ -92,7 +101,7 @@ export default function BottomNav() {
             key={href}
             href={href}
             className={`flex-1 flex flex-col items-center justify-center gap-0.5 py-2 min-h-[56px] transition-colors ${
-              isActive(href) ? 'text-blue-400' : 'text-slate-400'
+              href === activePrimaryHref ? 'text-blue-400' : 'text-slate-400'
             }`}
           >
             <Icon size={22} />
@@ -143,7 +152,7 @@ export default function BottomNav() {
                 href={href}
                 onClick={() => setMoreOpen(false)}
                 className={`flex items-center gap-4 px-4 py-3.5 rounded-xl text-sm font-medium transition-colors min-h-[52px] ${
-                  isActive(href)
+                  href === activeDrawerHref
                     ? 'bg-blue-600 text-white'
                     : 'text-slate-300 hover:bg-slate-800 hover:text-white'
                 }`}

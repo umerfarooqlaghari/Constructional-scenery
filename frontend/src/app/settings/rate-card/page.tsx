@@ -147,7 +147,7 @@ function ImportModal({ onClose, onImported }: ImportModalProps) {
               <p className="font-mono">trade, rank, daily_rate, overtime_rate</p>
               <p className="text-slate-500 mt-1">Example: <span className="font-mono">Carpenters,HOD,430.00,64.50</span></p>
             </div>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Effective From *</label>
                 <input type="date" className={inp} value={effectiveFrom} onChange={e => setEffectiveFrom(e.target.value)} />
@@ -201,12 +201,13 @@ export default function RateCardPage() {
   const [activeTab, setActiveTab] = useState<'current' | 'history'>('current');
   const [history, setHistory] = useState<Array<{ rate_year: string; effective_from: string; rows: CrewRate[] }>>([]);
   const [historyLoading, setHistoryLoading] = useState(false);
-  const isMD = user?.role === 'managing_director';
   const canManage = user?.role === 'managing_director' || user?.role === 'construction_accountant';
+  // Crew Database (rate card belongs to it): full RW = Accountant. MD is read-only.
+  const canWrite = user?.role === 'construction_accountant';
 
   // Guard: MD + Accountant only
   useEffect(() => {
-    if (user && !canManage) router.replace('/dashboard');
+    if (user && !canManage) router.replace('/overview');
   }, [user, router, canManage]);
 
   const loadHistory = useCallback(async () => {
@@ -294,9 +295,11 @@ export default function RateCardPage() {
               <button onClick={load} disabled={loading} className="flex items-center gap-2 px-3 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50 disabled:opacity-50">
                 <RefreshCw size={13} className={loading ? 'animate-spin' : ''} /> Refresh
               </button>
-              <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
-                <Upload size={13} /> Import New Year Rates
-              </button>
+              {canWrite && (
+                <button onClick={() => setShowImport(true)} className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700 font-medium">
+                  <Upload size={13} /> Import New Year Rates
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -416,11 +419,11 @@ export default function RateCardPage() {
                           <X size={13} />
                         </button>
                       </div>
-                    ) : (
+                    ) : canWrite ? (
                       <button onClick={() => startEdit(r)} className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
                         <Pencil size={13} />
                       </button>
-                    )}
+                    ) : null}
                   </td>
                 </tr>
               ))}

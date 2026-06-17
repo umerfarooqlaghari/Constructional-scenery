@@ -1,6 +1,14 @@
 const express = require('express');
 const router  = express.Router();
 const ctrl    = require('../Controllers/costReportsController');
+const { requireRole } = require('../Middleware/requireRole');
+
+// Cost Report: full read/write = MD + Accountant. Coordinator has none
+// (already excluded entirely in policies.json — this is the explicit
+// per-route annotation required for the write actions).
+const MD         = 'managing_director';
+const ACCOUNTANT = 'construction_accountant';
+const WRITERS    = [MD, ACCOUNTANT];
 
 // ─── Export rate limiter: 10 per minute per user ──────────────────────────────
 const exportCounts = new Map();
@@ -28,14 +36,14 @@ router.get('/:productionId/export/csv',  exportRateLimit,       ctrl.exportCostR
 router.get('/:productionId/export/pdf',  exportRateLimit,       ctrl.exportCostReportPDF);
 router.get('/:productionId',                                    ctrl.getCostReport);
 
-// ── Mutations ─────────────────────────────────────────────────────────────────
-router.post('/:productionId/invoices',                          ctrl.addInvoice);
-router.delete('/:productionId/invoices/:invoiceId',             ctrl.deleteInvoice);
-router.post('/:productionId/budget',                            ctrl.upsertBudget);
-router.patch('/:productionId/po-billing/:sourceId',             ctrl.updatePoBilling);
-router.post('/:productionId/omit-entry',                        ctrl.omitEntry);
-router.delete('/:productionId/omit-entry/:entryId',             ctrl.unomitEntry);
-router.put('/:productionId/margins-reference',                  ctrl.updateMarginsReference);
-router.put('/:productionId/weekly-pl/:weekEndingDate',          ctrl.upsertWeeklyPL);
+// ── Mutations (MD + Accountant only) ───────────────────────────────────────────
+router.post('/:productionId/invoices',                          requireRole(...WRITERS), ctrl.addInvoice);
+router.delete('/:productionId/invoices/:invoiceId',             requireRole(...WRITERS), ctrl.deleteInvoice);
+router.post('/:productionId/budget',                            requireRole(...WRITERS), ctrl.upsertBudget);
+router.patch('/:productionId/po-billing/:sourceId',             requireRole(...WRITERS), ctrl.updatePoBilling);
+router.post('/:productionId/omit-entry',                        requireRole(...WRITERS), ctrl.omitEntry);
+router.delete('/:productionId/omit-entry/:entryId',             requireRole(...WRITERS), ctrl.unomitEntry);
+router.put('/:productionId/margins-reference',                  requireRole(MD), ctrl.updateMarginsReference);
+router.put('/:productionId/weekly-pl/:weekEndingDate',          requireRole(...WRITERS), ctrl.upsertWeeklyPL);
 
 module.exports = router;

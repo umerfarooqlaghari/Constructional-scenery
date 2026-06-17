@@ -49,9 +49,9 @@ describe('GET /api/percentometer/ratios', () => {
     );
   });
 
-  test('No auth → 403', async () => {
+  test('No auth → 401', async () => {
     const res = await request(app).get('/api/percentometer/ratios');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 });
 

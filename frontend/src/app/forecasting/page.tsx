@@ -10,6 +10,7 @@ import {
   type Forecast, type PercentometerRatio, type CatalogueItem, type Production,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import RequireRole from '@/components/RequireRole';
 
 const fmtGBP = (n: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n);
@@ -28,10 +29,19 @@ const inputCls =
 
 type CalcResult = { cost_type: string; percentage: number; estimated_cost: number };
 
+// Forecasting: full access for MD + Accountant. Coordinator: no access.
 export default function ForecastingPage() {
+  return (
+    <RequireRole roles={['managing_director', 'construction_accountant']}>
+      <ForecastingContent />
+    </RequireRole>
+  );
+}
+
+function ForecastingContent() {
   const { user } = useAuth();
   const isMD = user?.role === 'managing_director';
-  const isCoordinator = user?.role === 'construction_coordinator';
+  const isAccountant = user?.role === 'construction_accountant';
 
   const [activeTab, setActiveTab] = useState<'percentometer' | 'catalogue' | 'scenarios'>('percentometer');
 
@@ -223,7 +233,7 @@ export default function ForecastingPage() {
                   <h2 className="text-slate-900 font-semibold text-sm">The Percentometer</h2>
                   <p className="text-slate-400 text-xs mt-0.5">Enter a known carpenter cost to estimate all other costs</p>
                 </div>
-                {isMD && (
+                {(isMD || isAccountant) && (
                   <button
                     onClick={() => setShowEditRatios(true)}
                     className="flex items-center gap-1.5 text-xs text-slate-500 border border-slate-200 rounded-lg px-3 py-1.5 hover:bg-slate-50 transition-colors"
@@ -392,9 +402,9 @@ export default function ForecastingPage() {
                 <h2 className="text-slate-900 font-semibold text-sm">Supplier Catalogue</h2>
                 <p className="text-slate-400 text-xs mt-0.5">Reference pricing for common items</p>
               </div>
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-56">
-                  <Search size={13} className="text-slate-400" />
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+                <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-full sm:w-56">
+                  <Search size={13} className="text-slate-400 flex-shrink-0" />
                   <input
                     type="text"
                     placeholder="Search catalogue..."
@@ -403,10 +413,10 @@ export default function ForecastingPage() {
                     className="bg-transparent text-sm text-slate-700 placeholder-slate-400 outline-none w-full"
                   />
                 </div>
-                {(isMD || isCoordinator) && (
+                {(isMD || isAccountant) && (
                   <button
                     onClick={() => setShowAddItem(true)}
-                    className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+                    className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                   >
                     <Plus size={14} /> Add Item
                   </button>
@@ -463,7 +473,7 @@ export default function ForecastingPage() {
                           {item.last_used_date ? fmtDate(item.last_used_date) : '—'}
                         </td>
                         <td className="px-4 py-3">
-                          {(isMD || isCoordinator) && (
+                          {(isMD || isAccountant) && (
                             <button
                               onClick={() => deleteItem(item.id)}
                               disabled={deletingItemId === item.id}
@@ -809,7 +819,7 @@ function AddCatalogueItemModal({ onClose, onSaved }: AddCatalogueItemModalProps)
             <label className="block text-xs font-medium text-slate-600 mb-1">Item Description *</label>
             <input className={inputCls} placeholder="e.g. Structural timber 4x2 per metre" value={form.item_description} onChange={set('item_description')} />
           </div>
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Unit</label>
               <input className={inputCls} placeholder="e.g. metre, sheet, kg" value={form.unit} onChange={set('unit')} />

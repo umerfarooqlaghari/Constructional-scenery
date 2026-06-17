@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import TopBar from '@/components/TopBar';
 import { useAuth } from '@/contexts/AuthContext';
+import RequireRole from '@/components/RequireRole';
 import {
   payRunsApi,
   productionsApi,
@@ -96,6 +97,7 @@ interface PreviewModalProps {
   weekEndingDate: string;
   existingPayRunId: string | null;
   existingPayRunStatus: string | null;
+  canWrite: boolean;
   onClose: () => void;
   onPayRunCreatedOrProcessed: () => void;
 }
@@ -105,6 +107,7 @@ function PreviewModal({
   weekEndingDate,
   existingPayRunId,
   existingPayRunStatus,
+  canWrite,
   onClose,
   onPayRunCreatedOrProcessed,
 }: PreviewModalProps) {
@@ -239,7 +242,7 @@ function PreviewModal({
           ) : preview ? (
             <div className="space-y-4">
               {/* Totals summary */}
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div className="bg-slate-50 rounded-lg px-4 py-3">
                   <p className="text-slate-500 text-xs font-medium">Crew Members</p>
                   <p className="text-slate-900 text-xl font-bold mt-1">{preview.items.length}</p>
@@ -353,8 +356,8 @@ function PreviewModal({
               Cancel
             </button>
 
-            {/* No pay run yet → Create */}
-            {!payRunId && !loadingPreview && !previewError && (
+            {/* No pay run yet → Create (Accountant only — MD is view-only) */}
+            {canWrite && !payRunId && !loadingPreview && !previewError && (
               <button
                 onClick={handleCreate}
                 disabled={creating}
@@ -365,8 +368,8 @@ function PreviewModal({
               </button>
             )}
 
-            {/* Draft → Process */}
-            {isDraft && payRunId && (
+            {/* Draft → Process (Accountant only — MD is view-only) */}
+            {canWrite && isDraft && payRunId && (
               <button
                 onClick={handleProcess}
                 disabled={processing}
@@ -408,10 +411,11 @@ type AvailableWeek = {
 interface AvailableWeeksTabProps {
   productionId: string;
   refreshSignal: number;
+  canWrite: boolean;
   onOpenPreview: (week: AvailableWeek) => void;
 }
 
-function AvailableWeeksTab({ productionId, refreshSignal, onOpenPreview }: AvailableWeeksTabProps) {
+function AvailableWeeksTab({ productionId, refreshSignal, canWrite, onOpenPreview }: AvailableWeeksTabProps) {
   const [weeks, setWeeks] = useState<AvailableWeek[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -504,7 +508,7 @@ function AvailableWeeksTab({ productionId, refreshSignal, onOpenPreview }: Avail
                         className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
                       >
                         <Eye size={12} />
-                        Preview &amp; Create
+                        {canWrite ? 'Preview & Create' : 'Preview'}
                       </button>
                     </td>
                   </tr>
@@ -529,10 +533,11 @@ function AvailableWeeksTab({ productionId, refreshSignal, onOpenPreview }: Avail
 interface HistoryTabProps {
   productionId: string;
   refreshSignal: number;
+  canWrite: boolean;
   onRefresh: () => void;
 }
 
-function HistoryTab({ productionId, refreshSignal, onRefresh }: HistoryTabProps) {
+function HistoryTab({ productionId, refreshSignal, canWrite, onRefresh }: HistoryTabProps) {
   const [payRuns, setPayRuns] = useState<PayRun[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -655,7 +660,7 @@ function HistoryTab({ productionId, refreshSignal, onRefresh }: HistoryTabProps)
                   </td>
                   <td className="px-4 py-3.5">
                     <div className="flex items-center gap-2">
-                      {pr.status === 'draft' && (
+                      {canWrite && pr.status === 'draft' && (
                         <button
                           onClick={() => handleProcess(pr.id)}
                           disabled={processingId === pr.id}
@@ -701,11 +706,22 @@ function HistoryTab({ productionId, refreshSignal, onRefresh }: HistoryTabProps)
 
 type Tab = 'available' | 'history';
 
+// Pay Run tab: Accountant has full access, MD may view. Coordinator: zero access.
 export default function PayRunsPage() {
+  return (
+    <RequireRole roles={['managing_director', 'construction_accountant']}>
+      <PayRunsContent />
+    </RequireRole>
+  );
+}
+
+function PayRunsContent() {
   const { user } = useAuth();
 
   const canAccess =
     user?.role === 'managing_director' || user?.role === 'construction_accountant';
+  // Pay Run actions (create/process): Accountant only. MD has view-only access.
+  const canWrite = user?.role === 'construction_accountant';
 
   const [productions, setProductions] = useState<Production[]>([]);
   const [selectedProd, setSelectedProd] = useState('');
@@ -778,6 +794,7 @@ export default function PayRunsPage() {
           weekEndingDate={previewWeek.week_ending_date}
           existingPayRunId={previewWeek.pay_run_id}
           existingPayRunStatus={previewWeek.pay_run_status}
+          canWrite={canWrite}
           onClose={handleClosePreview}
           onPayRunCreatedOrProcessed={handlePayRunCreatedOrProcessed}
         />
@@ -835,12 +852,14 @@ export default function PayRunsPage() {
           <AvailableWeeksTab
             productionId={selectedProd}
             refreshSignal={refreshSignal}
+            canWrite={canWrite}
             onOpenPreview={week => setPreviewWeek(week)}
           />
         ) : (
           <HistoryTab
             productionId={selectedProd}
             refreshSignal={refreshSignal}
+            canWrite={canWrite}
             onRefresh={() => setRefreshSignal(s => s + 1)}
           />
         )}

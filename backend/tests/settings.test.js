@@ -47,9 +47,9 @@ describe('GET /api/settings', () => {
     expect(res.status).toBe(200);
   });
 
-  test('No auth → 403', async () => {
+  test('No auth → 401', async () => {
     const res = await request(app).get('/api/settings');
-    expect(res.status).toBe(403);
+    expect(res.status).toBe(401);
   });
 });
 

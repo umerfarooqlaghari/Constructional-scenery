@@ -1,0 +1,23 @@
+'use client';
+
+import { useAuth } from '@/contexts/AuthContext';
+import RequireRole from '@/components/RequireRole';
+import AccountantDashboard from '../dashboard/AccountantDashboard';
+import CoordinatorDashboard from '../dashboard/CoordinatorDashboard';
+
+// Landing page for Accountant and Coordinator. Warren's Dashboard (/dashboard)
+// is reserved exclusively for the Managing Director.
+function OverviewContent() {
+  const { user } = useAuth();
+  if (user?.role === 'construction_accountant')  return <AccountantDashboard />;
+  if (user?.role === 'construction_coordinator') return <CoordinatorDashboard />;
+  return null;
+}
+
+export default function OverviewPage() {
+  return (
+    <RequireRole roles={['construction_accountant', 'construction_coordinator']} redirectTo="/dashboard">
+      <OverviewContent />
+    </RequireRole>
+  );
+}

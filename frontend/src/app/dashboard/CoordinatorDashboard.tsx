@@ -9,8 +9,10 @@ import {
 } from 'lucide-react';
 import {
   dashboardApi, purchaseOrdersApi,
-  DashboardData, PurchaseOrder, ProductionStatus,
+  PurchaseOrder, ProductionStatus,
 } from '@/lib/api';
+
+type CoordinatorOverview = Awaited<ReturnType<typeof dashboardApi.coordinatorOverview>>;
 
 const fmtGBP = (n: number | string) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(
@@ -43,7 +45,7 @@ const PO_STATUS_CONFIG: Record<string, { label: string; className: string }> = {
 
 export default function CoordinatorDashboard() {
   const router = useRouter();
-  const [dashboard, setDashboard]   = useState<DashboardData | null>(null);
+  const [dashboard, setDashboard]   = useState<CoordinatorOverview | null>(null);
   const [openPOs, setOpenPOs]       = useState<PurchaseOrder[]>([]);
   const [loading, setLoading]       = useState(true);
   const [error, setError]           = useState('');
@@ -54,7 +56,7 @@ export default function CoordinatorDashboard() {
 
   useEffect(() => {
     Promise.all([
-      dashboardApi.get(),
+      dashboardApi.coordinatorOverview(),
       // Get submitted/draft POs (ones James can act on)
       purchaseOrdersApi.list({ status: 'submitted' }),
     ])
@@ -69,7 +71,7 @@ export default function CoordinatorDashboard() {
   const statCards = [
     {
       label:   'Active Productions',
-      value:   dashboard?.active_productions.length ?? 0,
+      value:   dashboard?.active_count ?? 0,
       color:   'bg-blue-50 text-blue-600',
       icon:    Clapperboard,
     },
@@ -81,7 +83,7 @@ export default function CoordinatorDashboard() {
     },
     {
       label:   'Open POs (Submitted)',
-      value:   dashboard?.pending_approvals.purchase_orders ?? 0,
+      value:   dashboard?.open_po_count ?? 0,
       color:   'bg-orange-50 text-orange-600',
       icon:    ShoppingCart,
     },
@@ -298,12 +300,12 @@ export default function CoordinatorDashboard() {
         </div>
 
         {/* Alert: POs waiting for MD approval */}
-        {!loading && dashboard && dashboard.pending_approvals.purchase_orders > 0 && (
+        {!loading && dashboard && dashboard.open_po_count > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
               <span className="text-amber-800 text-sm font-medium">
-                {dashboard.pending_approvals.purchase_orders} PO{dashboard.pending_approvals.purchase_orders !== 1 ? 's' : ''} submitted — waiting for Managing Director approval
+                {dashboard.open_po_count} PO{dashboard.open_po_count !== 1 ? 's' : ''} submitted — waiting for Managing Director approval
               </span>
             </div>
             <button

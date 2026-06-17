@@ -99,8 +99,8 @@ describe('POST /api/pay-runs', () => {
   test('Accountant creates pay run — 201', async () => {
     dbMock.respond({ rows: [], rowCount: 0 });  // BEGIN
     dbMock.respond([]);                           // no existing processed pay run
-    dbMock.respond([{                             // finalised timesheets
-      ...SAMPLE_TIMESHEET, status: 'finalised', crew_member_id: 'cm-001',
+    dbMock.respond([{                             // verified timesheets
+      ...SAMPLE_TIMESHEET, status: 'verified', crew_member_id: 'cm-001',
     }]);
     dbMock.respond([{ id: 'pr-001', production_id: 'prod-1', week_ending_date: '2026-06-01', status: 'draft', created_by: 'user-acc-001' }]); // INSERT pay_run
     dbMock.respond({ rows: [], rowCount: 1 });   // INSERT pay_run_items
@@ -143,7 +143,7 @@ describe('GET /api/pay-runs/:id', () => {
 
 // ─── POST /api/pay-runs/:id/process ──────────────────────────────────────────
 describe('POST /api/pay-runs/:id/process', () => {
-  test('MD processes a draft pay run — 200', async () => {
+  test('Accountant processes a draft pay run — 200', async () => {
     // processPayRun uses client (transaction): BEGIN, UPDATE pay_runs, COMMIT
     // recordWeeklyLabour is mocked so no extra queries
     dbMock.respond({ rows: [], rowCount: 0 });  // BEGIN
@@ -152,10 +152,24 @@ describe('POST /api/pay-runs/:id/process', () => {
 
     const res = await request(app)
       .post('/api/pay-runs/pr-001/process')
-      .set(authHeader('md'));
+      .set(authHeader('accountant'));
 
     expect(res.status).toBe(200);
     expect(res.body.pay_run.status).toBe('processed');
+  });
+
+  test('MD → 403 (view-only on Pay Run)', async () => {
+    const res = await request(app)
+      .post('/api/pay-runs/pr-001/process')
+      .set(authHeader('md'));
+    expect(res.status).toBe(403);
+  });
+
+  test('Coordinator → 403 (no Pay Run access)', async () => {
+    const res = await request(app)
+      .post('/api/pay-runs/pr-001/process')
+      .set(authHeader('coordinator'));
+    expect(res.status).toBe(403);
   });
 
   test('Already processed → 409', async () => {
@@ -164,7 +178,7 @@ describe('POST /api/pay-runs/:id/process', () => {
     dbMock.respond({ rows: [], rowCount: 0 });  // ROLLBACK
     const res = await request(app)
       .post('/api/pay-runs/pr-001/process')
-      .set(authHeader('md'));
+      .set(authHeader('accountant'));
     expect(res.status).toBe(409);
   });
 });

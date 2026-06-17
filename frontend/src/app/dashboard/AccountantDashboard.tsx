@@ -7,7 +7,9 @@ import {
   ClipboardList, CheckCircle2, Clock, AlertCircle,
   FileText, TrendingDown, ArrowUpRight, Loader2, Banknote,
 } from 'lucide-react';
-import { dashboardApi, timesheetsApi, DashboardData, Timesheet } from '@/lib/api';
+import { dashboardApi, timesheetsApi, Timesheet } from '@/lib/api';
+
+type AccountantOverview = Awaited<ReturnType<typeof dashboardApi.accountantOverview>>;
 
 const fmtGBP = (n: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', maximumFractionDigits: 0 }).format(n);
@@ -18,7 +20,7 @@ const RAG_LABEL:  Record<string, string> = { green: 'On Track', amber: 'Monitor'
 
 export default function AccountantDashboard() {
   const router = useRouter();
-  const [dashboard, setDashboard] = useState<DashboardData | null>(null);
+  const [dashboard, setDashboard] = useState<AccountantOverview | null>(null);
   const [timesheets, setTimesheets] = useState<Timesheet[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -28,7 +30,7 @@ export default function AccountantDashboard() {
   });
 
   useEffect(() => {
-    Promise.all([dashboardApi.get(), timesheetsApi.list()])
+    Promise.all([dashboardApi.accountantOverview(), timesheetsApi.list()])
       .then(([dash, ts]) => {
         setDashboard(dash);
         setTimesheets(ts);
@@ -296,12 +298,12 @@ export default function AccountantDashboard() {
         </div>
 
         {/* Pending Approvals Banner */}
-        {!loading && dashboard && dashboard.pending_approvals.timesheets > 0 && (
+        {!loading && tsCounts.invoice_received > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
               <span className="text-amber-800 text-sm font-medium">
-                {dashboard.pending_approvals.timesheets} timesheet{dashboard.pending_approvals.timesheets !== 1 ? 's' : ''} with invoices received — ready to verify
+                {tsCounts.invoice_received} timesheet{tsCounts.invoice_received !== 1 ? 's' : ''} with invoices received — ready to verify
               </span>
             </div>
             <button

@@ -155,7 +155,7 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
             <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
             <input className={inputCls} placeholder="e.g. Meridian" value={form.name} onChange={set('name')} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
               <input className={inputCls} placeholder="e.g. Lionsgate UK" value={form.production_company} onChange={set('production_company')} />
@@ -287,10 +287,10 @@ function ArchiveModal({ preview, onConfirm, onClose, loading, error }: ArchiveMo
 export default function ProductionsPage() {
   const router = useRouter();
   const { user } = useAuth();
-  const isMD          = user?.role === 'managing_director';
-  const isAccountant  = user?.role === 'construction_accountant';
-  const canArchive    = isMD || isAccountant;
-  const canEdit       = user?.role !== 'construction_accountant';
+  const isCoordinator = user?.role === 'construction_coordinator';
+  // Productions: full manage = Coordinator only. MD has full read; Accountant has financial-read only.
+  const canArchive    = isCoordinator;
+  const canEdit       = isCoordinator;
 
   const [productions, setProductions]     = useState<Production[]>([]);
   const [archived, setArchived]           = useState<Production[]>([]);
@@ -442,9 +442,9 @@ export default function ProductionsPage() {
                 </button>
               ))}
             </div>
-            <div className="flex items-center gap-2">
-              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-56">
-                <Search size={13} className="text-slate-400" />
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
+              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-full sm:w-56">
+                <Search size={13} className="text-slate-400 flex-shrink-0" />
                 <input
                   type="text"
                   placeholder="Search productions..."
@@ -456,7 +456,7 @@ export default function ProductionsPage() {
               {canEdit && (
                 <button
                   onClick={() => setShowModal(true)}
-                  className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+                  className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                 >
                   <Plus size={14} />
                   New Production
@@ -627,7 +627,7 @@ export default function ProductionsPage() {
                             >
                               <ChevronRight size={15} />
                             </button>
-                            {isMD && (
+                            {isCoordinator && (
                               <button
                                 onClick={e => handleUnarchive(e, p.id)}
                                 disabled={unarchiveLoading === p.id}

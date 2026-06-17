@@ -11,6 +11,7 @@ import {
   type Production, type CostReport,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import RequireRole from '@/components/RequireRole';
 
 const fmtGBP = (n: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n);
@@ -96,7 +97,7 @@ function AddInvoiceForm({ productionId, onClose, onSaved }: AddInvoiceFormProps)
             <input className={inputCls} placeholder="e.g. Phase 2 — Main sets deposit" value={form.invoice_description} onChange={set('invoice_description')} />
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">PO Number</label>
               <input className={inputCls} placeholder="e.g. PO-2026-0104" value={form.po_number} onChange={set('po_number')} />
@@ -107,7 +108,7 @@ function AddInvoiceForm({ productionId, onClose, onSaved }: AddInvoiceFormProps)
             </div>
           </div>
 
-          <div className="grid grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Date</label>
               <input type="date" className={inputCls} value={form.date} onChange={set('date')} />
@@ -142,7 +143,16 @@ function AddInvoiceForm({ productionId, onClose, onSaved }: AddInvoiceFormProps)
   );
 }
 
+// Cost Report: full access for MD + Accountant. Coordinator: no access.
 export default function CostReportPage() {
+  return (
+    <RequireRole roles={['managing_director', 'construction_accountant']}>
+      <CostReportContent />
+    </RequireRole>
+  );
+}
+
+function CostReportContent() {
   const { user } = useAuth();
   const canAddInvoice = user?.role === 'managing_director' || user?.role === 'construction_accountant';
 

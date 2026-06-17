@@ -23,11 +23,12 @@ const buildRouteRegex = (routePath) => {
  * Must run AFTER authenticate so req.user is populated.
  */
 const checkPolicy = (req, res, next) => {
-  const role = req.user?.role;
-  if (!role) {
-    return res.status(403).json({ error: 'No role found in token' });
+  // No authenticated user at all → 401 (who are you), not 403 (you can't do this)
+  if (!req.user) {
+    return res.status(401).json({ error: 'Authentication required' });
   }
 
+  const role = req.user.role;
   const policy = policies[role];
   if (!policy) {
     return res.status(403).json({ error: `Unknown role: ${role}` });

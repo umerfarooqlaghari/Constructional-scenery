@@ -8,7 +8,7 @@ const request = require('supertest');
 const express = require('express');
 
 // Must be before requiring controllers (sets up mocks)
-require('./setup');
+const { authHeader } = require('./setup');
 
 const authRouter = require('../routes/auth');
 
@@ -80,10 +80,11 @@ describe('POST /api/auth/login', () => {
 });
 
 // ─── POST /api/auth/signup ────────────────────────────────────────────────────
+// Signup is not public — only an authenticated MD may create new accounts.
 describe('POST /api/auth/signup', () => {
   beforeEach(() => dbMock.reset());
 
-  test('returns 201 on valid signup', async () => {
+  test('MD creates account — returns 201', async () => {
     dbMock.respond({ rows: [] });           // check existing user → none
     dbMock.respond({
       rows: [{ id: 'u-new', email: 'new@cs.com', full_name: 'New User', role: 'construction_coordinator', is_active: true }],
@@ -91,6 +92,7 @@ describe('POST /api/auth/signup', () => {
 
     const res = await request(app)
       .post('/api/auth/signup')
+      .set(authHeader('md'))
       .send({ email: 'new@cs.com', password: 'Pass123!', full_name: 'New User', role: 'construction_coordinator' });
 
     expect(res.status).toBe(201);
@@ -100,8 +102,32 @@ describe('POST /api/auth/signup', () => {
   test('returns 400 when required fields missing', async () => {
     const res = await request(app)
       .post('/api/auth/signup')
+      .set(authHeader('md'))
       .send({ email: 'x@cs.com' });
     expect(res.status).toBe(400);
+  });
+
+  test('Accountant → 403 (only MD may create accounts)', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .set(authHeader('accountant'))
+      .send({ email: 'x@cs.com', password: 'Pass123!', full_name: 'X', role: 'construction_coordinator' });
+    expect(res.status).toBe(403);
+  });
+
+  test('Coordinator → 403 (only MD may create accounts)', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .set(authHeader('coordinator'))
+      .send({ email: 'x@cs.com', password: 'Pass123!', full_name: 'X', role: 'construction_coordinator' });
+    expect(res.status).toBe(403);
+  });
+
+  test('No auth → 401', async () => {
+    const res = await request(app)
+      .post('/api/auth/signup')
+      .send({ email: 'x@cs.com', password: 'Pass123!', full_name: 'X', role: 'construction_coordinator' });
+    expect(res.status).toBe(401);
   });
 });
 

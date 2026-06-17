@@ -1,18 +1,14 @@
 'use client';
 
-import { useAuth } from '@/contexts/AuthContext';
+import RequireRole from '@/components/RequireRole';
 import MDDashboard from './MDDashboard';
-import AccountantDashboard from './AccountantDashboard';
-import CoordinatorDashboard from './CoordinatorDashboard';
 
+// Warren's Dashboard — exclusive to the Managing Director. Accountant and
+// Coordinator land on /overview instead (see app/overview/page.tsx).
 export default function DashboardPage() {
-  const { user } = useAuth();
-
-  if (!user) return null;
-
-  if (user.role === 'managing_director')       return <MDDashboard />;
-  if (user.role === 'construction_accountant') return <AccountantDashboard />;
-  if (user.role === 'construction_coordinator') return <CoordinatorDashboard />;
-
-  return null;
+  return (
+    <RequireRole roles={['managing_director']} redirectTo="/overview">
+      <MDDashboard />
+    </RequireRole>
+  );
 }

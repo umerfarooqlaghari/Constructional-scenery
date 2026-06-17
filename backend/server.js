@@ -92,6 +92,7 @@ app.use('/api/percentometer',       require('./routes/percentometer'));
 app.use('/api/dashboard',           require('./routes/dashboard'));
 app.use('/api/crew-rates',          require('./routes/crewRates'));
 app.use('/api/settings',            require('./routes/settings'));
+app.use('/api/users',               require('./routes/users'));
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => {

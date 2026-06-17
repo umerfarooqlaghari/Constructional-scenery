@@ -103,8 +103,8 @@ describe('GET /api/dashboard/cost-summary', () => {
 describe('GET /api/dashboard/labour-costs', () => {
   test('MD gets labour costs — 200', async () => {
     dbMock.respond([
-      { grand_total: '3500', status: 'finalised', prod_name: 'Star Wars' },
-      { grand_total: '2000', status: 'distributed', prod_name: 'Star Wars' },
+      { grand_total: '3500', status: 'verified', prod_name: 'Star Wars' },
+      { grand_total: '2000', status: 'sent', prod_name: 'Star Wars' },
     ]);
 
     const res = await request(app)
@@ -117,9 +117,9 @@ describe('GET /api/dashboard/labour-costs', () => {
     expect(Array.isArray(res.body.breakdown)).toBe(true);
   });
 
-  test('status = pending when not all finalised', async () => {
+  test('status = pending when not all verified', async () => {
     dbMock.respond([
-      { grand_total: '2000', status: 'distributed', prod_name: 'Prod A' },
+      { grand_total: '2000', status: 'sent', prod_name: 'Prod A' },
     ]);
     const res = await request(app)
       .get('/api/dashboard/labour-costs')
@@ -128,9 +128,9 @@ describe('GET /api/dashboard/labour-costs', () => {
     expect(res.body.breakdown[0].status).toBe('pending');
   });
 
-  test('status = approved when all finalised', async () => {
+  test('status = approved when all verified', async () => {
     dbMock.respond([
-      { grand_total: '3000', status: 'finalised', prod_name: 'Prod A' },
+      { grand_total: '3000', status: 'verified', prod_name: 'Prod A' },
     ]);
     const res = await request(app)
       .get('/api/dashboard/labour-costs')

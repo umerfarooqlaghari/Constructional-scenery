@@ -270,12 +270,12 @@ export default function SupplierCataloguePage() {
 
         {/* Filter bar */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm">
-          <div className="flex flex-wrap items-center justify-between px-5 py-4 gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 gap-3">
 
             {/* Left: search + supplier filter */}
             <div className="flex items-center gap-2 flex-wrap">
               {/* Search */}
-              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-64">
+              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-full sm:w-64">
                 <Search size={14} className="text-slate-400 flex-shrink-0" />
                 <input
                   type="text"
@@ -313,17 +313,17 @@ export default function SupplierCataloguePage() {
 
             {/* Right: action buttons */}
             {canWrite && (
-              <div className="flex items-center gap-2">
+              <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 w-full sm:w-auto">
                 <button
                   onClick={() => { setShowImport(true); setImportResult(null); setImportError(''); setCsvFile(null); }}
-                  className="flex items-center gap-2 text-sm border border-slate-200 text-slate-600 rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 text-sm border border-slate-200 text-slate-600 rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors font-medium whitespace-nowrap"
                 >
                   <Upload size={14} />
                   Import CSV
                 </button>
                 <button
                   onClick={openAdd}
-                  className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium"
+                  className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                 >
                   <Plus size={14} />
                   Add Entry
@@ -506,7 +506,7 @@ export default function SupplierCataloguePage() {
               </div>
 
               {/* Unit of Measure + Unit Price side by side */}
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">
                     Unit of Measure <span className="text-red-500">*</span>

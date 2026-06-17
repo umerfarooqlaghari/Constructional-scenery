@@ -121,11 +121,8 @@ export default function LoginPage() {
         </form>
       </div>
 
-      <p className="text-center text-slate-500 text-sm mt-5">
-        Don&apos;t have an account?{' '}
-        <Link href="/signup" className="text-blue-600 hover:text-blue-700 font-medium">
-          Sign up
-        </Link>
+      <p className="text-center text-slate-400 text-xs mt-5">
+        Accounts are created by your Managing Director — contact them for access.
       </p>
     </div>
   );

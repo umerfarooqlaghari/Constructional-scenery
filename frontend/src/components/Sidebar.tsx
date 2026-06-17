@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clapperboard, ShoppingCart, Users, ClipboardList,
   BarChart2, TrendingUp, ChevronRight, LogOut, CreditCard,
-  Banknote, BookOpen, Upload, Settings,
+  Banknote, BookOpen, Upload, Settings, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -13,7 +13,9 @@ const NAV_GROUPS = [
   {
     label: 'Core',
     items: [
-      { href: '/dashboard',   label: 'Dashboard',   icon: LayoutDashboard, roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      // Warren's Dashboard — MD exclusive. Accountant/Coordinator land on Overview instead.
+      { href: '/dashboard',   label: 'Dashboard',   icon: LayoutDashboard, roles: ['managing_director'] },
+      { href: '/overview',    label: 'Overview',    icon: LayoutDashboard, roles: ['construction_accountant', 'construction_coordinator'] },
       { href: '/productions', label: 'Productions', icon: Clapperboard,    roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
@@ -23,7 +25,7 @@ const NAV_GROUPS = [
       { href: '/purchase-orders',    label: 'Purchase Orders',   icon: ShoppingCart, roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
       { href: '/cost-report',        label: 'Cost Report',       icon: BarChart2,    roles: ['managing_director', 'construction_accountant'] },
       { href: '/pay-runs',           label: 'Pay Runs',          icon: Banknote,     roles: ['managing_director', 'construction_accountant'] },
-      { href: '/forecasting',        label: 'Forecasting',       icon: TrendingUp,   roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/forecasting',        label: 'Forecasting',       icon: TrendingUp,   roles: ['managing_director', 'construction_accountant'] },
       { href: '/supplier-catalogue', label: 'Supplier Catalogue',icon: BookOpen,     roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
@@ -38,8 +40,9 @@ const NAV_GROUPS = [
   {
     label: 'Settings',
     items: [
-      { href: '/settings/rate-card', label: 'Rate Card',        icon: CreditCard, roles: ['managing_director', 'construction_accountant'] },
-      { href: '/settings',           label: 'System Settings',  icon: Settings,   roles: ['managing_director', 'construction_coordinator'] },
+      { href: '/settings/rate-card', label: 'Rate Card',        icon: CreditCard,   roles: ['managing_director', 'construction_accountant'] },
+      { href: '/settings',           label: 'System Settings',  icon: Settings,     roles: ['managing_director', 'construction_coordinator'] },
+      { href: '/settings/users',     label: 'User Accounts',    icon: ShieldCheck,  roles: ['managing_director'] },
     ],
   },
 ];
@@ -64,6 +67,13 @@ export default function Sidebar() {
     items: group.items.filter(item => !user || item.roles.includes(user.role)),
   })).filter(group => group.items.length > 0);
 
+  // Nested routes (e.g. /settings and /settings/users) can both prefix-match the
+  // current pathname — only the longest (most specific) match should be highlighted.
+  const matchingHrefs = visibleGroups
+    .flatMap(group => group.items.map(item => item.href))
+    .filter(href => pathname === href || pathname.startsWith(href + '/'));
+  const activeHref = matchingHrefs.sort((a, b) => b.length - a.length)[0];
+
   return (
     <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 bg-slate-900 flex-col z-30">
       {/* Logo */}
@@ -84,7 +94,7 @@ export default function Sidebar() {
             </p>
             <div className="space-y-0.5">
               {group.items.map(({ href, label, icon: Icon }) => {
-                const active = pathname === href || pathname.startsWith(href + '/');
+                const active = href === activeHref;
                 return (
                   <Link
                     key={href}

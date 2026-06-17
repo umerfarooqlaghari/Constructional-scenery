@@ -157,14 +157,14 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
           {/* Personal */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Personal Details</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className={lbl}>First Name *</label><input className={inp} value={form.first_name} onChange={set('first_name')} /></div>
               <div><label className={lbl}>Last Name *</label><input className={inp} value={form.last_name} onChange={set('last_name')} /></div>
             </div>
             <div className="mt-4">
               <label className={lbl}>Email</label><input type="email" className={inp} value={form.email} onChange={set('email')} />
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <div><label className={lbl}>Date of Birth</label><input type="date" className={inp} value={form.date_of_birth} onChange={set('date_of_birth')} /></div>
               <div><label className={lbl}>Home Address</label><input className={inp} value={form.home_address} onChange={set('home_address')} /></div>
             </div>
@@ -173,7 +173,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
           {/* Employment */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Employment</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className={lbl}>Employment Status</label>
                 <select className={inp} value={form.employment_status} onChange={set('employment_status')}>
@@ -183,7 +183,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
               </div>
               <div><label className={lbl}>Withholding Rate (%)</label><input type="number" min={0} max={100} className={inp} value={form.paye_withholding_rate} onChange={set('paye_withholding_rate')} /></div>
             </div>
-            <div className="grid grid-cols-2 gap-4 mt-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
               <div>
                 <label className={lbl}>Trade</label>
                 <select className={inp} value={form.crew_trade} onChange={set('crew_trade')}>
@@ -223,8 +223,8 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
           {isSE && (
             <div>
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Company Details</p>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="col-span-2"><label className={lbl}>Company Name</label><input className={inp} value={form.company_name} onChange={set('company_name')} /></div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div className="sm:col-span-2"><label className={lbl}>Company Name</label><input className={inp} value={form.company_name} onChange={set('company_name')} /></div>
                 <div><label className={lbl}>Company Reg. Number</label><input className={inp} value={form.company_registration_number} onChange={set('company_registration_number')} /></div>
                 <div><label className={lbl}>VAT Reg. Number</label><input className={inp} value={form.vat_registration_number} onChange={set('vat_registration_number')} /></div>
               </div>
@@ -234,8 +234,8 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
           {/* Bank */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Bank Details</p>
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-3 sm:col-span-1"><label className={lbl}>Account Name</label><input className={inp} value={form.account_name} onChange={set('account_name')} /></div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div><label className={lbl}>Account Name</label><input className={inp} value={form.account_name} onChange={set('account_name')} /></div>
               <div><label className={lbl}>Account Number</label><input className={inp} value={form.account_number} onChange={set('account_number')} /></div>
               <div><label className={lbl}>Sort Code</label><input className={inp} value={form.sort_code} onChange={set('sort_code')} /></div>
             </div>
@@ -244,7 +244,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
           {/* Emergency */}
           <div>
             <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Emergency Contact</p>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div><label className={lbl}>Contact Name</label><input className={inp} value={form.emergency_contact_name} onChange={set('emergency_contact_name')} /></div>
               <div><label className={lbl}>Relationship</label><input className={inp} value={form.emergency_contact_relationship} onChange={set('emergency_contact_relationship')} /></div>
               <div><label className={lbl}>Contact Phone</label><input type="tel" className={inp} value={form.emergency_contact_phone} onChange={set('emergency_contact_phone')} /></div>
@@ -319,7 +319,7 @@ function LinkProductionModal({ crewId, onClose, onLinked }: LinkProductionModalP
               {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
               <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
               <input type="date" className={inp} value={form.start_date} onChange={e => setForm(f => ({ ...f, start_date: e.target.value }))} />

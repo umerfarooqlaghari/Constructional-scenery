@@ -6,7 +6,10 @@ import Sidebar from './Sidebar';
 import BottomNav from './BottomNav';
 import { useAuth } from '@/contexts/AuthContext';
 
-const AUTH_PATHS = ['/login', '/signup', '/forgot-password', '/verify-otp', '/reset-password'];
+const AUTH_PATHS = ['/login', '/forgot-password', '/verify-otp', '/reset-password'];
+
+// Warren's Dashboard is MD-exclusive; everyone else lands on the shared Overview page.
+const homeRouteFor = (role: string) => (role === 'managing_director' ? '/dashboard' : '/overview');
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const pathname  = usePathname();
@@ -18,7 +21,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loading) return;
     if (!isAuthPage && !user) router.replace('/login');
-    if (isAuthPage && user)   router.replace('/dashboard');
+    if (isAuthPage && user)   router.replace(homeRouteFor(user.role));
   }, [loading, user, isAuthPage, router]);
 
   if (loading) {

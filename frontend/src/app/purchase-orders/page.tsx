@@ -447,10 +447,10 @@ export default function PurchaseOrdersPage() {
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
 
           {/* Toolbar */}
-          <div className="flex flex-wrap items-center justify-between px-5 py-4 border-b border-slate-100 gap-3">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between px-5 py-4 border-b border-slate-100 gap-3">
             <div className="flex items-center gap-2 flex-wrap">
               {/* Status tabs */}
-              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1">
+              <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-1 flex-wrap">
                 {STATUS_TABS.filter(tab =>
                 !isMD &&
                 (tab.value !== 'pending' || isAccountant)
@@ -469,7 +469,7 @@ export default function PurchaseOrdersPage() {
                 ))}
               </div>
               {/* Search */}
-              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-56">
+              <div className="flex items-center gap-2 bg-slate-100 rounded-lg px-3 py-2 w-full sm:w-56">
                 <Search size={14} className="text-slate-400 flex-shrink-0" />
                 <input
                   type="text"
@@ -507,7 +507,7 @@ export default function PurchaseOrdersPage() {
             {isCoordinator && (
               <button
                 onClick={() => { setShowNewModal(true); setFormError(''); setNewForm(EMPTY_FORM); }}
-                className="flex items-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium"
+                className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
               >
                 <Plus size={14} />
                 New PO
@@ -933,7 +933,7 @@ export default function PurchaseOrdersPage() {
                       placeholder="e.g. SUP-001"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
                     <input
                       type="email"
@@ -950,7 +950,7 @@ export default function PurchaseOrdersPage() {
               <div className="space-y-3">
                 <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Address</h3>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Street Name</label>
                     <input
                       type="text"
@@ -1052,7 +1052,7 @@ export default function PurchaseOrdersPage() {
                       placeholder="e.g. MAT-001"
                     />
                   </div>
-                  <div className="col-span-2">
+                  <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                     <textarea
                       value={newForm.description}
@@ -1068,7 +1068,7 @@ export default function PurchaseOrdersPage() {
               {/* Financials */}
               <div className="space-y-3">
                 <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Financials</h3>
-                <div className="grid grid-cols-3 gap-3">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Net Amount (£) <span className="text-red-500">*</span></label>
                     <input
@@ -1302,7 +1302,7 @@ export default function PurchaseOrdersPage() {
               {/* Financials */}
               <div>
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Financials</p>
-                <div className="grid grid-cols-3 gap-4">
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Net (£) *</label>
                     <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.net_amount} onChange={e => setEditForm(f => ({ ...f, net_amount: e.target.value }))} />
