@@ -129,6 +129,10 @@ function EditProductionModal({ production, onClose, onSaved }: EditProductionMod
 
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
+      setError('End date cannot be before start date.');
+      return;
+    }
     setSaving(true); setError('');
     try {
       const updated = await productionsApi.update(production.id, {
@@ -278,6 +282,7 @@ function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, on
   const submit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.set_name.trim()) { setError('Set name is required.'); return; }
+    if (!form.handover_date) { setError('Handover date is required.'); return; }
     if (setNumError || dateError) { setError('Please fix the errors above.'); return; }
     setSaving(true); setError('');
     try {
@@ -327,7 +332,7 @@ function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, on
             <input className={inputCls} placeholder="W/E 18 May" value={form.shoot_week} onChange={f('shoot_week')} />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Handover Date</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Handover Date *</label>
             <input
               type="date"
               className={`${inputCls} ${dateError ? 'border-red-400' : ''}`}
@@ -338,7 +343,7 @@ function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, on
             {dateError && <p className="text-red-500 text-xs mt-1">{dateError}</p>}
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Status</label>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Status *</label>
             <select className={inputCls} value={form.completion_status} onChange={f('completion_status')}>
               {(Object.keys(SET_STATUS_CONFIG) as SetStatus[]).map(s => (
                 <option key={s} value={s}>{SET_STATUS_CONFIG[s].label}</option>
@@ -862,9 +867,9 @@ export default function ProductionDetailPage() {
   useEffect(() => { load(); }, [load]);
 
   const handleAddSet = async (data: Partial<ProductionSet>) => {
-    const newSet = await productionsApi.createSet(id, data);
-    setProduction(p => p ? { ...p, sets: [...p.sets, newSet], total_sets: (p.total_sets ?? 0) + 1 } : p);
+    await productionsApi.createSet(id, data);
     setSlideOver(null);
+    load();
   };
 
   const handleUpdateSet = async (setId: string, data: Partial<ProductionSet>) => {

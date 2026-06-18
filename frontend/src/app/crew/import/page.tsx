@@ -131,12 +131,28 @@ function UploadStep({ onPreview }: UploadStepProps) {
         <FileText size={15} className="text-blue-500 flex-shrink-0" />
         <span className="text-blue-700 text-xs">
           Not sure of the format?{' '}
-          <a
-            href="/api/crew/import/template"
-            className="font-semibold underline underline-offset-2 hover:text-blue-900"
+          <button
+            type="button"
+            className="font-semibold underline underline-offset-2 hover:text-blue-900 cursor-pointer"
+            onClick={async () => {
+              const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+              const res = await fetch('/api/crew/import/template', {
+                headers: token ? { Authorization: `Bearer ${token}` } : {},
+              });
+              if (!res.ok) return;
+              const blob = await res.blob();
+              const url = URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = 'crew_import_template.csv';
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }}
           >
             Download CSV template
-          </a>
+          </button>
         </span>
       </div>
 

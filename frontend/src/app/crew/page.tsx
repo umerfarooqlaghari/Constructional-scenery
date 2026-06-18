@@ -116,6 +116,10 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
       setError('Please enter or select a rank.');
       return;
     }
+    if (form.date_of_birth && new Date(form.date_of_birth) > new Date()) {
+      setError('Date of birth cannot be in the future.');
+      return;
+    }
     setSaving(true);
     setError('');
     try {
@@ -193,7 +197,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
             </div>
             <div className="mt-4">
               <label className={labelCls}>Date of Birth</label>
-              <input type="date" className={inputCls} value={form.date_of_birth} onChange={set('date_of_birth')} />
+              <input type="date" className={inputCls} value={form.date_of_birth} onChange={set('date_of_birth')} max={new Date().toISOString().split('T')[0]} />
             </div>
           </div>
 

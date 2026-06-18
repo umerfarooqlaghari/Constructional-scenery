@@ -434,6 +434,7 @@ export default function SettingsPage() {
 
   const [settings, setSettings] = useState<SettingsMap>({});
   const [settingsLoading, setSettingsLoading] = useState(true);
+  const [settingsError, setSettingsError] = useState('');
 
   const [ratios, setRatios] = useState<RatioRow[]>([]);
   const [ratiosLoading, setRatiosLoading] = useState(true);
@@ -447,11 +448,12 @@ export default function SettingsPage() {
 
   const loadSettings = useCallback(async () => {
     setSettingsLoading(true);
+    setSettingsError('');
     try {
       const data = await settingsApi.get();
       setSettings(data);
-    } catch {
-      // non-fatal
+    } catch (err: unknown) {
+      setSettingsError(err instanceof Error ? err.message : 'Failed to load settings');
     } finally {
       setSettingsLoading(false);
     }
@@ -486,6 +488,12 @@ export default function SettingsPage() {
       <main className="flex-1 p-4 md:p-6 space-y-5">
 
         {/* Section 1 — Handover Alert Days */}
+        {settingsError && (
+          <div className="flex items-center gap-2 bg-red-50 border border-red-200 rounded-xl px-4 py-3 text-sm text-red-700">
+            <AlertCircle size={15} className="flex-shrink-0" />
+            {settingsError}
+          </div>
+        )}
         {settingsLoading ? (
           <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3">
             <div className="h-4 animate-pulse bg-slate-200 rounded w-40" />

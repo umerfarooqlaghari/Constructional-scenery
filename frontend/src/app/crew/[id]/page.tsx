@@ -165,7 +165,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
               <label className={lbl}>Email</label><input type="email" className={inp} value={form.email} onChange={set('email')} />
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-4">
-              <div><label className={lbl}>Date of Birth</label><input type="date" className={inp} value={form.date_of_birth} onChange={set('date_of_birth')} /></div>
+              <div><label className={lbl}>Date of Birth</label><input type="date" className={inp} value={form.date_of_birth} onChange={set('date_of_birth')} max={new Date().toISOString().split('T')[0]} /></div>
               <div><label className={lbl}>Home Address</label><input className={inp} value={form.home_address} onChange={set('home_address')} /></div>
             </div>
           </div>

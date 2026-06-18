@@ -121,6 +121,10 @@ function NewProductionModal({ onClose, onCreated }: NewProductionModalProps) {
     e.preventDefault();
     if (!form.name.trim()) { setError('Production name is required.'); return; }
     if (!form.contract_type) { setError('Please select a contract type.'); return; }
+    if (form.start_date && form.end_date && new Date(form.end_date) < new Date(form.start_date)) {
+      setError('End date cannot be before start date.');
+      return;
+    }
     setSaving(true); setError('');
     try {
       await productionsApi.create({
