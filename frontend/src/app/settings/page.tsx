@@ -211,7 +211,249 @@ function HandoverAlertSection({ settings, onSaved }: HandoverAlertSectionProps) 
   );
 }
 
-// ─── Section 2: Percentometer Ratios ─────────────────────────────────────────
+// ─── Section 2: Company Details ──────────────────────────────────────────────
+
+interface CompanyDetailsSectionProps {
+  settings: SettingsMap;
+  onSaved: () => void;
+}
+
+function CompanyDetailsSection({ settings, onSaved }: CompanyDetailsSectionProps) {
+  const rawName  = settings['company_name'];
+  const rawEmail = settings['report_contact_email'];
+
+  const initName  = () => (typeof rawName?.value  === 'string' ? rawName.value  : '');
+  const initEmail = () => (typeof rawEmail?.value === 'string' ? rawEmail.value : '');
+
+  const [editing, setEditing] = useState(false);
+  const [name,    setName]    = useState(initName);
+  const [email,   setEmail]   = useState(initEmail);
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    if (!editing) { setName(initName()); setEmail(initEmail()); }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
+
+  const save = async () => {
+    setSaving(true); setError('');
+    try {
+      await Promise.all([
+        settingsApi.patch('company_name',          name.trim()  || ''),
+        settingsApi.patch('report_contact_email',  email.trim() || ''),
+      ]);
+      setEditing(false);
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => { setName(initName()); setEmail(initEmail()); setError(''); setEditing(false); };
+
+  const updatedAt = rawName?.updated_at ?? rawEmail?.updated_at ?? null;
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-slate-900 font-semibold text-sm">Company Details</h2>
+          <p className="text-slate-400 text-xs mt-0.5">
+            Shown on PDF and Excel exports.
+            {updatedAt && <span className="ml-2">Last updated {fmtDate(updatedAt)}.</span>}
+          </p>
+        </div>
+        {!editing && (
+          <button
+            onClick={() => { setEditing(true); setError(''); }}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
+          >
+            <Pencil size={12} /> Edit
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-red-600 text-xs bg-red-50 rounded-lg px-3 py-2 mb-3">{error}</p>
+      )}
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Company Name</label>
+            <input
+              className={inputCls}
+              placeholder="e.g. Deepsian Productions Ltd"
+              value={name}
+              onChange={e => setName(e.target.value)}
+            />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Report Contact Email</label>
+            <input
+              type="email"
+              className={inputCls}
+              placeholder="e.g. accounts@company.co.uk"
+              value={email}
+              onChange={e => setEmail(e.target.value)}
+            />
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              Save
+            </button>
+            <button
+              onClick={cancel}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs text-slate-600 hover:text-slate-800 transition-colors"
+            >
+              <X size={12} /> Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <dl className="divide-y divide-slate-100">
+          <div className="flex items-center justify-between py-2.5">
+            <dt className="text-xs text-slate-500">Company Name</dt>
+            <dd className="text-sm font-medium text-slate-800">
+              {initName() || <span className="text-slate-400 font-normal italic">Not set</span>}
+            </dd>
+          </div>
+          <div className="flex items-center justify-between py-2.5">
+            <dt className="text-xs text-slate-500">Report Contact Email</dt>
+            <dd className="text-sm font-medium text-slate-800">
+              {initEmail() || <span className="text-slate-400 font-normal italic">Not set</span>}
+            </dd>
+          </div>
+        </dl>
+      )}
+    </div>
+  );
+}
+
+// ─── Section 3: Pay Run Defaults ─────────────────────────────────────────────
+
+interface PayRunDefaultsSectionProps {
+  settings: SettingsMap;
+  onSaved: () => void;
+}
+
+function PayRunDefaultsSection({ settings, onSaved }: PayRunDefaultsSectionProps) {
+  const rawRate = settings['default_paye_rate'];
+  const currentRate = typeof rawRate?.value === 'number' ? rawRate.value : 20;
+
+  const [editing, setEditing] = useState(false);
+  const [rate,    setRate]    = useState(String(currentRate));
+  const [saving,  setSaving]  = useState(false);
+  const [error,   setError]   = useState('');
+
+  useEffect(() => {
+    if (!editing) setRate(String(typeof rawRate?.value === 'number' ? rawRate.value : 20));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings]);
+
+  const save = async () => {
+    const parsed = parseFloat(rate);
+    if (isNaN(parsed) || parsed < 0 || parsed > 100) {
+      setError('Rate must be a number between 0 and 100.');
+      return;
+    }
+    setSaving(true); setError('');
+    try {
+      await settingsApi.patch('default_paye_rate', parsed);
+      setEditing(false);
+      onSaved();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const cancel = () => { setRate(String(currentRate)); setError(''); setEditing(false); };
+
+  return (
+    <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+      <div className="flex items-start justify-between gap-3 mb-4">
+        <div>
+          <h2 className="text-slate-900 font-semibold text-sm">Pay Run Defaults</h2>
+          <p className="text-slate-400 text-xs mt-0.5">
+            Default values pre-filled when adding new PAYE crew members.
+          </p>
+        </div>
+        {!editing && (
+          <button
+            onClick={() => { setEditing(true); setError(''); }}
+            className="flex items-center gap-1 px-3 py-1.5 text-xs text-slate-500 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors flex-shrink-0"
+          >
+            <Pencil size={12} /> Edit
+          </button>
+        )}
+      </div>
+
+      {error && (
+        <p className="text-red-600 text-xs bg-red-50 rounded-lg px-3 py-2 mb-3">{error}</p>
+      )}
+
+      {editing ? (
+        <div className="space-y-3">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">
+              Default PAYE Withholding Rate (%)
+            </label>
+            <input
+              type="number"
+              min={0}
+              max={100}
+              step={0.5}
+              className={inputCls}
+              placeholder="20"
+              value={rate}
+              onChange={e => setRate(e.target.value)}
+            />
+            <p className="text-slate-400 text-xs mt-1">
+              Standard rate is 20%. Used as the default when creating a new PAYE crew member.
+            </p>
+          </div>
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={save}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+            >
+              {saving ? <Loader2 size={12} className="animate-spin" /> : <Check size={12} />}
+              Save
+            </button>
+            <button
+              onClick={cancel}
+              disabled={saving}
+              className="flex items-center gap-1.5 px-3 py-2 text-xs text-slate-600 hover:text-slate-800 transition-colors"
+            >
+              <X size={12} /> Cancel
+            </button>
+          </div>
+        </div>
+      ) : (
+        <dl className="divide-y divide-slate-100">
+          <div className="flex items-center justify-between py-2.5">
+            <dt className="text-xs text-slate-500">Default PAYE Withholding Rate</dt>
+            <dd className="text-sm font-semibold text-slate-800 tabular-nums">{currentRate}%</dd>
+          </div>
+        </dl>
+      )}
+    </div>
+  );
+}
+
+// ─── Section 4: Percentometer Ratios ─────────────────────────────────────────
 
 interface PercentometerSectionProps {
   ratios: RatioRow[];
@@ -495,20 +737,28 @@ export default function SettingsPage() {
           </div>
         )}
         {settingsLoading ? (
-          <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3">
-            <div className="h-4 animate-pulse bg-slate-200 rounded w-40" />
-            <div className="h-3 animate-pulse bg-slate-200 rounded w-64" />
-            <div className="flex gap-2 mt-3">
-              {[1, 2].map(i => (
-                <div key={i} className="h-7 w-16 animate-pulse bg-slate-200 rounded-full" />
-              ))}
-            </div>
-          </div>
+          <>
+            {[1, 2, 3].map(i => (
+              <div key={i} className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-3">
+                <div className="h-4 animate-pulse bg-slate-200 rounded w-40" />
+                <div className="h-3 animate-pulse bg-slate-200 rounded w-64" />
+                <div className="flex gap-2 mt-3">
+                  {[1, 2].map(j => (
+                    <div key={j} className="h-7 w-20 animate-pulse bg-slate-200 rounded" />
+                  ))}
+                </div>
+              </div>
+            ))}
+          </>
         ) : (
-          <HandoverAlertSection settings={settings} onSaved={loadSettings} />
+          <>
+            <HandoverAlertSection  settings={settings} onSaved={loadSettings} />
+            <CompanyDetailsSection settings={settings} onSaved={loadSettings} />
+            <PayRunDefaultsSection settings={settings} onSaved={loadSettings} />
+          </>
         )}
 
-        {/* Section 2 — Percentometer Ratios (MD only) */}
+        {/* Percentometer Ratios (MD only) */}
         {isMD && (
           <PercentometerSection
             ratios={ratios}

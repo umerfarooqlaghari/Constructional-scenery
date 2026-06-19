@@ -6,7 +6,7 @@ import TopBar from '@/components/TopBar';
 import {
   Plus, Search, ChevronRight, X, Loader2, Users, UserCheck, Briefcase, Building2, Trash2,
 } from 'lucide-react';
-import { crewApi, productionsApi, crewRatesApi, CrewMember, CrewRate, EmploymentStatus, Production } from '@/lib/api';
+import { crewApi, productionsApi, crewRatesApi, settingsApi, CrewMember, CrewRate, EmploymentStatus, Production } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -46,6 +46,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
   const [tradesLoading, setTradesLoading] = useState(true);
   const [allRates, setAllRates] = useState<CrewRate[]>([]);
 
+  const [defaultPayeRate, setDefaultPayeRate] = useState('20');
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -74,6 +75,12 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
       .catch(() => setTrades({ bectu: {}, non_bectu: [] }))
       .finally(() => setTradesLoading(false));
     crewRatesApi.list({ current: 'true' }).then(setAllRates).catch(() => {});
+    settingsApi.get().then(s => {
+      const rate = s['default_paye_rate'];
+      const val = typeof rate?.value === 'number' ? String(rate.value) : '20';
+      setDefaultPayeRate(val);
+      setForm(f => ({ ...f, paye_withholding_rate: val }));
+    }).catch(() => {});
   }, []);
 
   const set = (k: keyof typeof form) => (
@@ -83,7 +90,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
       const updated = { ...f, [k]: e.target.value };
       if (k === 'crew_trade') updated.crew_rank = '';
       if (k === 'employment_status') {
-        updated.paye_withholding_rate = e.target.value === 'paye' ? '20' : '0';
+        updated.paye_withholding_rate = e.target.value === 'paye' ? defaultPayeRate : '0';
         updated.crew_trade = '';
         updated.crew_rank = '';
       }
