@@ -210,6 +210,23 @@ function CostReportContent() {
     });
   };
 
+  const exportPDF = async () => {
+    if (!report || !selectedId) return;
+    const params: Record<string, string> = {};
+    if (asAtDate) params.as_at = asAtDate;
+    const res = await costReportApi.exportPDF(selectedId, params);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `cost-report-${selectedId}-${new Date().toISOString().slice(0, 10)}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
   const exportCSV = () => {
     if (!report) return;
     const header = ['Date', 'Supplier', 'Set/Account', 'Description', 'Ex VAT', 'VAT', 'Total', 'Method'];
@@ -350,7 +367,11 @@ function CostReportContent() {
             >
               <Download size={14} /> Export CSV
             </button>
-            <button className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm">
+            <button
+              onClick={exportPDF}
+              disabled={!report}
+              className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
+            >
               <Download size={14} /> Export PDF
             </button>
           </div>

@@ -590,12 +590,13 @@ const bulkDistribute = async (req, res) => {
 
     const results = { sent: [], failed: [], no_email: [] };
 
-    for (const ts of timesheets) {
+    await Promise.allSettled(timesheets.map(async ts => {
+      const crewName = `${ts.first_name} ${ts.last_name}`;
+
       if (!ts.email) {
-        // Advance to distributed even without email (accountant can still finalise)
         await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
-        results.no_email.push(`${ts.first_name} ${ts.last_name}`);
-        continue;
+        results.no_email.push(crewName);
+        return;
       }
 
       const { rows: entries } = await db.query(
@@ -605,16 +606,15 @@ const bulkDistribute = async (req, res) => {
 
       try {
         await sendTimesheetEmail(ts, entries);
-        await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
-        results.sent.push(`${ts.first_name} ${ts.last_name}`);
+        await logEmail('timesheet_distribution', ts.id, ts.email, crewName, true);
+        results.sent.push(crewName);
       } catch (emailErr) {
-        console.error(`Timesheet email failed for ${ts.first_name} ${ts.last_name}:`, emailErr.message);
-        await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, false, emailErr.message);
-        results.failed.push(`${ts.first_name} ${ts.last_name}`);
+        console.error(`Timesheet email failed for ${crewName}:`, emailErr.message);
+        await logEmail('timesheet_distribution', ts.id, ts.email, crewName, false, emailErr.message);
+        results.failed.push(crewName);
       }
-      // Always advance to sent so the workflow is not blocked by SMTP failures
       await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
-    }
+    }));
 
     res.json({
       message:      `${results.sent.length} timesheet(s) distributed`,

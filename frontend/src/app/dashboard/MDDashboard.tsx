@@ -47,19 +47,21 @@ function CardSkeleton() {
   );
 }
 
+type POSpendData = { total_approved_today: number; total_approved_this_week: number; breakdown: Array<{ production_name: string; amount: number }> };
+
 export default function MDDashboard() {
   const [data, setData]         = useState<DashboardData | null>(null);
   const [costSummary, setCost]  = useState<CostSummaryItem[] | null>(null);
   const [variance, setVariance] = useState<ForecastVarianceItem[] | null>(null);
   const [weeklyPL, setWeeklyPL] = useState<WeeklyPLProduction[] | null>(null);
   const [labour, setLabour]     = useState<{ current_week_ending: string; total_labour_this_week: number; breakdown: Array<{ production_name: string; amount: number; status: 'approved' | 'pending' }> } | null>(null);
-  const [crew, setCrew]         = useState<{ total_active_crew: number; breakdown: Array<{ production_name: string; crew_count: number }>; note?: string } | null>(null);
+  const [crew, setCrew]         = useState<{ total_active_crew: number; breakdown: Array<{ production_name: string; crew_count: number }> } | null>(null);
+  const [poSpend, setPoSpend]   = useState<POSpendData | null>(null);
   const [loading, setLoading]   = useState(true);
 
   const today = new Date().toLocaleDateString('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' });
 
   useEffect(() => {
-    // Fetch all panels independently so a slow query doesn't block others
     Promise.allSettled([
       dashboardApi.get().then(setData),
       dashboardNewApi.costSummary().then(setCost),
@@ -67,6 +69,7 @@ export default function MDDashboard() {
       dashboardNewApi.weeklyPL().then(setWeeklyPL),
       dashboardNewApi.labourCosts().then(setLabour),
       dashboardNewApi.crewHeadcount().then(setCrew),
+      dashboardNewApi.poSpend().then(setPoSpend),
     ]).finally(() => setLoading(false));
   }, []);
 
@@ -350,6 +353,41 @@ export default function MDDashboard() {
           </div>
         )}
 
+        {/* ── PO Spend ──────────────────────────────────────────────────────── */}
+        {!loading && poSpend && (
+          <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">
+            <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h2 className="text-slate-900 font-semibold text-sm">PO Approved Spend</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Total approved purchase orders</p>
+              </div>
+              <Link href="/purchase-orders" className="text-blue-600 text-xs font-medium flex items-center gap-1 hover:underline">
+                View POs <ArrowUpRight size={12} />
+              </Link>
+            </div>
+            <div className="px-5 py-4 grid grid-cols-2 gap-4">
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <p className="text-slate-500 text-xs mb-1">Today</p>
+                <p className="text-slate-900 font-bold text-lg">{fmt(poSpend.total_approved_today)}</p>
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <p className="text-slate-500 text-xs mb-1">This Week</p>
+                <p className="text-slate-900 font-bold text-lg">{fmt(poSpend.total_approved_this_week)}</p>
+              </div>
+            </div>
+            {poSpend.breakdown.length > 0 && (
+              <div className="border-t border-slate-100 divide-y divide-slate-100">
+                {poSpend.breakdown.map((b) => (
+                  <div key={b.production_name} className="px-5 py-3 flex items-center justify-between">
+                    <p className="text-slate-700 text-sm">{b.production_name}</p>
+                    <p className="text-slate-900 text-sm font-semibold">{fmt(b.amount)}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* ── Cash Flow placeholder ─────────────────────────────────────────── */}
         {!loading && (
           <div className="bg-slate-50 border border-dashed border-slate-300 rounded-xl px-5 py-4 flex items-center gap-3">
@@ -358,7 +396,7 @@ export default function MDDashboard() {
             </div>
             <div>
               <p className="text-slate-600 text-sm font-medium">Cash Flow</p>
-              <p className="text-slate-400 text-xs">Xero integration pending — to be quoted separately.</p>
+              <p className="text-slate-400 text-xs">Coming soon</p>
             </div>
           </div>
         )}

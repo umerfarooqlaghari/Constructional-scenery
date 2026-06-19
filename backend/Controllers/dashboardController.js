@@ -362,27 +362,22 @@ const getLabourCosts = async (req, res) => {
 };
 
 // ─── GET /api/dashboard/crew-headcount  (MD only) ────────────────────────────
-// Active crew = distinct crew members with a timesheet in the current week.
+// Active crew = distinct crew members linked to active productions (no end_date set).
 const getCrewHeadcount = async (req, res) => {
-  const weekEnd = getWeekEnd();
   try {
     const { rows } = await db.query(
       `SELECT p.name AS prod_name,
-              COUNT(DISTINCT t.crew_member_id) AS crew_count
-       FROM timesheets t
-       JOIN productions p ON t.production_id = p.id
-       WHERE t.week_ending_date = $1
+              COUNT(DISTINCT pc.crew_member_id) AS crew_count
+       FROM production_crew pc
+       JOIN productions p ON pc.production_id = p.id
+       WHERE p.status IN ('pre_production', 'active_build', 'strike')
+         AND pc.end_date IS NULL
        GROUP BY p.name
-       ORDER BY p.name`,
-      [weekEnd]
+       ORDER BY p.name`
     );
 
-    const breakdown       = rows.map(r => ({ production_name: r.prod_name, crew_count: parseInt(r.crew_count, 10) }));
+    const breakdown         = rows.map(r => ({ production_name: r.prod_name, crew_count: parseInt(r.crew_count, 10) }));
     const total_active_crew = breakdown.reduce((s, r) => s + r.crew_count, 0);
-
-    if (total_active_crew === 0) {
-      return res.json({ total_active_crew: 0, breakdown: [], note: 'No timesheets this week yet' });
-    }
 
     res.json({ total_active_crew, breakdown });
   } catch (err) {

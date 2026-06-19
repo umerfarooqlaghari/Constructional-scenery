@@ -383,8 +383,7 @@ const exportCsv = async (req, res) => {
 
     const weekEnding = String(payRun.week_ending_date).split('T')[0];
 
-    // No header row — bank upload format
-    // Reference = crew_number + week_ending_date (e.g. C001-2026-01-19)
+    const header = 'Sort Code,Account Number,Account Name,Amount,Reference #';
     const csvRows = items.map(item => [
       decrypt(item.sort_code)      || '',
       decrypt(item.account_number) || '',
@@ -397,7 +396,7 @@ const exportCsv = async (req, res) => {
     const filename = `PayRun_${safeName}_w-e-${payRun.week_ending_date}.csv`;
     res.setHeader('Content-Type', 'text/csv; charset=utf-8');
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
-    res.send(csvRows.join('\r\n'));
+    res.send([header, ...csvRows].join('\r\n'));
   } catch (err) {
     console.error('exportCsv:', err);
     res.status(500).json({ error: err.message });

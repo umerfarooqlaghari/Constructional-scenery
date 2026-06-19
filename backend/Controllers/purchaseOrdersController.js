@@ -335,14 +335,18 @@ const issuePO = async (req, res) => {
 };
 
 // ─── POST /api/purchase-orders/:id/submit ────────────────────────────────────
-// Advances draft → submitted to signal the PO is ready for approval.
+// Advances draft → submitted and emails the PO PDF to the supplier if an email is set.
 const submitPO = async (req, res) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
 
     const { rows: [po] } = await client.query(
-      'SELECT * FROM purchase_orders WHERE id = $1', [req.params.id]
+      `SELECT po.*, p.name AS prod_name
+       FROM purchase_orders po
+       JOIN productions p ON po.production_id = p.id
+       WHERE po.id = $1`,
+      [req.params.id]
     );
     if (!po)                    { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Purchase order not found' }); }
     if (po.status !== 'draft')  { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Only draft purchase orders can be submitted' }); }
@@ -354,6 +358,23 @@ const submitPO = async (req, res) => {
     await logStatusTransition(client, po.id, po.production_id, 'draft', 'submitted', req.user.id);
 
     await client.query('COMMIT');
+
+    // Send PO to supplier email in the background (non-blocking)
+    if (po.supplier_email) {
+      generatePoPdf(po, po.prod_name)
+        .then(pdfBuffer => {
+          const { subject, html } = templates.poIssued(po, po.prod_name);
+          return sendEmail({
+            from: '"Construct Scenery" <warren@constructscenery.co.uk>',
+            to: po.supplier_email,
+            subject,
+            html,
+            attachments: [{ filename: `${po.po_number}.pdf`, content: pdfBuffer, contentType: 'application/pdf' }],
+          });
+        })
+        .catch(emailErr => console.error('submitPO email failed:', emailErr.message));
+    }
+
     res.json({ message: 'PO submitted for approval', purchase_order: updated });
   } catch (err) {
     await client.query('ROLLBACK');

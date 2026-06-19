@@ -411,7 +411,15 @@ export default function PurchaseOrdersPage() {
   }
 
   function updateField(field: keyof NewPOForm, value: string) {
-    setNewForm((f) => ({ ...f, [field]: value }));
+    setNewForm((f) => {
+      const updated = { ...f, [field]: value };
+      if (field === 'net_amount' || field === 'vat') {
+        const net = parseFloat(field === 'net_amount' ? value : f.net_amount) || 0;
+        const vat = parseFloat(field === 'vat' ? value : f.vat) || 0;
+        updated.gross_amount = (net + vat).toFixed(2);
+      }
+      return updated;
+    });
   }
 
   return (
@@ -1094,14 +1102,14 @@ export default function PurchaseOrdersPage() {
                     />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Gross Amount (£) <span className="text-red-500">*</span></label>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Gross Amount (£) <span className="text-slate-400 font-normal">(auto)</span></label>
                     <input
                       type="number"
                       min="0"
                       step="0.01"
                       value={newForm.gross_amount}
-                      onChange={(e) => updateField('gross_amount', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                      readOnly
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 bg-slate-50 outline-none cursor-default"
                       placeholder="0.00"
                     />
                   </div>
@@ -1305,15 +1313,23 @@ export default function PurchaseOrdersPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Net (£) *</label>
-                    <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.net_amount} onChange={e => setEditForm(f => ({ ...f, net_amount: e.target.value }))} />
+                    <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.net_amount} onChange={e => setEditForm(f => {
+                      const net = parseFloat(e.target.value) || 0;
+                      const vat = parseFloat(f.vat) || 0;
+                      return { ...f, net_amount: e.target.value, gross_amount: (net + vat).toFixed(2) };
+                    })} />
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">VAT (£)</label>
-                    <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.vat} onChange={e => setEditForm(f => ({ ...f, vat: e.target.value }))} />
+                    <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.vat} onChange={e => setEditForm(f => {
+                      const net = parseFloat(f.net_amount) || 0;
+                      const vat = parseFloat(e.target.value) || 0;
+                      return { ...f, vat: e.target.value, gross_amount: (net + vat).toFixed(2) };
+                    })} />
                   </div>
                   <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Gross (£) *</label>
-                    <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.gross_amount} onChange={e => setEditForm(f => ({ ...f, gross_amount: e.target.value }))} />
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Gross (£) <span className="text-slate-400 font-normal">(auto)</span></label>
+                    <input type="number" step="0.01" min="0" readOnly className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 bg-slate-50 cursor-default" value={editForm.gross_amount} />
                   </div>
                 </div>
                 <div className="mt-4">
