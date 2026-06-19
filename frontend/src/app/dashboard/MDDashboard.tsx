@@ -222,13 +222,14 @@ export default function MDDashboard() {
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-2.5 text-xs font-semibold text-slate-500">Production</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-slate-500">Phase</th>
+                  <th className="px-3 py-2.5 text-xs font-semibold text-slate-500">Start Date</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-slate-500">End Date</th>
                   <th className="px-3 py-2.5 text-xs font-semibold text-slate-500 text-right">Days Left</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading
-                  ? Array(3).fill(0).map((_, i) => (<tr key={i}><td colSpan={4} className="px-5 py-3"><Skeleton className="h-4 w-full" /></td></tr>))
+                  ? Array(3).fill(0).map((_, i) => (<tr key={i}><td colSpan={5} className="px-5 py-3"><Skeleton className="h-4 w-full" /></td></tr>))
                   : data?.production_pipeline.map((p) => (
                     <tr key={p.id} className="hover:bg-slate-50/50 transition-colors">
                       <td className="px-5 py-3.5 text-slate-900 font-medium text-sm">{p.name}</td>
@@ -237,6 +238,7 @@ export default function MDDashboard() {
                           {statusLabel[p.current_phase] ?? p.current_phase}
                         </span>
                       </td>
+                      <td className="px-3 py-3.5 text-slate-500 text-xs">{p.start_date ? fmtDate(p.start_date) : '—'}</td>
                       <td className="px-3 py-3.5 text-slate-500 text-xs">{fmtDate(p.end_date)}</td>
                       <td className="px-3 py-3.5 text-right">
                         {p.days_remaining === null ? <span className="text-slate-400 text-xs">—</span>

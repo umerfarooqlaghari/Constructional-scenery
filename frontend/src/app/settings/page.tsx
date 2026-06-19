@@ -758,15 +758,6 @@ export default function SettingsPage() {
           </>
         )}
 
-        {/* Percentometer Ratios (MD only) */}
-        {isMD && (
-          <PercentometerSection
-            ratios={ratios}
-            loading={ratiosLoading}
-            onSaved={loadRatios}
-          />
-        )}
-
       </main>
     </>
   );

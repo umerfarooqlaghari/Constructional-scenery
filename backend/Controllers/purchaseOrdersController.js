@@ -309,7 +309,6 @@ const issuePO = async (req, res) => {
     // Send email with PDF attachment
     const { subject, html } = templates.poIssued(po, po.prod_name);
     await sendEmail({
-      from:    '"Construct Scenery" <warren@constructscenery.co.uk>',
       to:      po.supplier_email,
       subject,
       html,
@@ -365,7 +364,6 @@ const submitPO = async (req, res) => {
         .then(pdfBuffer => {
           const { subject, html } = templates.poIssued(po, po.prod_name);
           return sendEmail({
-            from: '"Construct Scenery" <warren@constructscenery.co.uk>',
             to: po.supplier_email,
             subject,
             html,

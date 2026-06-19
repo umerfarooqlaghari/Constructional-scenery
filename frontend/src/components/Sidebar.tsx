@@ -4,8 +4,8 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clapperboard, ShoppingCart, Users, ClipboardList,
-  BarChart2, TrendingUp, ChevronRight, LogOut, CreditCard,
-  Banknote, BookOpen, Upload, Settings, ShieldCheck,
+  BarChart2, ChevronRight, LogOut, CreditCard,
+  Banknote, BookOpen, Upload, ShieldCheck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -25,7 +25,6 @@ const NAV_GROUPS = [
       { href: '/purchase-orders',    label: 'Purchase Orders',   icon: ShoppingCart, roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
       { href: '/cost-report',        label: 'Cost Report',       icon: BarChart2,    roles: ['managing_director', 'construction_accountant'] },
       { href: '/pay-runs',           label: 'Pay Runs',          icon: Banknote,     roles: ['managing_director', 'construction_accountant'] },
-      { href: '/forecasting',        label: 'Forecasting',       icon: TrendingUp,   roles: ['managing_director', 'construction_accountant'] },
       { href: '/supplier-catalogue', label: 'Supplier Catalogue',icon: BookOpen,     roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
@@ -41,7 +40,6 @@ const NAV_GROUPS = [
     label: 'Settings',
     items: [
       { href: '/settings/rate-card', label: 'Rate Card',        icon: CreditCard,   roles: ['managing_director', 'construction_accountant'] },
-      { href: '/settings',           label: 'System Settings',  icon: Settings,     roles: ['managing_director', 'construction_coordinator'] },
       { href: '/settings/users',     label: 'User Accounts',    icon: ShieldCheck,  roles: ['managing_director'] },
     ],
   },
