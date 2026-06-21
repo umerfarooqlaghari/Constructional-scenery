@@ -65,7 +65,7 @@ const generateTimesheetListPdf = (rows, filterSummary) => {
     };
 
     // ── Page 1 document header ─────────────────────────────────────────────────
-    try { doc.image(LOGO_PATH, L, 40, { width: 32, height: 32 }); } catch (_) { /* logo optional */ }
+    try { doc.image(LOGO_PATH, L, 40, { width: 32, height: 32 }); } catch (e) { console.error('Timesheet list PDF logo load failed:', e.message); }
     doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', L + 38, 45);
     doc.fontSize(8.5).font('Helvetica').fillColor('#64748b').text('Construct Scenery Limited', L + 38, 66);
     doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')

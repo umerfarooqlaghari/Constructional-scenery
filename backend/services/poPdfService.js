@@ -21,7 +21,7 @@ const generatePoPdf = (po, productionName) => {
     doc.on('error', reject);
 
     // ── Header ──────────────────────────────────────────────────────────────────
-    try { doc.image(LOGO_PATH, 50, 44, { width: 34, height: 34 }); } catch (_) { /* logo optional */ }
+    try { doc.image(LOGO_PATH, 50, 44, { width: 34, height: 34 }); } catch (e) { console.error('PO PDF logo load failed:', e.message); }
     doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', 90, 50);
     doc.fontSize(9).font('Helvetica').fillColor('#64748b')
        .text('Construct Scenery Limited', 90, 72)

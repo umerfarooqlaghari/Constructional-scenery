@@ -34,7 +34,7 @@ const generateCostReportPdf = ({ production, metrics, supplierEntries, labourEnt
     let   pageNum = 1;
 
     const drawPageHeader = (title) => {
-      try { doc.image(LOGO_PATH, L, 24, { width: 28, height: 28 }); } catch (_) { /* logo optional */ }
+      try { doc.image(LOGO_PATH, L, 24, { width: 28, height: 28 }); } catch (e) { console.error('Cost report PDF logo load failed:', e.message); }
       doc.fontSize(14).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', L + 33, 28);
       doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text('Construct Scenery Limited', L + 33, 46);
       doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a')
