@@ -5,6 +5,9 @@
  */
 
 const PDFDocument = require('pdfkit');
+const path        = require('path');
+
+const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
 
 const fmt     = (n) => `£${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -62,8 +65,9 @@ const generateTimesheetListPdf = (rows, filterSummary) => {
     };
 
     // ── Page 1 document header ─────────────────────────────────────────────────
-    doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text('DEEPSIAN', L, 45);
-    doc.fontSize(8.5).font('Helvetica').fillColor('#64748b').text('Construct Scenery Limited', L, 70);
+    try { doc.image(LOGO_PATH, L, 40, { width: 32, height: 32 }); } catch (_) { /* logo optional */ }
+    doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', L + 38, 45);
+    doc.fontSize(8.5).font('Helvetica').fillColor('#64748b').text('Construct Scenery Limited', L + 38, 66);
     doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a')
        .text('TIMESHEETS', L, 45, { align: 'right', width: W });
     doc.fontSize(8).font('Helvetica').fillColor('#475569')

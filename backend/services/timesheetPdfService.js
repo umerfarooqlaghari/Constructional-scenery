@@ -4,6 +4,9 @@
  */
 
 const PDFDocument = require('pdfkit');
+const path        = require('path');
+
+const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
 
 const fmt      = (n) => `£${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate  = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -63,10 +66,11 @@ const generateTimesheetPdf = (ts, entries) => {
     const W = 495; // 595.28 - 2×50
 
     // ── Page header ────────────────────────────────────────────────────────────
-    doc.fontSize(22).font('Helvetica-Bold').fillColor('#0f172a').text('DEEPSIAN', L, 45);
+    try { doc.image(LOGO_PATH, L, 40, { width: 32, height: 32 }); } catch (_) { /* logo optional */ }
+    doc.fontSize(16).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', L + 38, 45);
     doc.fontSize(8.5).font('Helvetica').fillColor('#64748b')
-       .text('Construct Scenery Limited', L, 70)
-       .text('invoice@constructscenery.co.uk', L, 80);
+       .text('Construct Scenery Limited', L + 38, 65)
+       .text('invoice@constructscenery.co.uk', L + 38, 75);
 
     doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a')
        .text('TIMESHEET', L, 45, { align: 'right', width: W });
@@ -186,13 +190,6 @@ const generateTimesheetPdf = (ts, entries) => {
       totRow('VAT (20%)', ts.vat);
     }
     totRow('GRAND TOTAL', ts.grand_total, true, true);
-
-    // ── Signature line ─────────────────────────────────────────────────────────
-    y += 10;
-    doc.fontSize(8).font('Helvetica').fillColor('#475569').text('Crew member signature:', L, y);
-    doc.moveTo(L + 130, y + 10).lineTo(L + 350, y + 10).strokeColor('#94a3b8').lineWidth(0.5).stroke();
-    doc.text('Date:', L + 360, y);
-    doc.moveTo(L + 385, y + 10).lineTo(L + W, y + 10).strokeColor('#94a3b8').lineWidth(0.5).stroke();
 
     // ── Footer ─────────────────────────────────────────────────────────────────
     const footerY = 760;

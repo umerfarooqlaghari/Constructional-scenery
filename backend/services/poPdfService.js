@@ -4,6 +4,9 @@
  */
 
 const PDFDocument = require('pdfkit');
+const path        = require('path');
+
+const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
 
 const fmt = (n) => `£${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';
@@ -18,10 +21,11 @@ const generatePoPdf = (po, productionName) => {
     doc.on('error', reject);
 
     // ── Header ──────────────────────────────────────────────────────────────────
-    doc.fontSize(26).font('Helvetica-Bold').fillColor('#0f172a').text('DEEPSIAN', 50, 50);
+    try { doc.image(LOGO_PATH, 50, 44, { width: 34, height: 34 }); } catch (_) { /* logo optional */ }
+    doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', 90, 50);
     doc.fontSize(9).font('Helvetica').fillColor('#64748b')
-       .text('Construct Scenery Limited', 50, 82)
-       .text('info@constructscenery.co.uk', 50, 94);
+       .text('Construct Scenery Limited', 90, 72)
+       .text('info@constructscenery.co.uk', 90, 84);
 
     doc.fontSize(20).font('Helvetica-Bold').fillColor('#0f172a')
        .text('PURCHASE ORDER', 350, 50, { align: 'right' });

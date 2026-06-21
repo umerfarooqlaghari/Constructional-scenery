@@ -5,6 +5,9 @@
  */
 
 const PDFDocument = require('pdfkit');
+const path        = require('path');
+
+const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
 
 const fmt     = (n) => `£${parseFloat(n || 0).toFixed(2)}`;
 const fmtN    = (n) => parseFloat(n || 0).toFixed(2);
@@ -31,8 +34,9 @@ const generateCostReportPdf = ({ production, metrics, supplierEntries, labourEnt
     let   pageNum = 1;
 
     const drawPageHeader = (title) => {
-      doc.fontSize(18).font('Helvetica-Bold').fillColor('#0f172a').text('DEEPSIAN', L, 28);
-      doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text('Construct Scenery Limited', L, 50);
+      try { doc.image(LOGO_PATH, L, 24, { width: 28, height: 28 }); } catch (_) { /* logo optional */ }
+      doc.fontSize(14).font('Helvetica-Bold').fillColor('#0f172a').text('Construct Scenery', L + 33, 28);
+      doc.fontSize(7.5).font('Helvetica').fillColor('#64748b').text('Construct Scenery Limited', L + 33, 46);
       doc.fontSize(13).font('Helvetica-Bold').fillColor('#0f172a')
          .text(`COST REPORT — ${(production.name || '').toUpperCase()}`, L, 28, { align: 'right', width: W });
       doc.fontSize(7.5).font('Helvetica').fillColor('#475569')

@@ -178,6 +178,8 @@ export default function PurchaseOrdersPage() {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
 
+  const [submitConfirmPO, setSubmitConfirmPO] = useState<PurchaseOrder | null>(null);
+
   const [editPO, setEditPO] = useState<PurchaseOrder | null>(null);
   const [editForm, setEditForm] = useState<NewPOForm>(EMPTY_FORM);
   const [editError, setEditError] = useState('');
@@ -413,9 +415,13 @@ export default function PurchaseOrdersPage() {
   function updateField(field: keyof NewPOForm, value: string) {
     setNewForm((f) => {
       const updated = { ...f, [field]: value };
-      if (field === 'net_amount' || field === 'vat') {
-        const net = parseFloat(field === 'net_amount' ? value : f.net_amount) || 0;
-        const vat = parseFloat(field === 'vat' ? value : f.vat) || 0;
+      if (field === 'net_amount') {
+        const net = parseFloat(value) || 0;
+        updated.vat = (net * 0.20).toFixed(2);
+        updated.gross_amount = (net * 1.20).toFixed(2);
+      } else if (field === 'vat') {
+        const net = parseFloat(f.net_amount) || 0;
+        const vat = parseFloat(value) || 0;
         updated.gross_amount = (net + vat).toFixed(2);
       }
       return updated;
@@ -791,7 +797,13 @@ export default function PurchaseOrdersPage() {
                             {isCoordinator && po.status === 'draft' && (
                               <button
                                 disabled={!!busy}
-                                onClick={() => handleSubmit(po.id)}
+                                onClick={() => {
+                                  if (!po.invoice_attachment_url) {
+                                    setSubmitConfirmPO(po);
+                                  } else {
+                                    handleSubmit(po.id);
+                                  }
+                                }}
                                 className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-medium disabled:opacity-50"
                               >
                                 {busy && actionLoading === po.id + ':submit'
@@ -1315,8 +1327,7 @@ export default function PurchaseOrdersPage() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Net (£) *</label>
                     <input type="number" step="0.01" min="0" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.net_amount} onChange={e => setEditForm(f => {
                       const net = parseFloat(e.target.value) || 0;
-                      const vat = parseFloat(f.vat) || 0;
-                      return { ...f, net_amount: e.target.value, gross_amount: (net + vat).toFixed(2) };
+                      return { ...f, net_amount: e.target.value, vat: (net * 0.20).toFixed(2), gross_amount: (net * 1.20).toFixed(2) };
                     })} />
                   </div>
                   <div>
@@ -1354,6 +1365,42 @@ export default function PurchaseOrdersPage() {
               >
                 {editLoading ? <Loader2 size={14} className="animate-spin" /> : <Pencil size={14} />}
                 Save Changes
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Submit without invoice confirmation modal */}
+      {submitConfirmPO && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSubmitConfirmPO(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm">
+            <div className="px-6 pt-6 pb-2">
+              <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-50 mb-4 mx-auto">
+                <AlertCircle size={24} className="text-amber-500" />
+              </div>
+              <h2 className="text-slate-900 font-semibold text-base text-center">Submit Purchase Order without an invoice</h2>
+              <p className="text-slate-500 text-sm text-center mt-2">
+                No invoice is attached to <span className="font-medium">{submitConfirmPO.po_number}</span>. Are you sure you want to submit?
+              </p>
+            </div>
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+              <button
+                onClick={() => setSubmitConfirmPO(null)}
+                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  const id = submitConfirmPO.id;
+                  setSubmitConfirmPO(null);
+                  handleSubmit(id);
+                }}
+                className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+              >
+                Yes, Submit
               </button>
             </div>
           </div>
