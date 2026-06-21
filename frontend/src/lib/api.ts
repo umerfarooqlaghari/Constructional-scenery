@@ -968,7 +968,25 @@ export const costReportExtApi = {
     request<unknown>(`/api/cost-reports/${productionId}/weekly-pl/${weekEndingDate}`, { method: 'PUT', body: data }),
   deleteInvoice: (productionId: string, invoiceId: string) =>
     request<{ message: string }>(`/api/cost-reports/${productionId}/invoices/${invoiceId}`, { method: 'DELETE' }),
-  upsertBudget: (productionId: string, data: { margin_rate?: number; contracted_weeks?: number; budget_lines?: unknown[] }) =>
+  upsertBudget: (productionId: string, data: {
+    margin_rate?: number;
+    contracted_weeks?: number;
+    notes?: string;
+    budget_lines?: Array<{
+      account_code?: string | null;
+      description?: string;
+      weekly_cost?: number;
+      weeks?: number;
+      total?: number;
+      bectu_rate?: number | null;
+      agreed_rate?: number | null;
+      line_margin_rate?: number | null;
+      is_above_line?: boolean;
+      set_id?: string | null;
+      notes?: string | null;
+      line_type?: string;
+    }>;
+  }) =>
     request<unknown>(`/api/cost-reports/${productionId}/budget`, { method: 'POST', body: data }),
 };
 

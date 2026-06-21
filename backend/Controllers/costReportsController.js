@@ -350,34 +350,59 @@ const getCostPlus = async (req, res) => {
 
 // ─── POST /api/cost-reports/:productionId/budget ─────────────────────────────
 const upsertBudget = async (req, res) => {
-  const { margin_rate, contracted_weeks, budget_lines } = req.body;
+  const { margin_rate, contracted_weeks, notes, budget_lines } = req.body;
   const client = await db.connect();
   try {
     await client.query('BEGIN');
     const { rows: [budget] } = await client.query(
-      `INSERT INTO cost_plus_budgets (production_id, margin_rate, contracted_weeks)
-       VALUES ($1,$2,$3)
+      `INSERT INTO cost_plus_budgets (production_id, margin_rate, contracted_weeks, notes)
+       VALUES ($1,$2,$3,$4)
        ON CONFLICT (production_id)
        DO UPDATE SET
          margin_rate      = EXCLUDED.margin_rate,
          contracted_weeks = EXCLUDED.contracted_weeks,
+         notes            = EXCLUDED.notes,
          updated_at       = NOW()
        RETURNING *`,
-      [req.params.productionId, parseFloat(margin_rate || 0.10), parseInt(contracted_weeks || 0, 10)]
+      [req.params.productionId, parseFloat(margin_rate || 0.10), parseInt(contracted_weeks || 0, 10), notes ?? null]
     );
     await client.query('DELETE FROM cost_plus_budget_lines WHERE budget_id = $1', [budget.id]);
 
     const lines = Array.isArray(budget_lines) ? budget_lines : [];
     for (let i = 0; i < lines.length; i++) {
-      const line   = lines[i];
-      const weekly = parseFloat(line.weekly_cost ?? 0);
-      const weeks  = parseInt(line.weeks ?? 0, 10);
-      const total  = parseFloat(line.total ?? weekly * weeks);
+      const line        = lines[i];
+      const agreedRate  = parseFloat(line.agreed_rate ?? 0);
+      const lineMargin  = line.line_margin_rate != null ? parseFloat(line.line_margin_rate) : null;
+      const effectiveMr = lineMargin ?? parseFloat(margin_rate || 0.10);
+      // For above-the-line roles: weekly_cost = agreed_rate; total = agreed_rate * (1+margin) * weeks
+      // For set lines: weekly_cost is direct input; total = weekly_cost * weeks
+      const isAboveLine = line.is_above_line === true || line.line_type === 'above_line';
+      const weekly      = isAboveLine ? agreedRate : parseFloat(line.weekly_cost ?? 0);
+      const weeks       = parseInt(line.weeks ?? (isAboveLine ? parseInt(contracted_weeks || 0, 10) : 0), 10);
+      const total       = isAboveLine
+        ? agreedRate * (1 + effectiveMr) * weeks
+        : parseFloat(line.total ?? weekly * weeks);
       await client.query(
         `INSERT INTO cost_plus_budget_lines
-           (budget_id, account_code, description, weekly_cost, weeks, total, sort_order)
-         VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-        [budget.id, line.account_code ?? null, line.description ?? '', weekly, weeks, total, i]
+           (budget_id, account_code, description, weekly_cost, weeks, total, sort_order,
+            bectu_rate, agreed_rate, line_margin_rate, is_above_line, set_id, notes, line_type)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [
+          budget.id,
+          line.account_code ?? null,
+          line.description ?? '',
+          weekly,
+          weeks,
+          total,
+          i,
+          line.bectu_rate != null ? parseFloat(line.bectu_rate) : null,
+          agreedRate || null,
+          lineMargin,
+          isAboveLine,
+          line.set_id ?? null,
+          line.notes ?? null,
+          line.line_type ?? (isAboveLine ? 'above_line' : 'set'),
+        ]
       );
     }
     await client.query('COMMIT');
@@ -417,7 +442,7 @@ const getType2Report = async (req, res) => {
 
     const [
       budget, budgetLines, supplierEntries, labourEntries,
-      poBilling, omittedRows, marginsRef, weeklyPLRows, invoiceRows,
+      poBilling, omittedRows, marginsRef, weeklyPLRows, invoiceRows, productionSets,
     ] = await Promise.all([
       db.query('SELECT * FROM cost_plus_budgets WHERE production_id = $1', [productionId]).then(r => r.rows[0]),
       db.query(
@@ -428,10 +453,11 @@ const getType2Report = async (req, res) => {
       CRS.getSupplierCosts(productionId, supplierFilters, db),
       CRS.getLabourCosts(productionId, labourFilters, db),
       db.query('SELECT * FROM cost_report_po_billing WHERE production_id = $1', [productionId]).then(r => r.rows),
-      db.query('SELECT * FROM cost_report_omitted_entries WHERE production_id = $1', [productionId]).then(r => r.rows),
+      db.query('SELECT * FROM cost_report_omitted_entries WHERE production_id = $1 ORDER BY created_at DESC', [productionId]).then(r => r.rows),
       db.query('SELECT * FROM cost_report_margins_reference WHERE production_id = $1', [productionId]).then(r => r.rows[0]),
       db.query('SELECT * FROM cost_report_weekly_pl WHERE production_id = $1 ORDER BY week_ending_date', [productionId]).then(r => r.rows),
       db.query('SELECT * FROM cost_report_invoices WHERE production_id = $1 ORDER BY date', [productionId]).then(r => r.rows),
+      db.query('SELECT id, set_number, set_name, shoot_week FROM sets WHERE production_id = $1 ORDER BY set_number', [productionId]).then(r => r.rows),
     ]);
 
     const margin = parseFloat(budget?.margin_rate || 0.10);
@@ -490,6 +516,7 @@ const getType2Report = async (req, res) => {
 
     // ── Labour to Send Production (omitted entries excluded) ──────────────────
     const labourToSend = labourEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => ({
+      entry_id:                e.id,
       week_ending_date:        String(e.week_ending_date).split('T')[0],
       transaction_description: `Labour — ${[e.trade, e.rank].filter(Boolean).join(' ')} w/e ${String(e.week_ending_date).split('T')[0]}`,
       account_code:            e.set_code || null,
@@ -503,6 +530,7 @@ const getType2Report = async (req, res) => {
 
     // ── Materials to Send Production (omitted excluded) ───────────────────────
     const materialsToSend = supplierEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => ({
+      entry_id:                e.id,
       week_ending_date:        String(e.date).split('T')[0],
       po_number:               e.po_number,
       invoice_date:            String(e.date).split('T')[0],
@@ -515,6 +543,45 @@ const getType2Report = async (req, res) => {
       recharge_to_production:  parseFloat(e.net_amount) * (1 + margin),
       set_code:                e.set_code,
     }));
+
+    // ── Omitted Labour & Materials with full detail ──────────────────────────
+    const omittedLabour = labourEntries.filter(e => omittedEntryIds.has(e.id)).map(e => {
+      const omitRow = omittedRows.find(r => r.entry_id === e.id) || {};
+      return {
+        entry_id:           e.id,
+        type:               'labour',
+        week_ending_date:   String(e.week_ending_date).split('T')[0],
+        crew_name:          `${e.first_name} ${e.last_name}`,
+        crew_number:        e.crew_number,
+        set_code:           e.set_code || null,
+        account_code:       e.set_code || null,
+        description:        [e.trade, e.rank].filter(Boolean).join(' '),
+        net_amount:         parseFloat(e.net_amount),
+        margin_amount:      parseFloat(e.net_amount) * margin,
+        cost_to_production: parseFloat(e.net_amount) * (1 + margin),
+        omit_reason:        omitRow.omit_reason || null,
+        created_at:         omitRow.created_at || null,
+      };
+    });
+
+    const omittedMaterials = supplierEntries.filter(e => omittedEntryIds.has(e.id)).map(e => {
+      const omitRow = omittedRows.find(r => r.entry_id === e.id) || {};
+      return {
+        entry_id:              e.id,
+        type:                  'material',
+        week_ending_date:      String(e.date).split('T')[0],
+        supplier:              e.supplier_name,
+        po_number:             e.po_number,
+        set_code:              e.set_code || null,
+        account_code:          e.account_code || null,
+        description:           e.supplier_name,
+        net_amount:            parseFloat(e.net_amount),
+        margin_amount:         parseFloat(e.net_amount) * margin,
+        recharge_to_production: parseFloat(e.net_amount) * (1 + margin),
+        omit_reason:           omitRow.omit_reason || null,
+        created_at:            omitRow.created_at || null,
+      };
+    });
 
     // ── Weekly Invoice Summary ────────────────────────────────────────────────
     const weekSumMap = {};
@@ -581,6 +648,9 @@ const getType2Report = async (req, res) => {
       labour_to_send:          labourToSend,
       materials_to_send:       materialsToSend,
       omitted_entries:         omittedRows,
+      omitted_labour:          omittedLabour,
+      omitted_materials:       omittedMaterials,
+      production_sets:         productionSets,
       margins_reference:       marginsRef || { production_id: productionId, items: [], notes: null },
       weekly_pl:               weeklyPL,
       invoices_to_production:  invoiceRows,

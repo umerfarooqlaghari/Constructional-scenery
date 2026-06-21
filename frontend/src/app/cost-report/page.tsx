@@ -399,7 +399,7 @@ function CostReportContent() {
 
         {/* ── Type 2 (Cost Plus) UI ── */}
         {isCostPlus && type2Report && !loading && (
-          <CostReportType2 report={type2Report} />
+          <CostReportType2 report={type2Report} onRefresh={loadReport} />
         )}
 
         {isCostPlus && loading && (
