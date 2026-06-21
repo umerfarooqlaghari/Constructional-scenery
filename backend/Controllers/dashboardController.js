@@ -362,11 +362,16 @@ const getLabourCosts = async (req, res) => {
 };
 
 // ─── GET /api/dashboard/crew-headcount  (MD only) ────────────────────────────
-// Active crew = crew members with is_active = true in crew_members table.
+// Active crew = crew members (is_active=true) assigned to active productions.
 const getCrewHeadcount = async (req, res) => {
   try {
     const { rows: [{ cnt }] } = await db.query(
-      `SELECT COUNT(*) AS cnt FROM crew_members WHERE is_active = true`
+      `SELECT COUNT(DISTINCT pc.crew_member_id) AS cnt
+       FROM production_crew pc
+       JOIN productions p  ON pc.production_id  = p.id
+       JOIN crew_members cm ON pc.crew_member_id = cm.id
+       WHERE p.status IN ('pre_production', 'active_build', 'strike')
+         AND cm.is_active = true`
     );
     const total_active_crew = parseInt(cnt, 10);
     res.json({ total_active_crew, breakdown: [] });
