@@ -362,23 +362,14 @@ const getLabourCosts = async (req, res) => {
 };
 
 // ─── GET /api/dashboard/crew-headcount  (MD only) ────────────────────────────
-// Active crew = distinct crew members assigned to non-archived/complete productions.
+// Active crew = crew members with is_active = true in crew_members table.
 const getCrewHeadcount = async (req, res) => {
   try {
-    const { rows } = await db.query(
-      `SELECT p.name AS prod_name,
-              COUNT(DISTINCT pc.crew_member_id) AS crew_count
-       FROM production_crew pc
-       JOIN productions p ON pc.production_id = p.id
-       WHERE p.status NOT IN ('archived', 'complete')
-       GROUP BY p.name
-       ORDER BY p.name`
+    const { rows: [{ cnt }] } = await db.query(
+      `SELECT COUNT(*) AS cnt FROM crew_members WHERE is_active = true`
     );
-
-    const breakdown         = rows.map(r => ({ production_name: r.prod_name, crew_count: parseInt(r.crew_count, 10) }));
-    const total_active_crew = breakdown.reduce((s, r) => s + r.crew_count, 0);
-
-    res.json({ total_active_crew, breakdown });
+    const total_active_crew = parseInt(cnt, 10);
+    res.json({ total_active_crew, breakdown: [] });
   } catch (err) {
     console.error('getCrewHeadcount:', err);
     res.status(500).json({ error: err.message });
