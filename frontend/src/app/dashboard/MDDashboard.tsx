@@ -175,7 +175,7 @@ export default function MDDashboard() {
               {loading
                 ? Array(3).fill(0).map((_, i) => (<div key={i} className="px-5 py-3.5 flex justify-between"><Skeleton className="h-4 w-24" /><Skeleton className="h-4 w-16" /></div>))
                 : !labour?.breakdown.length
-                  ? <p className="px-5 py-8 text-slate-400 text-sm text-center">{crew?.note ?? 'No timesheets this week'}</p>
+                  ? <p className="px-5 py-8 text-slate-400 text-sm text-center">No timesheets this week</p>
                   : labour.breakdown.map((l) => {
                     const crewRow = crew?.breakdown.find(c => c.production_name === l.production_name);
                     return (

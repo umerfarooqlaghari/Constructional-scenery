@@ -7,11 +7,12 @@ import {
   Plus, X, Loader2, SlidersHorizontal,
 } from 'lucide-react';
 import {
-  productionsApi, costReportApi,
+  productionsApi, costReportApi, costReportExtApi,
   type Production, type CostReport,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
 import RequireRole from '@/components/RequireRole';
+import CostReportType2, { type Type2Report } from './CostReportType2';
 
 const fmtGBP = (n: number) =>
   new Intl.NumberFormat('en-GB', { style: 'currency', currency: 'GBP', minimumFractionDigits: 2 }).format(n);
@@ -165,6 +166,7 @@ function CostReportContent() {
   const [showInvoiceModal, setShowInvoiceModal] = useState(false);
   const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
   const [showDatePicker, setShowDatePicker] = useState(false);
+  const [type2Report, setType2Report] = useState<Type2Report | null>(null);
 
   // Client-side filter state for cost report detail tables
   const [costType, setCostType] = useState<'all' | 'supplier' | 'labour'>('all');
@@ -187,15 +189,23 @@ function CostReportContent() {
     if (!selectedId) return;
     setLoading(true);
     setError('');
+    const isCP = productions.find(p => p.id === selectedId)?.contract_type === 'cost_plus';
     try {
-      const data = await costReportApi.get(selectedId, asAtDate || undefined);
-      setReport(data);
+      if (isCP) {
+        const data = await costReportExtApi.getType2(selectedId, asAtDate ? { as_at_date: asAtDate } : undefined);
+        setType2Report(data as Type2Report);
+        setReport(null);
+      } else {
+        const data = await costReportApi.get(selectedId, asAtDate || undefined);
+        setReport(data);
+        setType2Report(null);
+      }
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load cost report');
     } finally {
       setLoading(false);
     }
-  }, [selectedId, asAtDate]);
+  }, [selectedId, asAtDate, productions]);
 
   useEffect(() => {
     if (selectedId) loadReport();
@@ -249,6 +259,8 @@ function CostReportContent() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const isCostPlus = productions.find(p => p.id === selectedId)?.contract_type === 'cost_plus';
 
   const m = report?.metrics;
   const profitIsPositive = m ? m.current_profit >= 0 : true;
@@ -326,10 +338,10 @@ function CostReportContent() {
             </select>
           </div>
 
-          {report && (
+          {selectedId && (
             <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2 shadow-sm text-sm text-slate-600">
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${report.contract_type === 'cost_plus' ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
-                {report.contract_type === 'cost_plus' ? 'Cost Plus' : 'On a Price'}
+              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isCostPlus ? 'bg-purple-100 text-purple-700' : 'bg-slate-100 text-slate-600'}`}>
+                {isCostPlus ? 'Cost Plus' : 'On a Price'}
               </span>
             </div>
           )}
@@ -360,6 +372,7 @@ function CostReportContent() {
                 </div>
               )}
             </div>
+            {!isCostPlus && (
             <button
               onClick={exportCSV}
               disabled={!report}
@@ -367,6 +380,8 @@ function CostReportContent() {
             >
               <Download size={14} /> Export CSV
             </button>
+            )}
+            {!isCostPlus && (
             <button
               onClick={exportPDF}
               disabled={!report}
@@ -374,6 +389,7 @@ function CostReportContent() {
             >
               <Download size={14} /> Export PDF
             </button>
+            )}
           </div>
         </div>
 
@@ -381,8 +397,20 @@ function CostReportContent() {
           <div className="bg-red-50 border border-red-100 rounded-xl px-5 py-4 text-red-600 text-sm">{error}</div>
         )}
 
+        {/* ── Type 2 (Cost Plus) UI ── */}
+        {isCostPlus && type2Report && !loading && (
+          <CostReportType2 report={type2Report} />
+        )}
+
+        {isCostPlus && loading && (
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
+          </div>
+        )}
+
+        {/* ── Type 1 (On a Price) UI ── */}
         {/* Cost detail filter panel */}
-        {report && (
+        {!isCostPlus && report && (
           <div className="bg-white border border-slate-200 rounded-xl shadow-sm overflow-hidden">
             <div className="flex items-center justify-between px-5 py-3">
               <div className="flex items-center gap-2">
@@ -496,6 +524,9 @@ function CostReportContent() {
             )}
           </div>
         )}
+
+        {/* ── Type 1 metric cards / tables (On a Price only) ── */}
+        {!isCostPlus && <div className="space-y-4 md:space-y-5">
 
         {/* Metric cards */}
         <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
@@ -801,6 +832,9 @@ function CostReportContent() {
           </div>
         </div>
         )}
+
+        </div>}
+        {/* ── end Type 1 ── */}
 
       </main>
     </>
