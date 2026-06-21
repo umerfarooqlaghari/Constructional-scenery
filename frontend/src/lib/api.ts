@@ -640,6 +640,12 @@ export const costReportApi = {
   }) => request<CostReportInvoice>(`/api/cost-reports/${productionId}/invoices`, {
     method: 'POST', body: data,
   }),
+  exportPDF: (productionId: string, params?: Record<string, string>) => {
+    const qs = params ? '?' + new URLSearchParams(params).toString() : '';
+    return fetch(`/api/cost-reports/${productionId}/export/pdf${qs}`, {
+      headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
+    });
+  },
 };
 
 // ─── Forecasting types ─────────────────────────────────────────────────────────

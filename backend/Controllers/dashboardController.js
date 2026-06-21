@@ -362,7 +362,7 @@ const getLabourCosts = async (req, res) => {
 };
 
 // ─── GET /api/dashboard/crew-headcount  (MD only) ────────────────────────────
-// Active crew = distinct crew members linked to active productions (no end_date set).
+// Active crew = distinct crew members assigned to non-archived/complete productions.
 const getCrewHeadcount = async (req, res) => {
   try {
     const { rows } = await db.query(
@@ -370,8 +370,7 @@ const getCrewHeadcount = async (req, res) => {
               COUNT(DISTINCT pc.crew_member_id) AS crew_count
        FROM production_crew pc
        JOIN productions p ON pc.production_id = p.id
-       WHERE p.status IN ('pre_production', 'active_build', 'strike')
-         AND pc.end_date IS NULL
+       WHERE p.status NOT IN ('archived', 'complete')
        GROUP BY p.name
        ORDER BY p.name`
     );

@@ -335,6 +335,7 @@ function SetSlideOver({ initial = {}, existingSetNumbers, production, onSave, on
             <label className="block text-xs font-medium text-slate-600 mb-1">Handover Date *</label>
             <input
               type="date"
+              min={new Date().toISOString().split('T')[0]}
               className={`${inputCls} ${dateError ? 'border-red-400' : ''}`}
               value={form.handover_date}
               onChange={f('handover_date')}

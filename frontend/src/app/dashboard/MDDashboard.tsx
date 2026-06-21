@@ -77,7 +77,7 @@ export default function MDDashboard() {
   const pendingDetail = data ? `${data.pending_approvals.purchase_orders} POs · ${data.pending_approvals.timesheets} timesheets` : '';
   const statCards = [
     { label: 'Active Productions', value: String(costSummary?.length ?? data?.active_productions.length ?? '—'), change: 'Active now', up: null, icon: Clapperboard, color: 'bg-blue-50 text-blue-600' },
-    { label: 'Total Crew On Site', value: String(crew?.total_active_crew ?? '—'), change: 'Timesheets this week', up: null, icon: Users, color: 'bg-blue-50 text-blue-600' },
+    { label: 'Total Crew On Site', value: String(crew?.total_active_crew ?? '—'), change: 'Across active productions', up: null, icon: Users, color: 'bg-blue-50 text-blue-600' },
     { label: 'Weekly Labour Cost', value: labour ? fmt(labour.total_labour_this_week) : '—', change: labour ? `w/e ${fmtDate(labour.current_week_ending)}` : 'Loading…', up: false, icon: ShoppingCart, color: 'bg-orange-50 text-orange-600' },
     { label: 'Pending Approvals', value: String(pendingTotal), change: pendingDetail, up: null, icon: AlertCircle, color: 'bg-amber-50 text-amber-600' },
   ];
