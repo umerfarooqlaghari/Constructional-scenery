@@ -7,10 +7,10 @@
  *   await sendEmail({ to: 'user@example.com', subject: 'Hello', html: '<p>Hi</p>' });
  */
 
-const nodemailer               = require('nodemailer');
-const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
+const nodemailer = require('nodemailer');
+const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 
-const sesClient = new SESClient({
+const sesClient = new SESv2Client({
   region: process.env.AWS_REGION || 'us-east-1',
   credentials: {
     accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
@@ -19,7 +19,7 @@ const sesClient = new SESClient({
 });
 
 const transporter = nodemailer.createTransport({
-  SES: { ses: sesClient, aws: { SendRawEmailCommand } },
+  SES: { sesClient, SendEmailCommand },
 });
 
 /**
