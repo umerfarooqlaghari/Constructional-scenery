@@ -127,23 +127,17 @@ const getActiveProductionsSummary = async () => {
 };
 
 const getCrewHeadcountLegacy = async () => {
-  const { rows: productions } = await db.query(
-    `SELECT id, name FROM productions WHERE status IN ('pre_production', 'active_build', 'strike')`
+  const { rows: [{ cnt }] } = await db.query(
+    `SELECT COUNT(DISTINCT pc.crew_member_id) AS cnt
+     FROM production_crew pc
+     JOIN productions  p  ON pc.production_id  = p.id
+     JOIN crew_members cm ON pc.crew_member_id = cm.id
+     WHERE p.status IN ('pre_production', 'active_build', 'strike')
+       AND cm.is_active = true`
   );
-  if (!productions.length) return { total: 0, by_production: [] };
-
-  const byProd = await Promise.all(productions.map(async prod => {
-    const { rows: [{ cnt }] } = await db.query(
-      `SELECT COUNT(*) AS cnt FROM production_crew
-       WHERE production_id = $1 AND end_date IS NULL`,
-      [prod.id]
-    );
-    return { production: prod.name, headcount: parseInt(cnt, 10) || 0 };
-  }));
-
   return {
-    total:         byProd.reduce((s, p) => s + p.headcount, 0),
-    by_production: byProd,
+    total:         parseInt(cnt, 10) || 0,
+    by_production: [],
   };
 };
 
