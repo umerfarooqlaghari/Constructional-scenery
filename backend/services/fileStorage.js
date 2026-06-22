@@ -1,90 +1,75 @@
 /**
- * FileStorageService — shared file upload/delete service.
- *
- * Currently uses local disk storage via Multer.
- * To switch to AWS S3: set AWS_S3_BUCKET, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
- * AWS_REGION in your environment and uncomment the S3 methods below.
+ * FileStorageService — AWS S3 backed file storage.
+ * All uploads go to the S3 bucket defined in AWS_S3_BUCKET.
+ * Files are stored under the `uploads/` prefix in the bucket.
  */
 
 const path = require('path');
-const fs   = require('fs');
+const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
 
-const UPLOAD_DIR = path.join(__dirname, '../uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+const BUCKET = process.env.AWS_S3_BUCKET;
+const REGION = process.env.AWS_REGION || 'us-east-1';
+
+const s3 = new S3Client({
+  region: REGION,
+  credentials: {
+    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+  },
+});
 
 const ALLOWED_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 const MAX_FILE_BYTES      = 25 * 1024 * 1024; // 25 MB
 
-/** Validate MIME type and size. Throws if invalid. */
+/** Validate MIME type and size. Throws with .status = 400 if invalid. */
 function validate(mimetype, size) {
   if (!ALLOWED_MIME_TYPES.has(mimetype)) {
     throw Object.assign(
-      new Error(`File type "${mimetype}" is not allowed. Accepted types: PDF, JPEG, PNG.`),
+      new Error(`File type "${mimetype}" is not allowed. Accepted: PDF, JPEG, PNG.`),
       { status: 400 }
     );
   }
   if (size > MAX_FILE_BYTES) {
-    throw Object.assign(
-      new Error(`File is too large. Maximum size is 25 MB.`),
-      { status: 400 }
-    );
+    throw Object.assign(new Error('File is too large. Maximum size is 25 MB.'), { status: 400 });
   }
 }
 
 /**
- * Store a multer file object.
- * Returns { url, key, size }.
- * `key` is used to delete the file later.
+ * Upload a multer file (memoryStorage) to S3.
+ * @param {object} multerFile  - req.file from multer memoryStorage
+ * @returns {{ url: string, key: string, size: number }}
  */
-function store(multerFile) {
-  // S3 path (future): uncomment below and remove local path
-  // if (process.env.AWS_S3_BUCKET) return _storeS3(multerFile);
-  return _storeLocal(multerFile);
-}
+async function store(multerFile) {
+  const ext  = path.extname(multerFile.originalname).toLowerCase();
+  const base = path.basename(multerFile.originalname, ext)
+    .replace(/[^a-z0-9_-]/gi, '_')
+    .slice(0, 80);
+  const key  = `uploads/${Date.now()}-${Math.round(Math.random() * 1e6)}-${base}${ext}`;
 
-function _storeLocal(multerFile) {
-  const url = `/uploads/${multerFile.filename}`;
-  return { url, key: multerFile.filename, size: multerFile.size };
-}
-
-/**
- * Delete a stored file by its key.
- */
-async function deleteFile(key) {
-  // S3 path (future): if (process.env.AWS_S3_BUCKET) return _deleteS3(key);
-  _deleteLocal(key);
-}
-
-function _deleteLocal(key) {
-  if (!key) return;
-  const filePath = path.join(UPLOAD_DIR, key);
-  try {
-    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
-  } catch (err) {
-    console.error('fileStorage._deleteLocal failed:', err.message);
-  }
-}
-
-/* ── S3 stub (activate when AWS creds are available) ──────────────────────
-const { S3Client, PutObjectCommand, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-const s3 = new S3Client({ region: process.env.AWS_REGION ?? 'eu-west-2' });
-
-async function _storeS3(multerFile) {
-  const key = `uploads/${Date.now()}-${multerFile.originalname}`;
   await s3.send(new PutObjectCommand({
-    Bucket: process.env.AWS_S3_BUCKET,
-    Key: key,
-    Body: fs.createReadStream(multerFile.path),
+    Bucket:      BUCKET,
+    Key:         key,
+    Body:        multerFile.buffer,
     ContentType: multerFile.mimetype,
   }));
-  fs.unlinkSync(multerFile.path); // remove temp file
-  const url = `https://${process.env.AWS_S3_BUCKET}.s3.amazonaws.com/${key}`;
+
+  const url = `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+  console.log(`☁️  S3 upload: ${key} (${(multerFile.size / 1024).toFixed(1)} KB)`);
   return { url, key, size: multerFile.size };
 }
 
-async function _deleteS3(key) {
-  await s3.send(new DeleteObjectCommand({ Bucket: process.env.AWS_S3_BUCKET, Key: key }));
+/**
+ * Delete a file from S3 by its key.
+ * @param {string} key  - S3 object key (e.g. "uploads/1234-foo.pdf")
+ */
+async function deleteFile(key) {
+  if (!key) return;
+  try {
+    await s3.send(new DeleteObjectCommand({ Bucket: BUCKET, Key: key }));
+    console.log(`🗑  S3 deleted: ${key}`);
+  } catch (err) {
+    console.error('fileStorage.deleteFile failed:', err.message);
+  }
 }
-──────────────────────────────────────────────────────────────────────── */
 
 module.exports = { validate, store, deleteFile, ALLOWED_MIME_TYPES, MAX_FILE_BYTES };

@@ -1,5 +1,4 @@
 const db            = require('../config/db');
-const { fileUrl }   = require('../Middleware/upload');
 const { encrypt, decrypt } = require('../config/crypto');
 
 // Fields that are encrypted at rest in crew_members

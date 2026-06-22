@@ -1,32 +1,11 @@
 /**
- * Multer upload middleware — temporary local disk storage.
- *
- * Files are saved to  backend/uploads/<timestamp>-<random>-<originalname>
- * Served statically at  GET /uploads/<filename>
- *
- * Replace with cloud storage (Cloudflare R2 / AWS S3) when ready.
- * Just swap the multer storage engine and the file_url base URL.
+ * Multer upload middleware — in-memory storage.
+ * Files are held in req.file.buffer and then uploaded to S3 by fileStorage.store().
+ * No files are written to local disk.
  */
 
-const multer  = require('multer');
-const path    = require('path');
-const fs      = require('fs');
-
-// Ensure uploads directory exists at startup
-const UPLOAD_DIR = path.join(__dirname, '../uploads');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
-
-const storage = multer.diskStorage({
-  destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
-  filename: (_req, file, cb) => {
-    const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-    const ext    = path.extname(file.originalname).toLowerCase();
-    const base   = path.basename(file.originalname, ext)
-      .replace(/[^a-z0-9_-]/gi, '_')   // sanitise filename
-      .slice(0, 80);
-    cb(null, `${unique}-${base}${ext}`);
-  },
-});
+const multer = require('multer');
+const path   = require('path');
 
 const ALLOWED_EXTS = new Set([
   '.pdf', '.jpg', '.jpeg', '.png', '.gif',
@@ -40,28 +19,23 @@ const fileFilter = (_req, file, cb) => {
   else cb(new Error(`File type "${ext}" is not allowed`));
 };
 
+// General-purpose upload (invoices, any document type in ALLOWED_EXTS)
 const upload = multer({
-  storage,
-  limits: { fileSize: 25 * 1024 * 1024 },  // 25 MB max
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 25 * 1024 * 1024 },
   fileFilter,
 });
 
-// Restricted upload for production/crew documents: PDF, JPEG, PNG only
+// Restricted upload for crew/production documents: PDF, JPEG, PNG only
 const DOCUMENT_MIME_TYPES = new Set(['application/pdf', 'image/jpeg', 'image/png']);
 
 const documentUpload = multer({
-  storage,
-  limits: { fileSize: 25 * 1024 * 1024 },
+  storage: multer.memoryStorage(),
+  limits:  { fileSize: 25 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
     if (DOCUMENT_MIME_TYPES.has(file.mimetype)) cb(null, true);
     else cb(new Error('Only PDF, JPEG, and PNG files are allowed for documents'));
   },
 });
 
-/**
- * Build the publicly accessible URL for an uploaded file.
- * Returns a relative /uploads/<filename> path — proxied through Next.js.
- */
-const fileUrl = (filename) => `/uploads/${filename}`;
-
-module.exports = { upload, documentUpload, fileUrl };
+module.exports = { upload, documentUpload };

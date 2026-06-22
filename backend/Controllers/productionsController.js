@@ -1,5 +1,4 @@
 const db          = require('../config/db');
-const { fileUrl } = require('../Middleware/upload');
 
 // ─── Helper ───────────────────────────────────────────────────────────────────
 const calcSetCountdown = (sets = []) => {

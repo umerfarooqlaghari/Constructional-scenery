@@ -1,6 +1,6 @@
 const db                              = require('../config/db');
 const { sendEmail, templates }        = require('../config/email');
-const { fileUrl }                     = require('../Middleware/upload');
+const fileStorage                     = require('../services/fileStorage');
 const { generatePoPdf }               = require('../services/poPdfService');
 const { recordSupplierCost, softDeleteEntry } = require('../services/costReportService');
 const { generatePoListPdf }                   = require('../services/poPdfService');
@@ -387,15 +387,16 @@ const attachInvoice = async (req, res) => {
   let invoice_attachment_url  = req.body.invoice_attachment_url;
   let invoice_attachment_name = req.body.invoice_attachment_name;
 
-  if (req.file) {
-    invoice_attachment_url  = fileUrl(req.file.filename);
-    invoice_attachment_name = req.file.originalname;
-  }
-
-  if (!invoice_attachment_url)
-    return res.status(400).json({ error: 'Provide a file upload or invoice_attachment_url' });
-
   try {
+    if (req.file) {
+      const { url } = await fileStorage.store(req.file);
+      invoice_attachment_url  = url;
+      invoice_attachment_name = req.file.originalname;
+    }
+
+    if (!invoice_attachment_url)
+      return res.status(400).json({ error: 'Provide a file upload or invoice_attachment_url' });
+
     const { rows: [existing] } = await db.query(
       'SELECT status FROM purchase_orders WHERE id = $1', [req.params.id]
     );

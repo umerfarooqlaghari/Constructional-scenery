@@ -1,6 +1,6 @@
 const db                           = require('../config/db');
 const { sendEmail, templates }     = require('../config/email');
-const { fileUrl }                  = require('../Middleware/upload');
+const fileStorage                  = require('../services/fileStorage');
 const { generateTimesheetPdf }     = require('../services/timesheetPdfService');
 const { generateVerificationPack } = require('../services/verificationPackService');
 const { generateTimesheetListPdf } = require('../services/timesheetListPdfService');
@@ -552,7 +552,6 @@ const sendTimesheetEmail = async (ts, entries) => {
   const pdfBuffer  = await generateTimesheetPdf(ts, entries);
 
   await sendEmail({
-    from:        `"Construct Scenery" <${process.env.SMTP_USER}>`,
     replyTo:     'invoice@constructscenery.co.uk',
     to:          ts.email,
     ...templates.timesheetDistributed(crewName, ts.week_ending_date, ts.prod_name, daysWorked, ts.grand_total),
@@ -670,15 +669,16 @@ const attachInvoice = async (req, res) => {
   let invoice_attachment_url  = req.body.invoice_attachment_url;
   let invoice_attachment_name = req.body.invoice_attachment_name;
 
-  if (req.file) {
-    invoice_attachment_url  = fileUrl(req.file.filename);
-    invoice_attachment_name = req.file.originalname;
-  }
-
-  if (!invoice_attachment_url)
-    return res.status(400).json({ error: 'Provide a file upload or invoice_attachment_url' });
-
   try {
+    if (req.file) {
+      const { url } = await fileStorage.store(req.file);
+      invoice_attachment_url  = url;
+      invoice_attachment_name = req.file.originalname;
+    }
+
+    if (!invoice_attachment_url)
+      return res.status(400).json({ error: 'Provide a file upload or invoice_attachment_url' });
+
     const { rows: [existing] } = await db.query('SELECT status FROM timesheets WHERE id = $1', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Timesheet not found' });
     // Advance status to invoice_received when attaching to a sent or reviewed timesheet
@@ -742,7 +742,6 @@ const chaseInvoices = async (req, res) => {
 
       try {
         await sendEmail({
-          from:    `"Construct Scenery" <${process.env.SMTP_USER}>`,
           replyTo: 'invoice@constructscenery.co.uk',
           to:      t.email,
           ...templates.invoiceChase(crewName, t.week_ending_date, t.grand_total),

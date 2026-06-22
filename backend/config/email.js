@@ -1,53 +1,50 @@
 /**
- * SMTP email service — using Gmail App Password for development.
- * In production replace with Microsoft Graph API (Outlook) when MS Azure is configured.
+ * Email service — AWS SES via nodemailer SES transport.
+ * All outbound email goes through SES using AWS_SES_FROM_EMAIL.
  *
  * Usage:
  *   const { sendEmail } = require('../config/email');
  *   await sendEmail({ to: 'user@example.com', subject: 'Hello', html: '<p>Hi</p>' });
  */
 
-const nodemailer = require('nodemailer');
+const nodemailer               = require('nodemailer');
+const { SESClient, SendRawEmailCommand } = require('@aws-sdk/client-ses');
 
-const transporter = nodemailer.createTransport({
-  host:   process.env.SMTP_HOST || 'smtp.gmail.com',
-  port:   parseInt(process.env.SMTP_PORT || '587'),
-  secure: false,  // STARTTLS on port 587
-  auth: {
-    user: process.env.SMTP_USER,
-    pass: process.env.SMTP_PASS,
+const sesClient = new SESClient({
+  region: process.env.AWS_REGION || 'us-east-1',
+  credentials: {
+    accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
+    secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
   },
-  tls: { rejectUnauthorized: false },
 });
 
-// Verify SMTP connection on startup so misconfiguration is caught early
-transporter.verify((err) => {
-  if (err) console.error('❌ SMTP connection failed:', err.message);
-  else     console.log('✅ SMTP ready');
+const transporter = nodemailer.createTransport({
+  SES: { ses: sesClient, aws: { SendRawEmailCommand } },
 });
 
 /**
- * Send a single email.
+ * Send a single email via SES.
  * @param {object} opts
- * @param {string|string[]} opts.to       - Recipient(s)
- * @param {string}          opts.subject  - Subject line
- * @param {string}          opts.html     - HTML body
- * @param {string}          [opts.text]   - Plain-text fallback
- * @param {string}          [opts.from]   - Override sender (defaults to SMTP_FROM_NAME <SMTP_USER>)
- * @returns {Promise<object>} Nodemailer info object
+ * @param {string|string[]} opts.to          - Recipient(s)
+ * @param {string}          opts.subject     - Subject line
+ * @param {string}          opts.html        - HTML body
+ * @param {string}          [opts.text]      - Plain-text fallback
+ * @param {string}          [opts.from]      - Override sender
+ * @param {string}          [opts.replyTo]   - Reply-to address
+ * @param {Array}           [opts.attachments] - nodemailer attachment objects
  */
 const sendEmail = async ({ to, subject, html, text, from, replyTo, attachments }) => {
-  const fromAddress = from || `"${process.env.SMTP_FROM_NAME || 'Deepsian'}" <${process.env.SMTP_USER}>`;
+  const fromAddress = from || `"Construct Scenery" <${process.env.AWS_SES_FROM_EMAIL}>`;
   const opts = { from: fromAddress, to, subject, html, text };
   if (replyTo)     opts.replyTo     = replyTo;
   if (attachments) opts.attachments = attachments;
 
   try {
     const info = await transporter.sendMail(opts);
-    console.log(`📧 Email sent → ${Array.isArray(to) ? to.join(', ') : to} | ${subject} | id: ${info.messageId}`);
+    console.log(`📧 Email sent via SES → ${Array.isArray(to) ? to.join(', ') : to} | ${subject}`);
     return info;
   } catch (err) {
-    console.error(`❌ Email failed → ${subject}:`, err.message);
+    console.error(`❌ SES email failed → ${subject}:`, err.message);
     throw err;
   }
 };
@@ -58,15 +55,13 @@ const templates = {
 
   /**
    * PO issued to supplier (triggered by POST /api/purchase-orders/:id/issue)
-   * @param {object} po
-   * @param {string} productionName
    */
   poIssued: (po, productionName) => ({
     subject: `Purchase Order ${po.po_number} — Construct Scenery Limited`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#0f172a;padding:20px 24px;margin-bottom:24px">
-          <span style="color:#fff;font-size:20px;font-weight:700;letter-spacing:2px">DEEPSIAN</span>
+          <span style="color:#fff;font-size:20px;font-weight:700;letter-spacing:1px">Construct Scenery</span>
           <span style="color:#94a3b8;font-size:12px;margin-left:12px">Construct Scenery Limited</span>
         </div>
         <h2 style="color:#0f172a;margin:0 0 4px">Purchase Order: ${po.po_number}</h2>
@@ -92,18 +87,13 @@ const templates = {
 
   /**
    * Timesheet distributed to crew member.
-   * @param {string} crewName
-   * @param {string} weekEndingDate  YYYY-MM-DD
-   * @param {string} productionName
-   * @param {number} daysWorked      Standard days worked that week
-   * @param {number|string} grandTotal
    */
   timesheetDistributed: (crewName, weekEndingDate, productionName, daysWorked, grandTotal) => ({
     subject: `Timesheet for Week Ending ${weekEndingDate} — ${productionName}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#0f172a;padding:16px 24px;margin-bottom:24px">
-          <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:2px">DEEPSIAN</span>
+          <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:1px">Construct Scenery</span>
           <span style="color:#94a3b8;font-size:11px;margin-left:10px">Construct Scenery Limited</span>
         </div>
         <h2 style="color:#0f172a;margin:0 0 4px">Timesheet: Week Ending ${weekEndingDate}</h2>
@@ -134,16 +124,13 @@ const templates = {
 
   /**
    * Invoice chase reminder (self-employed crew only).
-   * @param {string}       crewName
-   * @param {string}       weekEndingDate  YYYY-MM-DD
-   * @param {number|string} grandTotal
    */
   invoiceChase: (crewName, weekEndingDate, grandTotal) => ({
     subject: `Reminder: Invoice Required — Week Ending ${weekEndingDate}`,
     html: `
       <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto">
         <div style="background:#0f172a;padding:16px 24px;margin-bottom:24px">
-          <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:2px">DEEPSIAN</span>
+          <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:1px">Construct Scenery</span>
           <span style="color:#94a3b8;font-size:11px;margin-left:10px">Construct Scenery Limited</span>
         </div>
         <h2 style="color:#b91c1c;margin:0 0 4px">Invoice Required</h2>
@@ -166,12 +153,11 @@ const templates = {
       ? new Date(set.handover_date).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
       : '—';
     const statusLabel = (set.completion_status ?? '').replace(/_/g, ' ');
-    const appUrl = process.env.APP_URL || 'https://deepsian.onrender.com';
+    const appUrl  = process.env.APP_URL || 'https://deepsian.onrender.com';
     const deepLink = `${appUrl}/productions/${set.prod_id}`;
     const dotColor = days <= 7 ? '#ef4444' : '#f59e0b';
-    const subject = `Handover alert — ${set.set_name}${set.set_number ? ` (Set ${set.set_number})` : ''} · ${days} days`;
     return {
-      subject,
+      subject: `Handover alert — ${set.set_name}${set.set_number ? ` (Set ${set.set_number})` : ''} · ${days} days`,
       html: `
         <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
           <div style="background:#1e293b;padding:16px 24px">
@@ -201,7 +187,7 @@ const templates = {
             </div>
             <div style="background:#f8fafc;border:1px solid #e2e8f0;border-radius:6px;padding:14px 16px">
               <a href="${deepLink}" style="color:#0ea5e9;font-size:13px;text-decoration:none">
-                View full set schedule in Deepsian &rarr; <span style="text-decoration:underline">[link]</span>
+                View full set schedule &rarr; <span style="text-decoration:underline">[link]</span>
               </a>
             </div>
           </div>

@@ -15,13 +15,27 @@ const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
 const { generateTimesheetPdf }            = require('./timesheetPdfService');
 const path                                = require('path');
 const fs                                  = require('fs').promises;
+const https                               = require('https');
+const http                                = require('http');
 
 const A4 = [595.28, 841.89]; // points
 
-// Read an invoice file stored in backend/uploads/
+// Fetch an invoice file — handles both S3 URLs (https://) and legacy local paths (/uploads/…)
 const readUploadedFile = async (url) => {
   if (!url) return null;
-  const urlPath = url.startsWith('/') ? url.slice(1) : url; // strip leading slash
+  if (url.startsWith('http://') || url.startsWith('https://')) {
+    return new Promise((resolve, reject) => {
+      const client = url.startsWith('https://') ? https : http;
+      client.get(url, (res) => {
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end',  ()  => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      }).on('error', reject);
+    });
+  }
+  // Legacy local path fallback
+  const urlPath  = url.startsWith('/') ? url.slice(1) : url;
   const filePath = path.join(process.cwd(), urlPath);
   return fs.readFile(filePath);
 };
