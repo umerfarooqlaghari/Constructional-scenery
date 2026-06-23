@@ -752,12 +752,12 @@ export default function PurchaseOrdersPage() {
                         </td>
                         <td className="px-4 py-3.5 text-center">
                           {po.invoice_attachment_url ? (() => {
-                            const rawPath = po.invoice_attachment_url.startsWith('http')
-                              ? `/uploads/${po.invoice_attachment_url.split('/uploads/')[1]}`
-                              : po.invoice_attachment_url;
-                            // encodeURI encodes spaces/special chars but preserves slashes
-                            const url = encodeURI(decodeURI(rawPath));
-                            const name = po.invoice_attachment_name ?? rawPath.split('/').pop() ?? 'invoice';
+                            // S3 URLs (https://...) are public — open directly.
+                            // Legacy local paths (/uploads/...) proxy through Next.js to backend.
+                            const url = po.invoice_attachment_url.startsWith('http')
+                              ? po.invoice_attachment_url
+                              : encodeURI(decodeURI(po.invoice_attachment_url));
+                            const name = po.invoice_attachment_name ?? po.invoice_attachment_url.split('/').pop() ?? 'invoice';
                             return (
                               <button
                                 onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}

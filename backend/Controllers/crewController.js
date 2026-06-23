@@ -272,7 +272,7 @@ const addDocument = async (req, res) => {
 
   try {
     fileStorage.validate(req.file.mimetype, req.file.size);
-    const { url, key, size } = fileStorage.store(req.file);
+    const { url, key, size } = await fileStorage.store(req.file);
 
     const docType = context_type === 'crew_contract' ? 'contract' : 'government_id';
 

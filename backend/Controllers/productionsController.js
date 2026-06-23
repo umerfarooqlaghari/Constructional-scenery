@@ -639,7 +639,7 @@ const uploadDocument = async (req, res) => {
     // Server-side validation (mime type + size already checked by documentUpload multer)
     fileStorage.validate(req.file.mimetype, req.file.size);
 
-    const { url, key, size } = fileStorage.store(req.file);
+    const { url, key, size } = await fileStorage.store(req.file);
 
     const { rows } = await db.query(
       `INSERT INTO production_documents
