@@ -589,7 +589,7 @@ const bulkDistribute = async (req, res) => {
 
     const results = { sent: [], failed: [], no_email: [] };
 
-    await Promise.allSettled(timesheets.map(async ts => {
+    const settled = await Promise.allSettled(timesheets.map(async ts => {
       const crewName = `${ts.first_name} ${ts.last_name}`;
 
       if (!ts.email) {
@@ -603,17 +603,40 @@ const bulkDistribute = async (req, res) => {
         [ts.id]
       );
 
+      let emailOk = false;
       try {
         await sendTimesheetEmail(ts, entries);
         await logEmail('timesheet_distribution', ts.id, ts.email, crewName, true);
-        results.sent.push(crewName);
+        emailOk = true;
       } catch (emailErr) {
         console.error(`Timesheet email failed for ${crewName}:`, emailErr.message);
         await logEmail('timesheet_distribution', ts.id, ts.email, crewName, false, emailErr.message);
+      }
+
+      // DB update happens BEFORE we record the outcome — ensures the count only
+      // reflects rows that actually changed in the DB. If this throws, Promise.allSettled
+      // captures the rejection and the crew member lands in results.failed below.
+      await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
+
+      // Only record outcome after confirmed DB write
+      if (emailOk) {
+        results.sent.push(crewName);
+      } else {
         results.failed.push(crewName);
       }
-      await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
     }));
+
+    // Any promise that rejected (e.g. DB timeout on the UPDATE) is a silent failure —
+    // log it and surface the crew member in the failed list so the frontend shows it.
+    settled.forEach((result, i) => {
+      if (result.status === 'rejected') {
+        const crewName = `${timesheets[i].first_name} ${timesheets[i].last_name}`;
+        console.error(`bulkDistribute: DB update failed for ${crewName}:`, result.reason?.message ?? result.reason);
+        if (!results.sent.includes(crewName) && !results.no_email.includes(crewName) && !results.failed.includes(crewName)) {
+          results.failed.push(crewName);
+        }
+      }
+    });
 
     res.json({
       message:      `${results.sent.length} timesheet(s) distributed`,
