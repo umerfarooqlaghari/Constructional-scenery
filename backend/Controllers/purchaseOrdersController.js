@@ -404,7 +404,7 @@ const attachInvoice = async (req, res) => {
     if (existing.status === 'approved')
       return res.status(400).json({ error: 'Cannot replace invoice on an approved purchase order' });
 
-    const newStatus = existing.status === 'submitted' ? 'invoice_received' : existing.status;
+    const newStatus = (existing.status === 'submitted' || existing.status === 'issued') ? 'invoice_received' : existing.status;
     const { rows: [updated] } = await db.query(
       `UPDATE purchase_orders
        SET invoice_attachment_url  = $1,

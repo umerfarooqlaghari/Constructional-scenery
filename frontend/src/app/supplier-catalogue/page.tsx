@@ -674,12 +674,28 @@ export default function SupplierCataloguePage() {
                     <Download size={13} className="text-blue-500 flex-shrink-0" />
                     <span>
                       Need the correct format?{' '}
-                      <a
-                        href="/api/supplier-catalogue/template"
-                        className="text-blue-600 hover:text-blue-800 font-medium underline"
+                      <button
+                        type="button"
+                        className="text-blue-600 hover:text-blue-800 font-medium underline cursor-pointer"
+                        onClick={async () => {
+                          const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+                          const res = await fetch('/api/supplier-catalogue/template', {
+                            headers: token ? { Authorization: `Bearer ${token}` } : {},
+                          });
+                          if (!res.ok) return;
+                          const blob = await res.blob();
+                          const url = URL.createObjectURL(blob);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = 'supplier_catalogue_template.csv';
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        }}
                       >
                         Download CSV template
-                      </a>
+                      </button>
                     </span>
                   </div>
 
