@@ -421,6 +421,7 @@ export default function TimesheetsPage() {
       if (noEmail.length)   msg += ` ${noEmail.length} had no email (status updated).`;
       if (failedNames.length) msg += ` Email failed for: ${failedNames.join(', ')} (status still updated).`;
       setBulkMsg(msg);
+      setStatusFilter('all');
       await loadSheets();
     } catch (err: unknown) {
       setBulkMsg(err instanceof Error ? err.message : 'Bulk send failed');
