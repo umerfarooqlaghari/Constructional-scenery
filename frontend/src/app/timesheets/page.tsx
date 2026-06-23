@@ -16,14 +16,18 @@ import { useAuth } from '@/contexts/AuthContext';
 
 // ─── Inline API helpers ───────────────────────────────────────────────────────
 
-const verifyTimesheet = (id: string) =>
-  fetch(`/api/timesheets/${id}/verify`, {
+const verifyTimesheet = async (id: string) => {
+  const r = await fetch(`/api/timesheets/${id}/verify`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
     },
-  }).then(r => r.json());
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.message || data.error || 'Verify failed');
+  return data;
+};
 
 const attachInvoice = (id: string, formData: FormData) =>
   fetch(`/api/timesheets/${id}/attach-invoice`, {
@@ -417,12 +421,12 @@ export default function TimesheetsPage() {
       const sentCount   = data.results?.sent?.length   ?? 0;
       const failedNames = data.results?.failed          ?? [];
       const noEmail     = data.results?.no_email        ?? [];
-      let msg = `${sentCount} timesheet(s) sent.`;
-      if (noEmail.length)   msg += ` ${noEmail.length} had no email (status updated).`;
-      if (failedNames.length) msg += ` Email failed for: ${failedNames.join(', ')} (status still updated).`;
-      setBulkMsg(msg);
       setStatusFilter('all');
       await loadSheets();
+      let msg = `${sentCount} timesheet(s) distributed.`;
+      if (noEmail.length)    msg += ` ${noEmail.length} had no email (status updated).`;
+      if (failedNames.length) msg += ` Failed for: ${failedNames.join(', ')} — check status.`;
+      setBulkMsg(msg);
     } catch (err: unknown) {
       setBulkMsg(err instanceof Error ? err.message : 'Bulk send failed');
     } finally {
