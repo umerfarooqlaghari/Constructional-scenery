@@ -33,7 +33,7 @@ const getAvailableWeeks = async (req, res) => {
               ON pr.production_id    = t.production_id
              AND pr.week_ending_date = t.week_ending_date
        WHERE t.production_id = $1
-         AND t.status = 'verified'
+         AND t.status = 'finalised'
        GROUP BY t.week_ending_date, pr.id, pr.status, pr.processed_at
        ORDER BY t.week_ending_date DESC`,
       [production_id]
@@ -66,13 +66,13 @@ const getPayRunPreview = async (req, res) => {
        JOIN productions  p  ON t.production_id  = p.id
        WHERE t.production_id    = $1
          AND t.week_ending_date = $2
-         AND t.status = 'verified'
+         AND t.status = 'finalised'
        ORDER BY cm.last_name, cm.first_name`,
       [production_id, week_ending_date]
     );
 
     if (!timesheets.length)
-      return res.status(404).json({ error: 'No verified timesheets found for this week' });
+      return res.status(404).json({ error: 'No finalised timesheets found for this week' });
 
     const prodName  = timesheets[0].prod_name;
     const shortCode = prodShortCode(prodName);
@@ -191,11 +191,11 @@ const createPayRun = async (req, res) => {
       await client.query('ROLLBACK');
       return res.status(400).json({ error: 'No timesheets found for this week' });
     }
-    const unverified = timesheets.filter(t => t.status !== 'verified');  // TimesheetStatus.VERIFIED
+    const unverified = timesheets.filter(t => t.status !== 'finalised');  // TimesheetStatus.FINALISED
     if (unverified.length) {
       await client.query('ROLLBACK');
       return res.status(400).json({
-        error: `${unverified.length} timesheet(s) not yet verified. All must be verified before processing a pay run.`,
+        error: `${unverified.length} timesheet(s) not yet finalised. All must be finalised before processing a pay run.`,
       });
     }
 

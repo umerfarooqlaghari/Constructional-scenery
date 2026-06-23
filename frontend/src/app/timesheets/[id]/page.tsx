@@ -204,7 +204,7 @@ export default function TimesheetDetailPage() {
     ? (trades.bectu[currentTrade] ?? []).concat(trades.non_bectu)
     : [];
 
-  const isLocked       = ts?.status === 'verified';
+  const isLocked       = ts?.status === 'finalised';
   const isSelfEmployed = ts ? String(ts.employment_status) === 'self_employed' : false;
   const vatRegistered  = isSelfEmployed && !!ts?.vat_registration_number;
 

@@ -62,7 +62,7 @@ const getCurrentWeekLabour = async (weekEnd) => {
     if (!byProd[name]) byProd[name] = { production: name, total: 0, pending: 0, approved: 0 };
     const amt = parseFloat(ts.grand_total || 0);
     byProd[name].total += amt;
-    if (ts.status === 'verified') byProd[name].approved += amt;  // TimesheetStatus.FINALISED
+    if (ts.status === 'finalised') byProd[name].approved += amt;  // TimesheetStatus.FINALISED
     else                          byProd[name].pending  += amt;
   });
 
@@ -88,7 +88,7 @@ const getActiveProductionsSummary = async () => {
         [prod.id]
       ),
       db.query(
-        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'verified'`,
+        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'finalised'`,
         [prod.id]
       ),
       db.query(
@@ -157,7 +157,7 @@ const getForecastingVariance = async () => {
         [f.production_id]
       ),
       db.query(
-        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'verified'`,
+        `SELECT grand_total FROM timesheets WHERE production_id = $1 AND status = 'finalised'`,
         [f.production_id]
       ),
     ]);
@@ -203,7 +203,7 @@ const getProductionPipeline = async () => {
 const getPendingApprovals = async () => {
   const [{ rows: [pos] }, { rows: [tss] }] = await Promise.all([
     db.query(`SELECT COUNT(*)::int AS cnt FROM purchase_orders WHERE status = 'submitted'`),
-    db.query(`SELECT COUNT(*)::int AS cnt FROM timesheets WHERE status = 'invoice_received' AND invoice_attachment_url IS NOT NULL`),
+    db.query(`SELECT COUNT(*)::int AS cnt FROM timesheets WHERE status IN ('distributed', 'amendment_requested')`),
   ]);
   return {
     purchase_orders: pos.cnt,
@@ -335,7 +335,7 @@ const getLabourCosts = async (req, res) => {
       const name = ts.prod_name || 'Unknown';
       if (!byProd[name]) byProd[name] = { production_name: name, amount: 0, all_finalised: true };
       byProd[name].amount += parseFloat(ts.grand_total || 0);
-      if (ts.status !== 'verified') byProd[name].all_finalised = false;
+      if (ts.status !== 'finalised') byProd[name].all_finalised = false;
     });
 
     const breakdown = Object.values(byProd).map(p => ({

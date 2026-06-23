@@ -53,11 +53,10 @@ const AVATAR_COLORS = [
 
 type TSBadgeDef = { label: string; className: string };
 const STATUS_BADGE: Record<TimesheetStatus, TSBadgeDef> = {
-  draft:            { label: 'Draft',            className: 'bg-slate-100 text-slate-500' },
-  sent:             { label: 'Sent',             className: 'bg-blue-100 text-blue-700' },
-  reviewed:         { label: 'Reviewed',         className: 'bg-amber-100 text-amber-700' },
-  invoice_received: { label: 'Invoice Received', className: 'bg-purple-100 text-purple-700' },
-  verified:         { label: 'Verified',         className: 'bg-green-100 text-green-700' },
+  draft:               { label: 'Draft',               className: 'bg-slate-100 text-slate-500' },
+  distributed:         { label: 'Distributed',         className: 'bg-blue-100 text-blue-700' },
+  amendment_requested: { label: 'Amendment Requested', className: 'bg-amber-100 text-amber-700' },
+  finalised:           { label: 'Finalised',           className: 'bg-green-100 text-green-700' },
 };
 
 /** Returns the Sunday on or after the given date */
@@ -85,8 +84,8 @@ function getInitials(first = '', last = '') {
   return `${first[0] ?? ''}${last[0] ?? ''}`.toUpperCase();
 }
 
-const hasInvoice = (status: TimesheetStatus) =>
-  status === 'invoice_received' || status === 'verified';
+const hasInvoice = (ts: { invoice_attachment_url: string | null }) =>
+  ts.invoice_attachment_url != null;
 
 // ─── Attach Invoice Modal ─────────────────────────────────────────────────────
 
@@ -352,8 +351,8 @@ export default function TimesheetsPage() {
   // Client-side filtered view
   const filteredSheets = sheets.filter(s => {
     if (statusFilter !== 'all' && s.status !== statusFilter) return false;
-    if (invoiceFilter === 'yes' && !hasInvoice(s.status)) return false;
-    if (invoiceFilter === 'no' && hasInvoice(s.status)) return false;
+    if (invoiceFilter === 'yes' && !hasInvoice(s)) return false;
+    if (invoiceFilter === 'no' && hasInvoice(s)) return false;
     if (tradeFilter && s.crew_trade !== tradeFilter) return false;
     if (crewSearch) {
       const q = crewSearch.toLowerCase();
@@ -365,7 +364,7 @@ export default function TimesheetsPage() {
 
   // Stats from full unfiltered week data
   const crewOnSheet      = sheets.length;
-  const invoicesReceived = sheets.filter(s => hasInvoice(s.status)).length;
+  const invoicesReceived = sheets.filter(s => hasInvoice(s)).length;
   const nonDraftSheets   = sheets.filter(s => s.status !== 'draft');
   const totalNet  = nonDraftSheets.reduce((acc, s) => acc + (s.grand_total ? parseFloat(s.grand_total) : 0), 0);
   const totalGross = totalNet;
@@ -604,7 +603,7 @@ export default function TimesheetsPage() {
             <div className="flex flex-wrap items-center gap-2">
               {/* Status tabs */}
               <div className="flex items-center gap-1 bg-slate-100 rounded-lg p-0.5">
-                {(['all', ...(canAct ? ['draft'] : []), 'sent', 'invoice_received', 'verified'] as const).map(s => (
+                {(['all', ...(canAct ? ['draft'] : []), 'distributed', 'amendment_requested', 'finalised'] as const).map(s => (
                   <button
                     key={s}
                     onClick={() => setStatusFilter(s as TimesheetStatus | 'all')}
@@ -612,7 +611,7 @@ export default function TimesheetsPage() {
                       statusFilter === s ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'
                     }`}
                   >
-                    {s === 'all' ? 'All' : s === 'invoice_received' ? 'Invoice Rcvd' : s.charAt(0).toUpperCase() + s.slice(1)}
+                    {s === 'all' ? 'All' : s === 'amendment_requested' ? 'Amendment' : s.charAt(0).toUpperCase() + s.slice(1)}
                   </button>
                 ))}
               </div>
@@ -700,7 +699,7 @@ export default function TimesheetsPage() {
                   filteredSheets.map((ts, idx) => {
                     const colorClass = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                     const badge = STATUS_BADGE[ts.status] ?? STATUS_BADGE.draft;
-                    const invoiced = hasInvoice(ts.status);
+                    const invoiced = hasInvoice(ts);
                     const net = ts.grand_total ? parseFloat(ts.grand_total) : null;
                     const firstName = ts.first_name ?? '';
                     const lastName  = ts.last_name  ?? '';
@@ -745,8 +744,8 @@ export default function TimesheetsPage() {
                         {canAct && (
                           <td className="px-4 py-3.5">
                             <div className="flex items-center gap-2">
-                              {/* Verify — sent (PAYE), invoice_received (SE), or reviewed */}
-                              {(ts.status === 'sent' || ts.status === 'invoice_received' || ts.status === 'reviewed') && (
+                              {/* Verify — distributed or amendment_requested */}
+                              {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
                                 <button
                                   onClick={() => handleVerify(ts.id)}
                                   disabled={verifying === ts.id}
@@ -758,8 +757,8 @@ export default function TimesheetsPage() {
                                   Verify
                                 </button>
                               )}
-                              {/* Edit entries link — not for verified */}
-                              {ts.status !== 'verified' && (
+                              {/* Edit entries link — not for finalised */}
+                              {ts.status !== 'finalised' && (
                                 <Link
                                   href={`/timesheets/${ts.id}`}
                                   className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
@@ -768,14 +767,14 @@ export default function TimesheetsPage() {
                                   Edit Entries
                                 </Link>
                               )}
-                              {/* Attach Invoice — sent, reviewed, or replace on invoice_received */}
-                              {(ts.status === 'sent' || ts.status === 'reviewed' || ts.status === 'invoice_received') && (
+                              {/* Attach Invoice — distributed or amendment_requested */}
+                              {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
                                 <button
                                   onClick={() => setAttachModal({ id: ts.id, name: fullName })}
                                   className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
                                 >
                                   <Paperclip size={12} />
-                                  {ts.status === 'invoice_received' ? 'Replace Invoice' : 'Attach Invoice'}
+                                  {ts.invoice_attachment_url ? 'Replace Invoice' : 'Attach Invoice'}
                                 </button>
                               )}
                             </div>
@@ -798,7 +797,7 @@ export default function TimesheetsPage() {
                   : `${filteredSheets.length} of ${sheets.length} timesheet${sheets.length !== 1 ? 's' : ''} (filtered)`}
               {!loading && sheets.length > 0 && (
                 <span className="ml-2 text-slate-400">
-                  · {sheets.filter(s => s.status === 'verified').length}/{sheets.length} verified
+                  · {sheets.filter(s => s.status === 'finalised').length}/{sheets.length} finalised
                 </span>
               )}
             </span>

@@ -417,9 +417,9 @@ const saveEntries = async (req, res) => {
       [req.params.id]
     );
     if (!ts) { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Timesheet not found' }); }
-    if (ts.status === 'verified') {
+    if (ts.status === 'finalised') {
       await client.query('ROLLBACK');
-      return res.status(403).json({ error: 'Verified timesheets are locked and cannot be edited' });
+      return res.status(403).json({ error: 'Finalised timesheets are locked and cannot be edited' });
     }
 
     // Gap 3: persist rank/rate override fields on the timesheet row
@@ -593,7 +593,7 @@ const bulkDistribute = async (req, res) => {
       const crewName = `${ts.first_name} ${ts.last_name}`;
 
       if (!ts.email) {
-        await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
+        await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
         results.no_email.push(crewName);
         return;
       }
@@ -612,7 +612,7 @@ const bulkDistribute = async (req, res) => {
         await logEmail('timesheet_distribution', ts.id, ts.email, crewName, false, emailErr.message);
         results.failed.push(crewName);
       }
-      await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [ts.id]);
+      await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
     }));
 
     res.json({
@@ -643,8 +643,8 @@ const resendTimesheet = async (req, res) => {
       [req.params.id]
     );
     if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
-    if (ts.status !== 'reviewed')
-      return res.status(409).json({ error: 'Only reviewed timesheets can be resent' });
+    if (ts.status !== 'amendment_requested')
+      return res.status(409).json({ error: 'Only amendment_requested timesheets can be resent' });
     if (!ts.email)
       return res.status(400).json({ error: 'Crew member has no email address on file' });
 
@@ -654,7 +654,7 @@ const resendTimesheet = async (req, res) => {
     );
 
     await sendTimesheetEmail(ts, entries);
-    await db.query(`UPDATE timesheets SET status = 'sent' WHERE id = $1`, [req.params.id]);
+    await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [req.params.id]);
     await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
 
     res.json({ message: 'Timesheet resent to crew member', timesheet_id: ts.id });
@@ -681,8 +681,7 @@ const attachInvoice = async (req, res) => {
 
     const { rows: [existing] } = await db.query('SELECT status FROM timesheets WHERE id = $1', [req.params.id]);
     if (!existing) return res.status(404).json({ error: 'Timesheet not found' });
-    // Advance status to invoice_received when attaching to a sent or reviewed timesheet
-    const newStatus = (existing.status === 'sent' || existing.status === 'reviewed') ? 'invoice_received' : existing.status;
+    const newStatus = existing.status; // invoice attachment does not change status in the current workflow
 
     const { rows: [ts] } = await db.query(
       `UPDATE timesheets
@@ -704,7 +703,7 @@ const chaseInvoices = async (req, res) => {
   const { week_ending_date } = req.body;
   try {
     const conditions = [
-      "t.status IN ('sent', 'reviewed', 'invoice_received')",
+      "t.status IN ('distributed', 'amendment_requested')",
       't.invoice_attachment_url IS NULL',
       "cm.employment_status = 'self_employed'",  // PAYE crew do not invoice
     ];
@@ -782,10 +781,10 @@ const verifyTimesheet = async (req, res) => {
     );
     if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
 
-    const readyStatuses = ['sent', 'invoice_received', 'reviewed'];
+    const readyStatuses = ['distributed', 'amendment_requested'];
     if (!readyStatuses.includes(ts.status))
       return res.status(409).json({
-        error: 'Timesheet must be sent (or have invoice received) before it can be verified',
+        error: 'Timesheet must be distributed (or amendment_requested) before it can be finalised',
       });
 
     if (ts.employment_status === 'self_employed' && !ts.invoice_attachment_url)
@@ -795,7 +794,7 @@ const verifyTimesheet = async (req, res) => {
       });
 
     const { rows: [updated] } = await db.query(
-      `UPDATE timesheets SET status = 'verified' WHERE id = $1 RETURNING *`,  // TimesheetStatus.VERIFIED
+      `UPDATE timesheets SET status = 'finalised' WHERE id = $1 RETURNING *`,  // TimesheetStatus.FINALISED
       [req.params.id]
     );
     res.json({ message: 'Timesheet verified', timesheet: updated });
@@ -807,7 +806,7 @@ const verifyTimesheet = async (req, res) => {
 
 // ─── PATCH /api/timesheets/:id ────────────────────────────────────────────────
 const patchTimesheet = async (req, res) => {
-  const VALID_STATUSES = ['draft', 'sent', 'reviewed', 'invoice_received', 'verified'];  // TimesheetStatus
+  const VALID_STATUSES = ['draft', 'distributed', 'amendment_requested', 'finalised'];  // TimesheetStatus
   const { status } = req.body;
 
   if (!status)
@@ -815,16 +814,16 @@ const patchTimesheet = async (req, res) => {
   if (!VALID_STATUSES.includes(status))
     return res.status(400).json({ error: `status must be one of: ${VALID_STATUSES.join(', ')}` });
 
-  if (status === 'verified')
-    return res.status(400).json({ error: 'Use POST /:id/verify to verify a timesheet' });
+  if (status === 'finalised')
+    return res.status(400).json({ error: 'Use POST /:id/verify to finalise a timesheet' });
 
   try {
     const { rows: [existing] } = await db.query(
       'SELECT id, status FROM timesheets WHERE id = $1', [req.params.id]
     );
     if (!existing) return res.status(404).json({ error: 'Timesheet not found' });
-    if (existing.status === 'verified')
-      return res.status(403).json({ error: 'Verified timesheets are locked — status cannot be changed' });
+    if (existing.status === 'finalised')
+      return res.status(403).json({ error: 'Finalised timesheets are locked — status cannot be changed' });
 
     const { rows: [updated] } = await db.query(
       'UPDATE timesheets SET status = $1 WHERE id = $2 RETURNING *',
@@ -873,7 +872,7 @@ const generateVerificationPackPdf = async (req, res) => {
     if (!timesheets.length)
       return res.status(404).json({ error: 'No timesheets found for this week and production' });
 
-    const notVerified = timesheets.filter(t => t.status !== 'verified');
+    const notVerified = timesheets.filter(t => t.status !== 'finalised');
     if (notVerified.length)
       return res.status(409).json({
         error:        `${notVerified.length} timesheet(s) are not yet verified`,
