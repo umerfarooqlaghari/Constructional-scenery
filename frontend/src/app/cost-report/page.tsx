@@ -262,6 +262,38 @@ function CostReportContent() {
 
   const isCostPlus = productions.find(p => p.id === selectedId)?.contract_type === 'cost_plus';
 
+  const triggerDownload = (blob: Blob, filename: string) => {
+    const url = URL.createObjectURL(blob);
+    const a   = document.createElement('a');
+    a.href    = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportType2CSV = async (costType: 'labour' | 'supplier') => {
+    if (!type2Report || !selectedId) return;
+    const params: Record<string, string> = { report_type: 'cost_plus', cost_type: costType };
+    if (asAtDate) params.as_at_date = asAtDate;
+    const res = await costReportExtApi.exportCSV(selectedId, params);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    const suffix = new Date().toISOString().slice(0, 10);
+    triggerDownload(blob, `${costType}-costs-cost-plus-${suffix}.csv`);
+  };
+
+  const exportType2PDF = async () => {
+    if (!type2Report || !selectedId) return;
+    const params: Record<string, string> = { report_type: 'cost_plus' };
+    if (asAtDate) params.as_at_date = asAtDate;
+    const res = await costReportExtApi.exportPDF(selectedId, params);
+    if (!res.ok) return;
+    const blob = await res.blob();
+    triggerDownload(blob, `cost-report-cost-plus-${new Date().toISOString().slice(0, 10)}.pdf`);
+  };
+
   const m = report?.metrics;
   const profitIsPositive = m ? m.current_profit >= 0 : true;
   const totalCosts = m?.total_costs_to_date ?? 0;
@@ -386,6 +418,33 @@ function CostReportContent() {
               onClick={exportPDF}
               disabled={!report}
               className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
+            >
+              <Download size={14} /> Export PDF
+            </button>
+            )}
+            {isCostPlus && (
+            <button
+              onClick={() => exportType2CSV('labour')}
+              disabled={!type2Report}
+              className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
+            >
+              <Download size={14} /> Labour CSV
+            </button>
+            )}
+            {isCostPlus && (
+            <button
+              onClick={() => exportType2CSV('supplier')}
+              disabled={!type2Report}
+              className="flex items-center gap-2 text-slate-600 text-sm border border-slate-200 bg-white rounded-lg px-3 py-2 hover:bg-slate-50 shadow-sm disabled:opacity-50"
+            >
+              <Download size={14} /> Supplier CSV
+            </button>
+            )}
+            {isCostPlus && (
+            <button
+              onClick={exportType2PDF}
+              disabled={!type2Report}
+              className="flex items-center gap-2 text-purple-700 text-sm border border-purple-200 bg-purple-50 rounded-lg px-3 py-2 hover:bg-purple-100 shadow-sm disabled:opacity-50"
             >
               <Download size={14} /> Export PDF
             </button>
