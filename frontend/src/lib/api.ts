@@ -373,7 +373,7 @@ export const dashboardApi = {
 };
 
 // ─── Timesheet types ───────────────────────────────────────────────────────────
-export type TimesheetStatus = 'draft' | 'sent' | 'reviewed' | 'invoice_received' | 'verified';
+export type TimesheetStatus = 'draft' | 'distributed' | 'amendment_requested' | 'finalised';
 
 export type Timesheet = {
   id: string;
@@ -382,6 +382,8 @@ export type Timesheet = {
   week_ending_date: string;
   status: TimesheetStatus;
   grand_total: string | null;
+  invoice_attachment_url: string | null;
+  invoice_attachment_name: string | null;
   // joined from crew_members
   first_name?: string;
   last_name?: string;

@@ -41,35 +41,35 @@ export default function AccountantDashboard() {
 
   // Timesheet counts by status
   const tsCounts = {
-    invoice_received: timesheets.filter(t => t.status === 'invoice_received').length,
-    verified:         timesheets.filter(t => t.status === 'verified').length,
-    sent:             timesheets.filter(t => t.status === 'sent').length,
-    draft:            timesheets.filter(t => t.status === 'draft').length,
+    distributed:         timesheets.filter(t => t.status === 'distributed').length,
+    amendment_requested: timesheets.filter(t => t.status === 'amendment_requested').length,
+    finalised:           timesheets.filter(t => t.status === 'finalised').length,
+    draft:               timesheets.filter(t => t.status === 'draft').length,
   };
 
-  // Pending verifications = invoice_received timesheets (most recent first, max 5)
+  // Pending verifications = distributed/amendment_requested timesheets (most recent first, max 5)
   const pendingVerifications = timesheets
-    .filter(t => t.status === 'invoice_received')
+    .filter(t => t.status === 'distributed' || t.status === 'amendment_requested')
     .slice(0, 5);
 
   const statCards = [
     {
-      label:   'Awaiting Invoice',
-      value:   tsCounts.sent,
+      label:   'Distributed',
+      value:   tsCounts.distributed,
       subtext: 'timesheets',
       color:   'bg-amber-50 text-amber-600',
       icon:    Clock,
     },
     {
-      label:   'Invoice Received',
-      value:   tsCounts.invoice_received,
-      subtext: 'pending verification',
+      label:   'Amendment Requested',
+      value:   tsCounts.amendment_requested,
+      subtext: 'pending action',
       color:   'bg-blue-50 text-blue-600',
       icon:    FileText,
     },
     {
-      label:   'Verified',
-      value:   tsCounts.verified,
+      label:   'Finalised',
+      value:   tsCounts.finalised,
       subtext: 'timesheets',
       color:   'bg-green-50 text-green-600',
       icon:    CheckCircle2,
@@ -172,7 +172,7 @@ export default function AccountantDashboard() {
                   </div>
                 ))}
                 <div className="px-5 py-3 bg-slate-50 flex justify-between items-center">
-                  <span className="text-slate-500 text-xs">{tsCounts.invoice_received} timesheets pending</span>
+                  <span className="text-slate-500 text-xs">{tsCounts.distributed + tsCounts.amendment_requested} timesheets pending</span>
                   <button onClick={() => router.push('/timesheets')} className="text-blue-600 text-xs font-medium hover:underline">
                     View all
                   </button>
@@ -298,12 +298,12 @@ export default function AccountantDashboard() {
         </div>
 
         {/* Pending Approvals Banner */}
-        {!loading && tsCounts.invoice_received > 0 && (
+        {!loading && (tsCounts.distributed + tsCounts.amendment_requested) > 0 && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl px-5 py-3.5 flex items-center justify-between">
             <div className="flex items-center gap-3">
               <AlertCircle size={16} className="text-amber-600 flex-shrink-0" />
               <span className="text-amber-800 text-sm font-medium">
-                {tsCounts.invoice_received} timesheet{tsCounts.invoice_received !== 1 ? 's' : ''} with invoices received — ready to verify
+                {tsCounts.distributed + tsCounts.amendment_requested} timesheet{(tsCounts.distributed + tsCounts.amendment_requested) !== 1 ? 's' : ''} distributed — ready to verify
               </span>
             </div>
             <button
