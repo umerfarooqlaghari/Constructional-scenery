@@ -323,10 +323,23 @@ function TabPOsBilling({ rows, productionId, onRefresh }: {
             <tr key={i} className={`hover:bg-slate-50/50 ${r.is_omitted ? 'opacity-50' : ''}`}>
               <Td mono>{r.po_number ?? '—'}</Td>
               <td className="px-4 py-2 border-b border-slate-100">
-                <input type="text" value={edit.cs_invoice_number}
-                  onChange={e => upd(r.source_id, 'cs_invoice_number', e.target.value)}
-                  placeholder="CS invoice #"
-                  className="w-28 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+                <div className="flex items-center gap-1">
+                  <input type="text" value={edit.cs_invoice_number}
+                    onChange={e => upd(r.source_id, 'cs_invoice_number', e.target.value)}
+                    placeholder="CS invoice #"
+                    className="w-24 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { next_invoice_number } = await costReportExtApi.getNextInvoiceNumber(productionId);
+                        upd(r.source_id, 'cs_invoice_number', next_invoice_number);
+                      } catch { /* ignore */ }
+                    }}
+                    title="Auto-generate next CS invoice number"
+                    className="text-[10px] px-1.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded hover:bg-slate-200 font-medium whitespace-nowrap">
+                    Generate
+                  </button>
+                </div>
               </td>
               <Td right bold>{fmt(r.po_value)}</Td>
               <td className="px-4 py-2 border-b border-slate-100 text-right">
@@ -545,32 +558,111 @@ function TabMaterials({ rows, productionId, onOmitted }: {
 
 // ─── Tab: Weekly Invoice Summary ──────────────────────────────────────────────
 
-function TabWeeklyInvoice({ rows }: { rows: WeeklyInvoiceRow[] }) {
+type WeeklyInvoiceEdit = { cs_invoice_number: string; po_reference: string };
+
+function TabWeeklyInvoice({ rows, productionId, onRefresh }: {
+  rows: WeeklyInvoiceRow[];
+  productionId: string;
+  onRefresh: () => void;
+}) {
+  const [edits,   setEdits]   = useState<Record<string, WeeklyInvoiceEdit>>({});
+  const [saving,  setSaving]  = useState<Record<string, boolean>>({});
+  const [saveErr, setSaveErr] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setEdits(Object.fromEntries(rows.map(r => [r.week_ending_date ?? '', {
+      cs_invoice_number: r.cs_invoice_number ?? '',
+      po_reference:      r.po_reference      ?? '',
+    }])));
+  }, [rows]);
+
+  const upd = (key: string, field: keyof WeeklyInvoiceEdit, val: string) =>
+    setEdits(e => ({ ...e, [key]: { ...(e[key] ?? { cs_invoice_number: '', po_reference: '' }), [field]: val } }));
+
+  const save = async (r: WeeklyInvoiceRow) => {
+    if (!r.week_ending_date) return;
+    const key  = r.week_ending_date;
+    const edit = edits[key] ?? { cs_invoice_number: '', po_reference: '' };
+    setSaving(s  => ({ ...s,  [key]: true }));
+    setSaveErr(e => ({ ...e, [key]: '' }));
+    try {
+      await costReportExtApi.upsertWeeklyPL(productionId, key, {
+        cs_invoice_number: edit.cs_invoice_number || undefined,
+        po_reference:      edit.po_reference      || undefined,
+      });
+      onRefresh();
+    } catch (err) {
+      setSaveErr(e => ({ ...e, [key]: err instanceof Error ? err.message : 'Save failed' }));
+    } finally {
+      setSaving(s => ({ ...s, [key]: false }));
+    }
+  };
+
   const totalCharged = rows.reduce((s, r) => s + r.charged_so_far, 0);
   const totalLabour  = rows.reduce((s, r) => s + r.labour_charged, 0);
   const totalMat     = rows.reduce((s, r) => s + r.materials, 0);
+
   return (
     <TableWrap>
       <thead><tr>
         <Th>Wk #</Th><Th>Week Ending</Th>
         <Th right>Above Line Labour</Th><Th right>Labour Charged</Th>
         <Th right>Materials</Th><Th right>Released Advance</Th>
-        <Th right>Charged So Far</Th><Th>CS Invoice #</Th><Th>PO Reference</Th>
+        <Th right>Charged So Far</Th><Th>CS Invoice #</Th><Th>PO Reference</Th><Th>Save</Th>
       </tr></thead>
       <tbody>
-        {rows.length === 0 ? <EmptyRow cols={9} label="No weekly data yet" /> : rows.map((r, i) => (
-          <tr key={i} className="hover:bg-slate-50/50">
-            <Td><span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{r.week_number}</span></Td>
-            <Td bold>{fmtDate(r.week_ending_date)}</Td>
-            <Td right>{fmt(r.above_line_labour_charged)}</Td>
-            <Td right>{fmt(r.labour_charged)}</Td>
-            <Td right>{fmt(r.materials)}</Td>
-            <Td right>{fmt(r.released_advance)}</Td>
-            <Td right bold>{fmt(r.charged_so_far)}</Td>
-            <Td>{r.cs_invoice_number ?? <span className="text-slate-400 italic text-xs">Not set</span>}</Td>
-            <Td>{r.po_reference ?? <span className="text-slate-400 italic text-xs">—</span>}</Td>
-          </tr>
-        ))}
+        {rows.length === 0 ? <EmptyRow cols={10} label="No weekly data yet" /> : rows.map((r, i) => {
+          const key     = r.week_ending_date ?? '';
+          const edit    = edits[key] ?? { cs_invoice_number: '', po_reference: '' };
+          const isSaving = saving[key]  || false;
+          const err      = saveErr[key] || '';
+          return (
+            <tr key={i} className="hover:bg-slate-50/50">
+              <Td><span className="text-xs font-semibold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full">{r.week_number}</span></Td>
+              <Td bold>{fmtDate(r.week_ending_date)}</Td>
+              <Td right>{fmt(r.above_line_labour_charged)}</Td>
+              <Td right>{fmt(r.labour_charged)}</Td>
+              <Td right>{fmt(r.materials)}</Td>
+              <Td right>{fmt(r.released_advance)}</Td>
+              <Td right bold>{fmt(r.charged_so_far)}</Td>
+              <td className="px-4 py-2 border-b border-slate-100">
+                <div className="flex items-center gap-1">
+                  <input type="text" value={edit.cs_invoice_number}
+                    onChange={e => upd(key, 'cs_invoice_number', e.target.value)}
+                    placeholder="CS invoice #"
+                    className="w-24 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+                  <button
+                    onClick={async () => {
+                      try {
+                        const { next_invoice_number } = await costReportExtApi.getNextInvoiceNumber(productionId);
+                        upd(key, 'cs_invoice_number', next_invoice_number);
+                      } catch { /* ignore */ }
+                    }}
+                    title="Auto-generate next CS invoice number"
+                    className="text-[10px] px-1.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded hover:bg-slate-200 font-medium whitespace-nowrap">
+                    Generate
+                  </button>
+                </div>
+              </td>
+              <td className="px-4 py-2 border-b border-slate-100">
+                <input type="text" value={edit.po_reference}
+                  onChange={e => upd(key, 'po_reference', e.target.value)}
+                  placeholder="PO ref"
+                  className="w-28 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+              </td>
+              <td className="px-4 py-2 border-b border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => save(r)} disabled={isSaving || !r.week_ending_date}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 font-medium">
+                    {isSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                    Save
+                  </button>
+                  {err && <span className="text-red-500 text-[10px]">{err}</span>}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
       {rows.length > 0 && (
         <tfoot>
@@ -581,7 +673,7 @@ function TabWeeklyInvoice({ rows }: { rows: WeeklyInvoiceRow[] }) {
             <Td right bold>{fmt(totalMat)}</Td>
             <td className="px-4 py-3" />
             <Td right bold>{fmt(totalCharged)}</Td>
-            <td colSpan={2} />
+            <td colSpan={3} />
           </tr>
         </tfoot>
       )}
@@ -1358,7 +1450,7 @@ export default function CostReportType2({ report, onRefresh, userRole }: {
           {activeTab === 'pos'       && <TabPOsBilling rows={report.pos_and_billing} productionId={report.production.id} onRefresh={onRefresh} />}
           {activeTab === 'labour'    && <TabLabour rows={report.labour_to_send} productionId={report.production.id} onOmitted={onRefresh} />}
           {activeTab === 'materials' && <TabMaterials rows={report.materials_to_send} productionId={report.production.id} onOmitted={onRefresh} />}
-          {activeTab === 'weekly'    && <TabWeeklyInvoice rows={report.weekly_invoice_summary} />}
+          {activeTab === 'weekly'    && <TabWeeklyInvoice rows={report.weekly_invoice_summary} productionId={report.production.id} onRefresh={onRefresh} />}
           {activeTab === 'budget'    && (
             <TabMasterBudget
               budget={report.budget}

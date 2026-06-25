@@ -32,6 +32,7 @@ router.get('/:productionId/type1',                              ctrl.getType1Rep
 router.get('/:productionId/type2',                              ctrl.getType2Report);
 router.get('/:productionId/snapshot',                           ctrl.getSnapshot);
 router.get('/:productionId/cost-plus',                          ctrl.getCostPlus);
+router.get('/:productionId/next-invoice-number',                requireRole(...WRITERS), ctrl.getNextInvoiceNumber);
 router.get('/:productionId/export/csv',  exportRateLimit,       ctrl.exportCostReportCSV);
 router.get('/:productionId/export/pdf',  exportRateLimit,       ctrl.exportCostReportPDF);
 router.get('/:productionId',                                    ctrl.getCostReport);
