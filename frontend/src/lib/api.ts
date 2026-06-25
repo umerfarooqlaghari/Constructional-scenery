@@ -804,7 +804,7 @@ export const payRunsApi = {
   getById: (id: string) =>
     request<PayRun & { items: PayRunItem[] }>(`/api/pay-runs/${id}`),
   create: (data: { production_id: string; week_ending_date: string }) =>
-    request<PayRun>('/api/pay-runs', { method: 'POST', body: data }),
+    request<{ message: string; pay_run: PayRun }>('/api/pay-runs', { method: 'POST', body: data }),
   process: (id: string) =>
     request<{ message: string; pay_run: PayRun }>(`/api/pay-runs/${id}/process`, { method: 'POST', body: {} }),
   exportCsv: (id: string) =>
