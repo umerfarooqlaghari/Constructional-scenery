@@ -506,24 +506,27 @@ const _buildType2Data = async (productionId, filters, db) => {
     };
   });
 
-  const labourToSend = labourEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => ({
-    entry_id:                e.id,
-    week_ending_date:        String(e.week_ending_date).split('T')[0],
-    transaction_description: `Labour — ${[e.trade, e.rank].filter(Boolean).join(' ')} w/e ${String(e.week_ending_date).split('T')[0]}`,
-    account_code:            e.set_code || null,
-    account_description:     [e.trade, e.rank].filter(Boolean).join(' '),
-    net_amount_charged:      parseFloat(e.net_amount),
-    margin_amount:           parseFloat(e.net_amount) * margin,
-    cost_to_production:      parseFloat(e.net_amount) * (1 + margin),
-    crew_name:               `${e.first_name} ${e.last_name}`,
-    crew_number:             e.crew_number,
-  }));
+  const labourToSend = labourEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => {
+    const wed = e.week_ending_date ? String(e.week_ending_date).split('T')[0] : null;
+    return {
+      entry_id:                e.id,
+      week_ending_date:        wed,
+      transaction_description: `Labour — ${[e.trade, e.rank].filter(Boolean).join(' ')}${wed ? ` w/e ${wed}` : ''}`,
+      account_code:            e.set_code || e.account_code || null,
+      account_description:     [e.trade, e.rank].filter(Boolean).join(' '),
+      net_amount_charged:      parseFloat(e.net_amount),
+      margin_amount:           parseFloat(e.net_amount) * margin,
+      cost_to_production:      parseFloat(e.net_amount) * (1 + margin),
+      crew_name:               `${e.first_name} ${e.last_name}`,
+      crew_number:             e.crew_number,
+    };
+  });
 
   const materialsToSend = supplierEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => ({
     entry_id:                e.id,
-    week_ending_date:        String(e.date).split('T')[0],
+    week_ending_date:        e.date ? String(e.date).split('T')[0] : null,
     po_number:               e.po_number,
-    invoice_date:            String(e.date).split('T')[0],
+    invoice_date:            e.date ? String(e.date).split('T')[0] : null,
     supplier:                e.supplier_name,
     account_code:            e.account_code,
     account_description:     e.account_code || '',
@@ -539,7 +542,7 @@ const _buildType2Data = async (productionId, filters, db) => {
     return {
       entry_id:           e.id,
       type:               'labour',
-      week_ending_date:   String(e.week_ending_date).split('T')[0],
+      week_ending_date:   e.week_ending_date ? String(e.week_ending_date).split('T')[0] : null,
       crew_name:          `${e.first_name} ${e.last_name}`,
       crew_number:        e.crew_number,
       set_code:           e.set_code || null,
@@ -558,7 +561,7 @@ const _buildType2Data = async (productionId, filters, db) => {
     return {
       entry_id:               e.id,
       type:                   'material',
-      week_ending_date:       String(e.date).split('T')[0],
+      week_ending_date:       e.date ? String(e.date).split('T')[0] : null,
       supplier:               e.supplier_name,
       po_number:              e.po_number,
       set_code:               e.set_code    || null,

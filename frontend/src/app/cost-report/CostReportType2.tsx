@@ -1,7 +1,7 @@
 'use client';
 
-import { useState, useCallback } from 'react';
-import { TrendingUp, TrendingDown, Plus, Trash2, Save, RotateCcw, Loader2 } from 'lucide-react';
+import { useState, useCallback, useEffect } from 'react';
+import { TrendingUp, TrendingDown, Plus, Trash2, Save, RotateCcw, Loader2, Pencil } from 'lucide-react';
 import { costReportExtApi } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -260,31 +260,100 @@ function TabMainCostReport({ rows }: { rows: MainCostRow[] }) {
 
 // ─── Tab: POs & Amount to Bill ────────────────────────────────────────────────
 
-function TabPOsBilling({ rows }: { rows: POBillingRow[] }) {
-  const totalValue    = rows.reduce((s, r) => s + r.po_value, 0);
-  const totalInvoiced = rows.reduce((s, r) => s + r.amount_invoiced, 0);
-  const totalStill    = rows.reduce((s, r) => s + r.amount_still_to_invoice, 0);
+type POEdit = { cs_invoice_number: string; amount_invoiced: string };
+
+function TabPOsBilling({ rows, productionId, onRefresh }: {
+  rows: POBillingRow[];
+  productionId: string;
+  onRefresh: () => void;
+}) {
+  const [edits,   setEdits]   = useState<Record<string, POEdit>>({});
+  const [saving,  setSaving]  = useState<Record<string, boolean>>({});
+  const [saveErr, setSaveErr] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setEdits(Object.fromEntries(rows.map(r => [r.source_id, {
+      cs_invoice_number: r.cs_invoice_number ?? '',
+      amount_invoiced:   r.amount_invoiced > 0 ? String(r.amount_invoiced) : '',
+    }])));
+  }, [rows]);
+
+  const upd = (sid: string, field: keyof POEdit, val: string) =>
+    setEdits(e => ({ ...e, [sid]: { ...(e[sid] ?? { cs_invoice_number: '', amount_invoiced: '' }), [field]: val } }));
+
+  const save = async (r: POBillingRow) => {
+    const edit = edits[r.source_id] ?? { cs_invoice_number: '', amount_invoiced: '' };
+    setSaving(s  => ({ ...s,  [r.source_id]: true }));
+    setSaveErr(e => ({ ...e, [r.source_id]: '' }));
+    try {
+      await costReportExtApi.updatePoBilling(productionId, r.source_id, {
+        cs_invoice_number: edit.cs_invoice_number || undefined,
+        amount_invoiced:   parseFloat(edit.amount_invoiced || '0') || 0,
+      });
+      onRefresh();
+    } catch (err) {
+      setSaveErr(e => ({ ...e, [r.source_id]: err instanceof Error ? err.message : 'Save failed' }));
+    } finally {
+      setSaving(s => ({ ...s, [r.source_id]: false }));
+    }
+  };
+
+  const totalValue = rows.reduce((s, r) => s + r.po_value, 0);
+  const totalInvoiced = rows.reduce((s, r) => {
+    const e = edits[r.source_id];
+    return s + (e ? parseFloat(e.amount_invoiced || '0') || 0 : r.amount_invoiced);
+  }, 0);
+  const totalStill = totalValue - totalInvoiced;
+
   return (
     <TableWrap>
       <thead><tr>
         <Th>PO Number</Th><Th>CS Invoice #</Th>
-        <Th right>PO Value</Th><Th right>Amount Invoiced</Th><Th right>Still to Invoice</Th><Th>Status</Th>
+        <Th right>PO Value</Th><Th right>Amount Invoiced</Th><Th right>Still to Invoice</Th>
+        <Th>Status</Th><Th>Save</Th>
       </tr></thead>
       <tbody>
-        {rows.length === 0 ? <EmptyRow cols={6} label="No POs on this production" /> : rows.map((r, i) => (
-          <tr key={i} className={`hover:bg-slate-50/50 ${r.is_omitted ? 'opacity-50' : ''}`}>
-            <Td mono>{r.po_number ?? '—'}</Td>
-            <Td><span className={r.cs_invoice_number ? 'font-medium text-slate-900 text-xs' : 'text-slate-400 italic text-xs'}>{r.cs_invoice_number ?? 'Not set'}</span></Td>
-            <Td right bold>{fmt(r.po_value)}</Td>
-            <Td right>{fmt(r.amount_invoiced)}</Td>
-            <Td right red={r.amount_still_to_invoice > 0}>{fmt(r.amount_still_to_invoice)}</Td>
-            <Td>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.is_omitted ? 'bg-slate-100 text-slate-500' : r.amount_still_to_invoice <= 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                {r.is_omitted ? 'Omitted' : r.amount_still_to_invoice <= 0 ? 'Fully billed' : 'Pending'}
-              </span>
-            </Td>
-          </tr>
-        ))}
+        {rows.length === 0 ? <EmptyRow cols={7} label="No POs on this production" /> : rows.map((r, i) => {
+          const edit = edits[r.source_id] ?? { cs_invoice_number: r.cs_invoice_number ?? '', amount_invoiced: String(r.amount_invoiced) };
+          const localAmt  = parseFloat(edit.amount_invoiced || '0') || 0;
+          const still     = r.po_value - localAmt;
+          const isSaving  = saving[r.source_id]  || false;
+          const err       = saveErr[r.source_id] || '';
+          return (
+            <tr key={i} className={`hover:bg-slate-50/50 ${r.is_omitted ? 'opacity-50' : ''}`}>
+              <Td mono>{r.po_number ?? '—'}</Td>
+              <td className="px-4 py-2 border-b border-slate-100">
+                <input type="text" value={edit.cs_invoice_number}
+                  onChange={e => upd(r.source_id, 'cs_invoice_number', e.target.value)}
+                  placeholder="CS invoice #"
+                  className="w-28 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+              </td>
+              <Td right bold>{fmt(r.po_value)}</Td>
+              <td className="px-4 py-2 border-b border-slate-100 text-right">
+                <input type="number" min="0" step="0.01" value={edit.amount_invoiced}
+                  onChange={e => upd(r.source_id, 'amount_invoiced', e.target.value)}
+                  placeholder="0.00"
+                  className="w-24 text-xs text-right border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 tabular-nums" />
+              </td>
+              <Td right red={still > 0}>{fmt(still)}</Td>
+              <Td>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${r.is_omitted ? 'bg-slate-100 text-slate-500' : still <= 0 ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
+                  {r.is_omitted ? 'Omitted' : still <= 0 ? 'Fully billed' : 'Pending'}
+                </span>
+              </Td>
+              <td className="px-4 py-2 border-b border-slate-100">
+                <div className="flex items-center gap-1.5">
+                  <button onClick={() => save(r)} disabled={isSaving}
+                    className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 font-medium">
+                    {isSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                    Save
+                  </button>
+                  {err && <span className="text-red-500 text-[10px]">{err}</span>}
+                </div>
+              </td>
+            </tr>
+          );
+        })}
       </tbody>
       {rows.length > 0 && (
         <tfoot>
@@ -293,7 +362,7 @@ function TabPOsBilling({ rows }: { rows: POBillingRow[] }) {
             <Td right bold>{fmt(totalValue)}</Td>
             <Td right bold>{fmt(totalInvoiced)}</Td>
             <Td right bold red={totalStill > 0}>{fmt(totalStill)}</Td>
-            <td />
+            <td colSpan={2} />
           </tr>
         </tfoot>
       )}
@@ -306,19 +375,27 @@ function TabPOsBilling({ rows }: { rows: POBillingRow[] }) {
 function TabLabour({ rows, productionId, onOmitted }: {
   rows: LabourRow[]; productionId: string; onOmitted: () => void;
 }) {
-  const [omitting, setOmitting] = useState<string | null>(null);
+  const [omitting,  setOmitting]  = useState<string | null>(null);
   const [reasonMap, setReasonMap] = useState<Record<string, string>>({});
+  const [omitError, setOmitError] = useState<string | null>(null);
 
   const omit = async (row: LabourRow) => {
+    if (!row.week_ending_date) {
+      setOmitError('Cannot omit: week ending date is missing on this entry');
+      return;
+    }
     setOmitting(row.entry_id);
+    setOmitError(null);
     try {
       await costReportExtApi.omitEntry(productionId, {
-        entry_id: row.entry_id,
+        entry_id:        row.entry_id,
         week_ending_date: row.week_ending_date,
-        omit_reason: reasonMap[row.entry_id] || undefined,
+        omit_reason:     reasonMap[row.entry_id] || undefined,
       });
       onOmitted();
-    } catch { /* silent */ } finally { setOmitting(null); }
+    } catch (e) {
+      setOmitError(e instanceof Error ? e.message : 'Failed to omit entry');
+    } finally { setOmitting(null); }
   };
 
   const totalNet    = rows.reduce((s, r) => s + r.net_amount_charged, 0);
@@ -326,7 +403,11 @@ function TabLabour({ rows, productionId, onOmitted }: {
   const totalCTP    = rows.reduce((s, r) => s + r.cost_to_production, 0);
 
   return (
-    <TableWrap>
+    <div className="space-y-2">
+      {omitError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-red-700 text-xs font-medium">{omitError}</div>
+      )}
+      <TableWrap>
       <thead><tr>
         <Th>Week Ending</Th><Th>Crew Member</Th>
         <Th>Account / Set</Th><Th>Description</Th>
@@ -370,7 +451,8 @@ function TabLabour({ rows, productionId, onOmitted }: {
           </tr>
         </tfoot>
       )}
-    </TableWrap>
+      </TableWrap>
+    </div>
   );
 }
 
@@ -379,19 +461,27 @@ function TabLabour({ rows, productionId, onOmitted }: {
 function TabMaterials({ rows, productionId, onOmitted }: {
   rows: MaterialRow[]; productionId: string; onOmitted: () => void;
 }) {
-  const [omitting, setOmitting] = useState<string | null>(null);
+  const [omitting,  setOmitting]  = useState<string | null>(null);
   const [reasonMap, setReasonMap] = useState<Record<string, string>>({});
+  const [omitError, setOmitError] = useState<string | null>(null);
 
   const omit = async (row: MaterialRow) => {
+    if (!row.week_ending_date) {
+      setOmitError('Cannot omit: week ending date is missing on this entry');
+      return;
+    }
     setOmitting(row.entry_id);
+    setOmitError(null);
     try {
       await costReportExtApi.omitEntry(productionId, {
-        entry_id: row.entry_id,
+        entry_id:        row.entry_id,
         week_ending_date: row.week_ending_date,
-        omit_reason: reasonMap[row.entry_id] || undefined,
+        omit_reason:     reasonMap[row.entry_id] || undefined,
       });
       onOmitted();
-    } catch { /* silent */ } finally { setOmitting(null); }
+    } catch (e) {
+      setOmitError(e instanceof Error ? e.message : 'Failed to omit entry');
+    } finally { setOmitting(null); }
   };
 
   const totalNet    = rows.reduce((s, r) => s + r.net_amount, 0);
@@ -399,7 +489,11 @@ function TabMaterials({ rows, productionId, onOmitted }: {
   const totalCTP    = rows.reduce((s, r) => s + r.recharge_to_production, 0);
 
   return (
-    <TableWrap>
+    <div className="space-y-2">
+      {omitError && (
+        <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-red-700 text-xs font-medium">{omitError}</div>
+      )}
+      <TableWrap>
       <thead><tr>
         <Th>Week Ending</Th><Th>PO Number</Th><Th>Supplier</Th>
         <Th>Account Code</Th><Th>Set</Th>
@@ -444,7 +538,8 @@ function TabMaterials({ rows, productionId, onOmitted }: {
           </tr>
         </tfoot>
       )}
-    </TableWrap>
+      </TableWrap>
+    </div>
   );
 }
 
@@ -912,28 +1007,76 @@ function TabMasterBudget({ budget, productionId, productionSets, globalMarginRat
 
 // ─── Tab: Warren's Weekly P&L ────────────────────────────────────────────────
 
-function TabWeeklyPL({ rows }: { rows: PLRow[] }) {
+function TabWeeklyPL({ rows, productionId, onRefresh, canEdit }: {
+  rows: PLRow[];
+  productionId: string;
+  onRefresh: () => void;
+  canEdit: boolean;
+}) {
+  const [salaryEdits, setSalaryEdits] = useState<Record<string, string>>({});
+  const [saving,      setSaving]      = useState<Record<string, boolean>>({});
+  const [saveErr,     setSaveErr]     = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    setSalaryEdits(Object.fromEntries(rows.map(r => [
+      r.week_ending_date ?? '__null__',
+      r.warrens_salary > 0 ? String(r.warrens_salary) : '',
+    ])));
+  }, [rows]);
+
+  const save = async (r: PLRow) => {
+    if (!r.week_ending_date) return;
+    const key    = r.week_ending_date;
+    const salary = parseFloat(salaryEdits[key] || '0') || 0;
+    setSaving(s  => ({ ...s, [key]: true }));
+    setSaveErr(e => ({ ...e, [key]: '' }));
+    try {
+      await costReportExtApi.upsertWeeklyPL(productionId, r.week_ending_date, { warrens_salary: salary });
+      onRefresh();
+    } catch (err) {
+      setSaveErr(e => ({ ...e, [key]: err instanceof Error ? err.message : 'Save failed' }));
+    } finally {
+      setSaving(s => ({ ...s, [key]: false }));
+    }
+  };
+
+  const colCount = canEdit ? 6 : 5;
+
   return (
     <TableWrap>
       <thead><tr>
         <Th>Week Ending</Th>
         <Th right>Margin from Recharged Costs</Th>
-        <Th right>Warren&apos;s Salary</Th>
+        <Th right>Warren&apos;s Salary {canEdit && <span className="text-blue-400 font-normal">(editable)</span>}</Th>
         <Th right>Weekly Profit</Th>
         <Th right>Running Total Profit</Th>
+        {canEdit && <Th>Save</Th>}
       </tr></thead>
       <tbody>
-        {rows.length === 0 ? <EmptyRow cols={5} label="No P&L data yet" /> : rows.map((r, i) => {
-          const pos = r.weekly_profit >= 0;
+        {rows.length === 0 ? <EmptyRow cols={colCount} label="No P&L data yet" /> : rows.map((r, i) => {
+          const key          = r.week_ending_date ?? '__null__';
+          const localSalary  = parseFloat(salaryEdits[key] || '0') || 0;
+          const localProfit  = r.margin_from_recharged_costs - localSalary;
+          const pos          = localProfit >= 0;
+          const isSaving     = saving[key]  || false;
+          const err          = saveErr[key] || '';
           return (
             <tr key={i} className="hover:bg-slate-50/50">
               <Td bold>{fmtDate(r.week_ending_date)}</Td>
               <Td right>{fmt(r.margin_from_recharged_costs)}</Td>
-              <Td right>{fmt(r.warrens_salary)}</Td>
+              <td className="px-4 py-3 text-right border-b border-slate-100 text-sm text-slate-700">
+                {canEdit ? (
+                  <input type="number" min="0" step="0.01"
+                    value={salaryEdits[key] ?? ''}
+                    onChange={e => setSalaryEdits(s => ({ ...s, [key]: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-28 text-xs text-right border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 tabular-nums" />
+                ) : fmt(r.warrens_salary)}
+              </td>
               <Td right>
                 <span className={`flex items-center justify-end gap-1 font-semibold ${pos ? 'text-green-700' : 'text-red-600'}`}>
                   {pos ? <TrendingUp size={13} /> : <TrendingDown size={13} />}
-                  {fmt(r.weekly_profit)}
+                  {fmt(localProfit)}
                 </span>
               </Td>
               <Td right>
@@ -941,6 +1084,19 @@ function TabWeeklyPL({ rows }: { rows: PLRow[] }) {
                   {fmt(r.running_total_profit)}
                 </span>
               </Td>
+              {canEdit && (
+                <td className="px-4 py-3 border-b border-slate-100">
+                  <div className="flex items-center gap-1.5">
+                    <button onClick={() => save(r)} disabled={isSaving || !r.week_ending_date}
+                      title={!r.week_ending_date ? 'Week ending date not set' : undefined}
+                      className="flex items-center gap-1 text-xs px-2.5 py-1.5 bg-blue-50 text-blue-700 border border-blue-200 rounded-lg hover:bg-blue-100 disabled:opacity-50 font-medium">
+                      {isSaving ? <Loader2 size={11} className="animate-spin" /> : <Save size={11} />}
+                      Save
+                    </button>
+                    {err && <span className="text-red-500 text-[10px]">{err}</span>}
+                  </div>
+                </td>
+              )}
             </tr>
           );
         })}
@@ -1038,23 +1194,116 @@ const DEFAULT_MARGIN_ITEMS = [
   'Professional memberships', 'Telephone', 'Payroll accountancy',
 ];
 
-function TabMargins({ marginsRef }: { marginsRef: Type2Report['margins_reference'] }) {
-  const items = (marginsRef?.items?.length ? marginsRef.items : DEFAULT_MARGIN_ITEMS) as string[];
+function TabMargins({ marginsRef, productionId, onRefresh, isMD }: {
+  marginsRef: Type2Report['margins_reference'];
+  productionId: string;
+  onRefresh: () => void;
+  isMD: boolean;
+}) {
+  const serverItems = (marginsRef?.items?.length ? marginsRef.items : DEFAULT_MARGIN_ITEMS) as string[];
+  const [editMode,  setEditMode]  = useState(false);
+  const [editItems, setEditItems] = useState<string[]>([]);
+  const [newItem,   setNewItem]   = useState('');
+  const [saving,    setSaving]    = useState(false);
+  const [saveErr,   setSaveErr]   = useState('');
+
+  const startEdit = () => {
+    setEditItems([...serverItems]);
+    setNewItem('');
+    setSaveErr('');
+    setEditMode(true);
+  };
+
+  const cancelEdit = () => { setEditMode(false); setSaveErr(''); };
+
+  const saveEdit = async () => {
+    setSaving(true); setSaveErr('');
+    try {
+      await costReportExtApi.updateMarginsReference(productionId, { items: editItems });
+      setEditMode(false);
+      onRefresh();
+    } catch (err) {
+      setSaveErr(err instanceof Error ? err.message : 'Save failed');
+    } finally { setSaving(false); }
+  };
+
+  const addItem = () => {
+    if (!newItem.trim()) return;
+    setEditItems(prev => [...prev, newItem.trim()]);
+    setNewItem('');
+  };
+
+  const updateItem = (idx: number, val: string) =>
+    setEditItems(prev => prev.map((item, i) => i === idx ? val : item));
+
+  const deleteItem = (idx: number) =>
+    setEditItems(prev => prev.filter((_, i) => i !== idx));
+
+  const displayItems = editMode ? editItems : serverItems;
+
   return (
     <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-6 space-y-4">
-      <div>
-        <h3 className="text-slate-900 font-semibold text-sm">What the Margin Covers</h3>
-        <p className="text-slate-400 text-xs mt-0.5">Static reference — editable by MD only</p>
-      </div>
-      <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
-        {items.map((item, i) => (
-          <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
-            <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
-            <span className="text-slate-700 text-xs">{item}</span>
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-slate-900 font-semibold text-sm">What the Margin Covers</h3>
+          <p className="text-slate-400 text-xs mt-0.5">{isMD ? 'Editable — MD only' : 'Read-only reference'}</p>
+        </div>
+        {isMD && !editMode && (
+          <button onClick={startEdit}
+            className="flex items-center gap-1.5 text-xs text-blue-600 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50">
+            <Pencil size={12} /> Edit
+          </button>
+        )}
+        {editMode && (
+          <div className="flex items-center gap-2">
+            {saveErr && <span className="text-red-500 text-xs">{saveErr}</span>}
+            <button onClick={cancelEdit}
+              className="text-xs text-slate-600 px-3 py-1.5 border border-slate-200 rounded-lg hover:bg-slate-50">
+              Cancel
+            </button>
+            <button onClick={saveEdit} disabled={saving}
+              className="flex items-center gap-1.5 text-xs text-white bg-blue-600 font-medium px-3 py-1.5 rounded-lg hover:bg-blue-700 disabled:opacity-60">
+              {saving ? <Loader2 size={11} className="animate-spin" /> : <Save size={12} />}
+              Save
+            </button>
           </div>
-        ))}
+        )}
       </div>
-      {marginsRef?.notes && (
+
+      {editMode ? (
+        <div className="space-y-2">
+          {editItems.map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <input value={item} onChange={e => updateItem(i, e.target.value)}
+                className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+              <button onClick={() => deleteItem(i)} className="text-slate-300 hover:text-red-500 shrink-0">
+                <Trash2 size={14} />
+              </button>
+            </div>
+          ))}
+          <div className="flex items-center gap-2 pt-1">
+            <input value={newItem} onChange={e => setNewItem(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && addItem()}
+              placeholder="Add new item…"
+              className="flex-1 text-xs border border-dashed border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <button onClick={addItem}
+              className="flex items-center gap-1 text-xs text-blue-600 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50">
+              <Plus size={12} /> Add
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-2">
+          {displayItems.map((item, i) => (
+            <div key={i} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />
+              <span className="text-slate-700 text-xs">{item}</span>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {!editMode && marginsRef?.notes && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3">
           <p className="text-amber-800 text-xs">{marginsRef.notes}</p>
         </div>
@@ -1065,12 +1314,15 @@ function TabMargins({ marginsRef }: { marginsRef: Type2Report['margins_reference
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
-export default function CostReportType2({ report, onRefresh }: {
+export default function CostReportType2({ report, onRefresh, userRole }: {
   report: Type2Report;
   onRefresh: () => void;
+  userRole?: string;
 }) {
   const [activeTab, setActiveTab] = useState<TabId>('main');
   const omittedCount = (report.omitted_labour?.length ?? 0) + (report.omitted_materials?.length ?? 0);
+  const isMD      = userRole === 'managing_director';
+  const canEdit   = isMD || userRole === 'construction_accountant';
 
   return (
     <div className="space-y-4">
@@ -1103,7 +1355,7 @@ export default function CostReportType2({ report, onRefresh }: {
 
         <div className="p-4 md:p-5">
           {activeTab === 'main'      && <TabMainCostReport rows={report.main_cost_report} />}
-          {activeTab === 'pos'       && <TabPOsBilling rows={report.pos_and_billing} />}
+          {activeTab === 'pos'       && <TabPOsBilling rows={report.pos_and_billing} productionId={report.production.id} onRefresh={onRefresh} />}
           {activeTab === 'labour'    && <TabLabour rows={report.labour_to_send} productionId={report.production.id} onOmitted={onRefresh} />}
           {activeTab === 'materials' && <TabMaterials rows={report.materials_to_send} productionId={report.production.id} onOmitted={onRefresh} />}
           {activeTab === 'weekly'    && <TabWeeklyInvoice rows={report.weekly_invoice_summary} />}
@@ -1116,7 +1368,7 @@ export default function CostReportType2({ report, onRefresh }: {
               onSaved={onRefresh}
             />
           )}
-          {activeTab === 'pl'        && <TabWeeklyPL rows={report.weekly_pl} />}
+          {activeTab === 'pl'        && <TabWeeklyPL rows={report.weekly_pl} productionId={report.production.id} onRefresh={onRefresh} canEdit={canEdit} />}
           {activeTab === 'omitted'   && (
             <TabOmitted
               omittedLabour={report.omitted_labour ?? []}
@@ -1125,7 +1377,7 @@ export default function CostReportType2({ report, onRefresh }: {
               onRestored={onRefresh}
             />
           )}
-          {activeTab === 'margins'   && <TabMargins marginsRef={report.margins_reference} />}
+          {activeTab === 'margins'   && <TabMargins marginsRef={report.margins_reference} productionId={report.production.id} onRefresh={onRefresh} isMD={isMD} />}
         </div>
       </div>
     </div>
