@@ -16,7 +16,8 @@ router.get('/preview',         requireRole(...READERS), ctrl.getPayRunPreview);
 router.get('/',               requireRole(...READERS), ctrl.getAllPayRuns);
 router.post('/',              requireRole(ACCOUNTANT),  ctrl.createPayRun);
 router.get('/:id',            requireRole(...READERS), ctrl.getPayRunById);
-router.post('/:id/process',   requireRole(ACCOUNTANT),  ctrl.processPayRun);
-router.get('/:id/export-csv', requireRole(...READERS), ctrl.exportCsv);
+router.post('/:id/process',     requireRole(ACCOUNTANT), ctrl.processPayRun);
+router.post('/:id/sync-labour', requireRole(ACCOUNTANT), ctrl.syncLabourCosts);
+router.get('/:id/export-csv',   requireRole(...READERS), ctrl.exportCsv);
 
 module.exports = router;
