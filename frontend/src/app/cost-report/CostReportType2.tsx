@@ -558,37 +558,27 @@ function TabMaterials({ rows, productionId, onOmitted }: {
 
 // ─── Tab: Weekly Invoice Summary ──────────────────────────────────────────────
 
-type WeeklyInvoiceEdit = { cs_invoice_number: string; po_reference: string };
-
 function TabWeeklyInvoice({ rows, productionId, onRefresh }: {
   rows: WeeklyInvoiceRow[];
   productionId: string;
   onRefresh: () => void;
 }) {
-  const [edits,   setEdits]   = useState<Record<string, WeeklyInvoiceEdit>>({});
-  const [saving,  setSaving]  = useState<Record<string, boolean>>({});
-  const [saveErr, setSaveErr] = useState<Record<string, string>>({});
+  const [poRefs,   setPoRefs]   = useState<Record<string, string>>({});
+  const [saving,   setSaving]   = useState<Record<string, boolean>>({});
+  const [saveErr,  setSaveErr]  = useState<Record<string, string>>({});
 
   useEffect(() => {
-    setEdits(Object.fromEntries(rows.map(r => [r.week_ending_date ?? '', {
-      cs_invoice_number: r.cs_invoice_number ?? '',
-      po_reference:      r.po_reference      ?? '',
-    }])));
+    setPoRefs(Object.fromEntries(rows.map(r => [r.week_ending_date ?? '', r.po_reference ?? ''])));
   }, [rows]);
-
-  const upd = (key: string, field: keyof WeeklyInvoiceEdit, val: string) =>
-    setEdits(e => ({ ...e, [key]: { ...(e[key] ?? { cs_invoice_number: '', po_reference: '' }), [field]: val } }));
 
   const save = async (r: WeeklyInvoiceRow) => {
     if (!r.week_ending_date) return;
-    const key  = r.week_ending_date;
-    const edit = edits[key] ?? { cs_invoice_number: '', po_reference: '' };
+    const key = r.week_ending_date;
     setSaving(s  => ({ ...s,  [key]: true }));
     setSaveErr(e => ({ ...e, [key]: '' }));
     try {
       await costReportExtApi.upsertWeeklyPL(productionId, key, {
-        cs_invoice_number: edit.cs_invoice_number || undefined,
-        po_reference:      edit.po_reference      || undefined,
+        po_reference: poRefs[key] || undefined,
       });
       onRefresh();
     } catch (err) {
@@ -612,8 +602,7 @@ function TabWeeklyInvoice({ rows, productionId, onRefresh }: {
       </tr></thead>
       <tbody>
         {rows.length === 0 ? <EmptyRow cols={10} label="No weekly data yet" /> : rows.map((r, i) => {
-          const key     = r.week_ending_date ?? '';
-          const edit    = edits[key] ?? { cs_invoice_number: '', po_reference: '' };
+          const key      = r.week_ending_date ?? '';
           const isSaving = saving[key]  || false;
           const err      = saveErr[key] || '';
           return (
@@ -626,27 +615,13 @@ function TabWeeklyInvoice({ rows, productionId, onRefresh }: {
               <Td right>{fmt(r.released_advance)}</Td>
               <Td right bold>{fmt(r.charged_so_far)}</Td>
               <td className="px-4 py-2 border-b border-slate-100">
-                <div className="flex items-center gap-1">
-                  <input type="text" value={edit.cs_invoice_number}
-                    onChange={e => upd(key, 'cs_invoice_number', e.target.value)}
-                    placeholder="CS invoice #"
-                    className="w-24 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
-                  <button
-                    onClick={async () => {
-                      try {
-                        const { next_invoice_number } = await costReportExtApi.getNextInvoiceNumber(productionId);
-                        upd(key, 'cs_invoice_number', next_invoice_number);
-                      } catch { /* ignore */ }
-                    }}
-                    title="Auto-generate next CS invoice number"
-                    className="text-[10px] px-1.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded hover:bg-slate-200 font-medium whitespace-nowrap">
-                    Generate
-                  </button>
-                </div>
+                {r.cs_invoice_number
+                  ? <span className="text-xs font-mono font-semibold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">{r.cs_invoice_number}</span>
+                  : <span className="text-slate-400 italic text-xs">Set in POs tab</span>}
               </td>
               <td className="px-4 py-2 border-b border-slate-100">
-                <input type="text" value={edit.po_reference}
-                  onChange={e => upd(key, 'po_reference', e.target.value)}
+                <input type="text" value={poRefs[key] ?? ''}
+                  onChange={e => setPoRefs(p => ({ ...p, [key]: e.target.value }))}
                   placeholder="PO ref"
                   className="w-28 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
               </td>
