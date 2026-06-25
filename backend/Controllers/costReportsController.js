@@ -586,6 +586,17 @@ const _buildType2Data = async (productionId, filters, db) => {
     };
   });
 
+  // Build per-week CS invoice map from PO billing data (supplier entries for that week)
+  const weekCsInvoiceMap = {};
+  supplierEntries.filter(e => !omittedEntryIds.has(e.id)).forEach(e => {
+    const w   = toDateStr(e.date);
+    const bil = billingMap[e.id];
+    if (w && bil?.cs_invoice_number) {
+      if (!weekCsInvoiceMap[w]) weekCsInvoiceMap[w] = new Set();
+      weekCsInvoiceMap[w].add(bil.cs_invoice_number);
+    }
+  });
+
   const weekSumMap = {};
   labourToSend.forEach(l => {
     const w = l.week_ending_date;
@@ -600,7 +611,10 @@ const _buildType2Data = async (productionId, filters, db) => {
   const weeklyInvoiceSummary = Object.values(weekSumMap)
     .sort((a, b) => (a.week_ending_date || '').localeCompare(b.week_ending_date || ''))
     .map((w, idx) => {
-      const plRow = plMap[w.week_ending_date] || {};
+      const plRow    = plMap[w.week_ending_date] || {};
+      // CS invoice derived from PO billing for this week; fallback to manually saved value
+      const poInvSet = weekCsInvoiceMap[w.week_ending_date];
+      const csInv    = poInvSet ? [...poInvSet].join(', ') : (plRow.cs_invoice_number || null);
       return {
         week_number:               idx + 1,
         week_ending_date:          w.week_ending_date,
@@ -609,8 +623,8 @@ const _buildType2Data = async (productionId, filters, db) => {
         materials:                 w.materials,
         released_advance:          0,
         charged_so_far:            w.above_line_labour + w.labour_charged + w.materials,
-        cs_invoice_number:         plRow.cs_invoice_number || null,
-        po_reference:              plRow.po_reference      || null,
+        cs_invoice_number:         csInv,
+        po_reference:              plRow.po_reference || null,
       };
     });
 
