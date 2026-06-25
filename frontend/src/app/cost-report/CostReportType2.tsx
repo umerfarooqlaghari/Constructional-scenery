@@ -267,9 +267,24 @@ function TabPOsBilling({ rows, productionId, onRefresh }: {
   productionId: string;
   onRefresh: () => void;
 }) {
-  const [edits,   setEdits]   = useState<Record<string, POEdit>>({});
-  const [saving,  setSaving]  = useState<Record<string, boolean>>({});
-  const [saveErr, setSaveErr] = useState<Record<string, string>>({});
+  const [edits,       setEdits]       = useState<Record<string, POEdit>>({});
+  const [saving,      setSaving]      = useState<Record<string, boolean>>({});
+  const [saveErr,     setSaveErr]     = useState<Record<string, string>>({});
+  const [generating,  setGenerating]  = useState(false);
+  const [generateErr, setGenerateErr] = useState('');
+
+  const generateInvoiceNumber = async (sourceId: string) => {
+    setGenerating(true);
+    setGenerateErr('');
+    try {
+      const { next_invoice_number } = await costReportExtApi.getNextInvoiceNumber(productionId);
+      setEdits(e => ({ ...e, [sourceId]: { ...(e[sourceId] ?? { cs_invoice_number: '', amount_invoiced: '' }), cs_invoice_number: next_invoice_number } }));
+    } catch (err) {
+      setGenerateErr(err instanceof Error ? err.message : 'Failed to generate invoice number');
+    } finally {
+      setGenerating(false);
+    }
+  };
 
   useEffect(() => {
     setEdits(Object.fromEntries(rows.map(r => [r.source_id, {
@@ -306,6 +321,10 @@ function TabPOsBilling({ rows, productionId, onRefresh }: {
   const totalStill = totalValue - totalInvoiced;
 
   return (
+    <div>
+      {generateErr && (
+        <div className="mb-2 text-xs text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{generateErr}</div>
+      )}
     <TableWrap>
       <thead><tr>
         <Th>PO Number</Th><Th>CS Invoice #</Th>
@@ -329,14 +348,11 @@ function TabPOsBilling({ rows, productionId, onRefresh }: {
                     placeholder="CS invoice #"
                     className="w-24 text-xs border border-slate-200 rounded px-2 py-1 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
                   <button
-                    onClick={async () => {
-                      try {
-                        const { next_invoice_number } = await costReportExtApi.getNextInvoiceNumber(productionId);
-                        upd(r.source_id, 'cs_invoice_number', next_invoice_number);
-                      } catch { /* ignore */ }
-                    }}
+                    onClick={() => generateInvoiceNumber(r.source_id)}
+                    disabled={generating}
                     title="Auto-generate next CS invoice number"
-                    className="text-[10px] px-1.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded hover:bg-slate-200 font-medium whitespace-nowrap">
+                    className="flex items-center gap-1 text-[10px] px-1.5 py-1 bg-slate-100 text-slate-600 border border-slate-200 rounded hover:bg-slate-200 font-medium whitespace-nowrap disabled:opacity-50">
+                    {generating ? <Loader2 size={9} className="animate-spin" /> : null}
                     Generate
                   </button>
                 </div>
@@ -380,6 +396,7 @@ function TabPOsBilling({ rows, productionId, onRefresh }: {
         </tfoot>
       )}
     </TableWrap>
+    </div>
   );
 }
 
