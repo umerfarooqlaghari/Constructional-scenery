@@ -3,6 +3,17 @@ const CRS = require('../services/costReportService');
 const { generateCostReportPdf }      = require('../services/costReportPdfService');
 const { generateCostReportType2Pdf } = require('../services/costReportType2PdfService');
 
+// node-postgres returns `timestamp`/`timestamptz` columns as JS Date objects.
+// String(dateObj).split('T')[0] splits on the 'T' in "GMT" and produces garbage like
+// "Sun Jun 28 2026 00:00:00 GM". Use this helper everywhere instead.
+const toDateStr = (d) => {
+  if (!d) return null;
+  try {
+    const p = new Date(d);
+    return isNaN(p.getTime()) ? null : p.toISOString().split('T')[0];
+  } catch { return null; }
+};
+
 // ─── Helper: build weekly cost summary from supplier + labour entries ──────────
 // Groups supplier entries by date (as-of week proxy) and labour entries by
 // week_ending_date, then merges into an array sorted chronologically.
@@ -10,13 +21,13 @@ const buildWeeklyCostSummary = (supplierEntries, labourEntries) => {
   const weekMap = {};
 
   supplierEntries.forEach(e => {
-    const key = String(e.date).split('T')[0];
+    const key = toDateStr(e.date) || 'unknown';
     if (!weekMap[key]) weekMap[key] = { week_or_date: key, supplier_cost: 0, labour_cost: 0, crew_count: 0 };
     weekMap[key].supplier_cost += parseFloat(e.gross_amount || 0);
   });
 
   labourEntries.forEach(e => {
-    const key = String(e.week_ending_date).split('T')[0];
+    const key = toDateStr(e.week_ending_date) || 'unknown';
     if (!weekMap[key]) weekMap[key] = { week_or_date: key, supplier_cost: 0, labour_cost: 0, crew_count: 0 };
     weekMap[key].labour_cost += parseFloat(e.gross_amount || 0);
     weekMap[key].crew_count  += 1;
@@ -35,8 +46,8 @@ const buildWeeklyCostSummary = (supplierEntries, labourEntries) => {
 const groupLabourByWeekAndTrade = (labourEntries) => {
   const byWeek = {};
   labourEntries.forEach(e => {
-    const week = String(e.week_ending_date).split('T')[0];
-    if (!byWeek[week]) byWeek[week] = { week_ending_date: week, total: 0, crew: [] };
+    const week = toDateStr(e.week_ending_date) || 'unknown';
+    if (!byWeek[week]) byWeek[week] = { week_ending_date: week === 'unknown' ? null : week, total: 0, crew: [] };
     byWeek[week].total += parseFloat(e.gross_amount || 0);
     byWeek[week].crew.push({
       crew_number: e.crew_number || null,
@@ -459,7 +470,7 @@ const _buildType2Data = async (productionId, filters, db) => {
 
   const billingMap      = Object.fromEntries(poBilling.map(b => [b.source_id, b]));
   const omittedEntryIds = new Set(omittedRows.map(r => r.entry_id));
-  const plMap           = Object.fromEntries(weeklyPLRows.map(r => [String(r.week_ending_date).split('T')[0], r]));
+  const plMap           = Object.fromEntries(weeklyPLRows.map(r => [toDateStr(r.week_ending_date) ?? '', r]));
 
   const labourByAccount    = {};
   const materialsByAccount = {};
@@ -507,7 +518,7 @@ const _buildType2Data = async (productionId, filters, db) => {
   });
 
   const labourToSend = labourEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => {
-    const wed = e.week_ending_date ? String(e.week_ending_date).split('T')[0] : null;
+    const wed = toDateStr(e.week_ending_date);
     return {
       entry_id:                e.id,
       week_ending_date:        wed,
@@ -524,9 +535,9 @@ const _buildType2Data = async (productionId, filters, db) => {
 
   const materialsToSend = supplierEntries.filter(e => !omittedEntryIds.has(e.id)).map(e => ({
     entry_id:                e.id,
-    week_ending_date:        e.date ? String(e.date).split('T')[0] : null,
+    week_ending_date:        toDateStr(e.date),
     po_number:               e.po_number,
-    invoice_date:            e.date ? String(e.date).split('T')[0] : null,
+    invoice_date:            toDateStr(e.date),
     supplier:                e.supplier_name,
     account_code:            e.account_code,
     account_description:     e.account_code || '',
@@ -542,7 +553,7 @@ const _buildType2Data = async (productionId, filters, db) => {
     return {
       entry_id:           e.id,
       type:               'labour',
-      week_ending_date:   e.week_ending_date ? String(e.week_ending_date).split('T')[0] : null,
+      week_ending_date:   toDateStr(e.week_ending_date),
       crew_name:          `${e.first_name} ${e.last_name}`,
       crew_number:        e.crew_number,
       set_code:           e.set_code || null,
@@ -561,7 +572,7 @@ const _buildType2Data = async (productionId, filters, db) => {
     return {
       entry_id:               e.id,
       type:                   'material',
-      week_ending_date:       e.date ? String(e.date).split('T')[0] : null,
+      week_ending_date:       toDateStr(e.date),
       supplier:               e.supplier_name,
       po_number:              e.po_number,
       set_code:               e.set_code    || null,
@@ -587,7 +598,7 @@ const _buildType2Data = async (productionId, filters, db) => {
     weekSumMap[w].materials += m.recharge_to_production;
   });
   const weeklyInvoiceSummary = Object.values(weekSumMap)
-    .sort((a, b) => a.week_ending_date.localeCompare(b.week_ending_date))
+    .sort((a, b) => (a.week_ending_date || '').localeCompare(b.week_ending_date || ''))
     .map((w, idx) => ({
       week_number:               idx + 1,
       week_ending_date:          w.week_ending_date,
@@ -842,7 +853,7 @@ const exportCostReportCSV = async (req, res) => {
             e.crew_number,
             `${e.first_name} ${e.last_name}`,
             e.trade, e.rank,
-            String(e.week_ending_date).split('T')[0],
+            toDateStr(e.week_ending_date) || '',
             e.day_monday    ? 1 : 0, e.day_tuesday  ? 1 : 0, e.day_wednesday ? 1 : 0,
             e.day_thursday  ? 1 : 0, e.day_friday   ? 1 : 0, e.day_saturday  ? 1 : 0, e.day_sunday ? 1 : 0,
             e.total_days || 0,
@@ -884,7 +895,7 @@ const exportCostReportCSV = async (req, res) => {
       const lines  = [header.join(',')];
       entries.forEach(e => {
         lines.push([
-          String(e.date).split('T')[0],
+          toDateStr(e.date) || '',
           e.po_number,
           e.supplier_name,
           e.po_description || '',
@@ -907,7 +918,7 @@ const exportCostReportCSV = async (req, res) => {
     const lines   = [header.join(',')];
     entries.forEach(e => {
       lines.push([
-        String(e.date).split('T')[0],
+        toDateStr(e.date) || '',
         e.po_number, e.supplier_name, e.set_code, e.account_code,
         parseFloat(e.net_amount).toFixed(2),
         parseFloat(e.vat || 0).toFixed(2),
