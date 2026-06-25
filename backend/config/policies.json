@@ -145,6 +145,7 @@
       "POST /api/pay-runs",
       "GET /api/pay-runs/:id",
       "POST /api/pay-runs/:id/process",
+      "POST /api/pay-runs/:id/sync-labour",
       "GET /api/pay-runs/:id/export-csv",
 
       "GET /api/cost-reports/entries",

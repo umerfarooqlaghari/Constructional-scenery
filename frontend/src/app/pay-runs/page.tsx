@@ -122,6 +122,8 @@ function PreviewModal({
   const [creating, setCreating] = useState(false);
   const [createSuccess, setCreateSuccess] = useState(false);
   const [processing, setProcessing] = useState(false);
+  const [syncing, setSyncing] = useState(false);
+  const [syncSuccess, setSyncSuccess] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
   const [actionError, setActionError] = useState('');
@@ -170,6 +172,22 @@ function PreviewModal({
       setActionError(err instanceof Error ? err.message : 'Failed to process pay run');
     } finally {
       setProcessing(false);
+    }
+  };
+
+  const handleSync = async () => {
+    if (!payRunId) return;
+    setSyncing(true);
+    setSyncSuccess(false);
+    setActionError('');
+    try {
+      await payRunsApi.syncLabour(payRunId);
+      setSyncSuccess(true);
+      onPayRunCreatedOrProcessed();
+    } catch (err: unknown) {
+      setActionError(err instanceof Error ? err.message : 'Failed to sync labour costs');
+    } finally {
+      setSyncing(false);
     }
   };
 
@@ -336,6 +354,13 @@ function PreviewModal({
             </div>
           )}
 
+          {syncSuccess && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-green-700 text-sm mb-3">
+              <CheckCircle2 size={16} className="flex-shrink-0" />
+              New timesheets synced to Cost Report successfully.
+            </div>
+          )}
+
           {exportSuccess && (
             <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-green-700 text-sm mb-3">
               <CheckCircle2 size={16} className="flex-shrink-0" />
@@ -390,7 +415,18 @@ function PreviewModal({
               </button>
             )}
 
-            {/* Processed → Export CSV */}
+            {/* Processed → Sync new timesheets + Export CSV */}
+            {isProcessed && payRunId && canWrite && (
+              <button
+                onClick={handleSync}
+                disabled={syncing}
+                title="Pick up any timesheets finalised after this pay run was processed"
+                className="flex items-center gap-2 px-4 py-2 bg-amber-50 text-amber-700 border border-amber-200 text-sm font-medium rounded-lg hover:bg-amber-100 disabled:opacity-60 transition-colors"
+              >
+                {syncing ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
+                Sync to Cost Report
+              </button>
+            )}
             {isProcessed && payRunId && (
               <button
                 onClick={handleExportCsv}

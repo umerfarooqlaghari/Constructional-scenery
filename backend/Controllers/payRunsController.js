@@ -403,8 +403,35 @@ const exportCsv = async (req, res) => {
   }
 };
 
+// ─── POST /api/pay-runs/:id/sync-labour ──────────────────────────────────────
+// Picks up any finalised timesheets added after the pay run was processed and
+// inserts missing cost_report_entries for them (idempotent — skips existing).
+const syncLabourCosts = async (req, res) => {
+  const client = await db.connect();
+  try {
+    await client.query('BEGIN');
+    const { rows: [pr] } = await client.query(
+      `SELECT * FROM pay_runs WHERE id = $1`,
+      [req.params.id]
+    );
+    if (!pr) {
+      await client.query('ROLLBACK');
+      return res.status(404).json({ error: 'Pay run not found' });
+    }
+    await recordWeeklyLabour(pr.week_ending_date, pr.production_id, client);
+    await client.query('COMMIT');
+    res.json({ message: 'Labour costs synced to cost report.' });
+  } catch (err) {
+    await client.query('ROLLBACK');
+    console.error('syncLabourCosts:', err);
+    res.status(500).json({ error: err.message });
+  } finally {
+    client.release();
+  }
+};
+
 module.exports = {
   getAvailableWeeks, getPayRunPreview,
   getAllPayRuns, createPayRun, getPayRunById,
-  processPayRun, exportCsv,
+  processPayRun, syncLabourCosts, exportCsv,
 };

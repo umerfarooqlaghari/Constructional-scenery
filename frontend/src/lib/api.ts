@@ -807,6 +807,8 @@ export const payRunsApi = {
     request<{ message: string; pay_run: PayRun }>('/api/pay-runs', { method: 'POST', body: data }),
   process: (id: string) =>
     request<{ message: string; pay_run: PayRun }>(`/api/pay-runs/${id}/process`, { method: 'POST', body: {} }),
+  syncLabour: (id: string) =>
+    request<{ message: string }>(`/api/pay-runs/${id}/sync-labour`, { method: 'POST', body: {} }),
   exportCsv: (id: string) =>
     fetch(`/api/pay-runs/${id}/export-csv`, {
       headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },

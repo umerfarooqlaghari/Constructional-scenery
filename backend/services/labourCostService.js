@@ -78,6 +78,14 @@ const recordWeeklyLabour = async (weekEndingDate, productionId, client) => {
       ));
     }
 
+    // Skip if a non-deleted entry already exists for this timesheet
+    const { rows: [existing] } = await client.query(
+      `SELECT id FROM cost_report_entries
+       WHERE source_id = $1 AND entry_type = 'labour' AND deleted_at IS NULL`,
+      [ts.id]
+    );
+    if (existing) continue;
+
     await client.query(
       `INSERT INTO cost_report_entries
          (production_id, entry_type, source_id, source_type,
