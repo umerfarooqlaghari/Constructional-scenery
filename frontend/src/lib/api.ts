@@ -966,8 +966,10 @@ export const costReportExtApi = {
     request<unknown>(`/api/cost-reports/${productionId}/po-billing/${sourceId}`, { method: 'PATCH', body: data }),
   updateMarginsReference: (productionId: string, data: { items?: string[]; notes?: string }) =>
     request<unknown>(`/api/cost-reports/${productionId}/margins-reference`, { method: 'PUT', body: data }),
-  upsertWeeklyPL: (productionId: string, weekEndingDate: string, data: { warrens_salary?: number; luton_uplift?: number; box_rental_uplift?: number; notes?: string }) =>
+  upsertWeeklyPL: (productionId: string, weekEndingDate: string, data: { warrens_salary?: number; luton_uplift?: number; box_rental_uplift?: number; notes?: string; cs_invoice_number?: string; po_reference?: string }) =>
     request<unknown>(`/api/cost-reports/${productionId}/weekly-pl/${weekEndingDate}`, { method: 'PUT', body: data }),
+  getNextInvoiceNumber: (productionId: string) =>
+    request<{ next_invoice_number: string }>(`/api/cost-reports/${productionId}/next-invoice-number`),
   deleteInvoice: (productionId: string, invoiceId: string) =>
     request<{ message: string }>(`/api/cost-reports/${productionId}/invoices/${invoiceId}`, { method: 'DELETE' }),
   upsertBudget: (productionId: string, data: {

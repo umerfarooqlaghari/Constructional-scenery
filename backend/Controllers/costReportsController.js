@@ -599,17 +599,20 @@ const _buildType2Data = async (productionId, filters, db) => {
   });
   const weeklyInvoiceSummary = Object.values(weekSumMap)
     .sort((a, b) => (a.week_ending_date || '').localeCompare(b.week_ending_date || ''))
-    .map((w, idx) => ({
-      week_number:               idx + 1,
-      week_ending_date:          w.week_ending_date,
-      above_line_labour_charged: w.above_line_labour,
-      labour_charged:            w.labour_charged,
-      materials:                 w.materials,
-      released_advance:          0,
-      charged_so_far:            w.above_line_labour + w.labour_charged + w.materials,
-      cs_invoice_number:         null,
-      po_reference:              null,
-    }));
+    .map((w, idx) => {
+      const plRow = plMap[w.week_ending_date] || {};
+      return {
+        week_number:               idx + 1,
+        week_ending_date:          w.week_ending_date,
+        above_line_labour_charged: w.above_line_labour,
+        labour_charged:            w.labour_charged,
+        materials:                 w.materials,
+        released_advance:          0,
+        charged_so_far:            w.above_line_labour + w.labour_charged + w.materials,
+        cs_invoice_number:         plRow.cs_invoice_number || null,
+        po_reference:              plRow.po_reference      || null,
+      };
+    });
 
   let runningProfit = 0;
   const weeklyPL = weeklyInvoiceSummary.map(w => {
@@ -780,17 +783,19 @@ const updateMarginsReference = async (req, res) => {
 // Upserts Warren's Salary, Luton uplift, Box Rental uplift, and notes for a week.
 const upsertWeeklyPL = async (req, res) => {
   const { productionId, weekEndingDate } = req.params;
-  const { warrens_salary, luton_uplift, box_rental_uplift, notes } = req.body;
+  const { warrens_salary, luton_uplift, box_rental_uplift, notes, cs_invoice_number, po_reference } = req.body;
   try {
     const { rows: [row] } = await db.query(
       `INSERT INTO cost_report_weekly_pl
-         (production_id, week_ending_date, warrens_salary, luton_uplift, box_rental_uplift, notes)
-       VALUES ($1,$2,$3,$4,$5,$6)
+         (production_id, week_ending_date, warrens_salary, luton_uplift, box_rental_uplift, notes, cs_invoice_number, po_reference)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8)
        ON CONFLICT (production_id, week_ending_date) DO UPDATE SET
          warrens_salary    = EXCLUDED.warrens_salary,
          luton_uplift      = EXCLUDED.luton_uplift,
          box_rental_uplift = EXCLUDED.box_rental_uplift,
-         notes             = EXCLUDED.notes
+         notes             = EXCLUDED.notes,
+         cs_invoice_number = EXCLUDED.cs_invoice_number,
+         po_reference      = EXCLUDED.po_reference
        RETURNING *`,
       [
         productionId, weekEndingDate,
@@ -798,6 +803,8 @@ const upsertWeeklyPL = async (req, res) => {
         parseFloat(luton_uplift || 0),
         parseFloat(box_rental_uplift || 0),
         notes || null,
+        cs_invoice_number || null,
+        po_reference      || null,
       ]
     );
     res.json(row);
@@ -1016,11 +1023,37 @@ const exportCostReportPDF = async (req, res) => {
   }
 };
 
+// ─── GET /api/cost-reports/:productionId/next-invoice-number ─────────────────
+// Returns the next sequential CS invoice number for this production.
+// Scans cs_invoice_number across cost_report_po_billing and cost_report_weekly_pl,
+// finds the highest CS-NNN value, and returns CS-(N+1) zero-padded to 3 digits.
+const getNextInvoiceNumber = async (req, res) => {
+  const { productionId } = req.params;
+  try {
+    const { rows } = await db.query(
+      `SELECT cs_invoice_number FROM cost_report_po_billing WHERE production_id = $1 AND cs_invoice_number IS NOT NULL
+       UNION ALL
+       SELECT cs_invoice_number FROM cost_report_weekly_pl  WHERE production_id = $1 AND cs_invoice_number IS NOT NULL`,
+      [productionId]
+    );
+    const maxNum = rows.reduce((max, r) => {
+      const m = (r.cs_invoice_number || '').match(/^CS-(\d+)$/i);
+      if (m) { const n = parseInt(m[1], 10); return n > max ? n : max; }
+      return max;
+    }, 0);
+    res.json({ next_invoice_number: `CS-${String(maxNum + 1).padStart(3, '0')}` });
+  } catch (err) {
+    console.error('getNextInvoiceNumber:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 module.exports = {
   getType1Report, getType2Report, getCostReport, getSnapshot,
   getCostReportEntries, addInvoice, deleteInvoice,
   getCostPlus, upsertBudget,
   updatePoBilling, omitEntry, unomitEntry,
   updateMarginsReference, upsertWeeklyPL,
+  getNextInvoiceNumber,
   exportCostReportCSV, exportCostReportPDF,
 };
