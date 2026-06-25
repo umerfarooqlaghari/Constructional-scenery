@@ -120,6 +120,7 @@ function PreviewModal({
   const [payRunStatus, setPayRunStatus] = useState<string | null>(existingPayRunStatus);
 
   const [creating, setCreating] = useState(false);
+  const [createSuccess, setCreateSuccess] = useState(false);
   const [processing, setProcessing] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [exportSuccess, setExportSuccess] = useState(false);
@@ -143,10 +144,12 @@ function PreviewModal({
   const handleCreate = async () => {
     setCreating(true);
     setActionError('');
+    setCreateSuccess(false);
     try {
-      const pr = await payRunsApi.create({ production_id: productionId, week_ending_date: weekEndingDate });
-      setPayRunId(pr.id);
-      setPayRunStatus(pr.status);
+      const res = await payRunsApi.create({ production_id: productionId, week_ending_date: weekEndingDate });
+      setPayRunId(res.pay_run.id);
+      setPayRunStatus(res.pay_run.status);
+      setCreateSuccess(true);
       onPayRunCreatedOrProcessed();
     } catch (err: unknown) {
       setActionError(err instanceof Error ? err.message : 'Failed to create pay run');
@@ -326,6 +329,13 @@ function PreviewModal({
 
         {/* Footer */}
         <div className="flex-shrink-0 px-6 py-4 border-t border-slate-100">
+          {createSuccess && (
+            <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-green-700 text-sm mb-3">
+              <CheckCircle2 size={16} className="flex-shrink-0" />
+              Pay run created successfully. Click <strong>Process Pay Run</strong> to finalise.
+            </div>
+          )}
+
           {exportSuccess && (
             <div className="flex items-center gap-2 bg-green-50 border border-green-200 rounded-lg px-4 py-3 text-green-700 text-sm mb-3">
               <CheckCircle2 size={16} className="flex-shrink-0" />
