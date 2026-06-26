@@ -6,7 +6,7 @@
 const PDFDocument = require('pdfkit');
 const path        = require('path');
 
-const LOGO_PATH = path.join(__dirname, '../assets/logo.png');
+const LOGO_PATH = path.join(__dirname, '../assets/construct scenery logo.png');
 
 const fmt = (n) => `£${parseFloat(n || 0).toFixed(2)}`;
 const fmtDate = (d) => d ? new Date(d).toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }) : '—';

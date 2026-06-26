@@ -13,8 +13,8 @@ export const metadata: Metadata = {
   title: "Construct Scenery Database",
   description: "Construct Scenery Database management platform",
   icons: {
-    icon: "/deepsian_logo_construct_scenery.png",
-    apple: "/deepsian_logo_construct_scenery.png",
+    icon: "/construct scenery logo.png",
+    apple: "/construct scenery logo.png",
   },
 };
 

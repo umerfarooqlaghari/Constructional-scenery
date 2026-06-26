@@ -47,6 +47,16 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Desktop sidebar — hidden on mobile */}
       <Sidebar />
 
+      {/* Watermark — floats above tables/content, below modals/dropdowns */}
+      <div className="pointer-events-none select-none fixed inset-0 md:left-60 z-20 flex items-center justify-center">
+        <img
+          src="/construct scenery logo.png"
+          alt=""
+          aria-hidden="true"
+          className="w-[460px] h-[460px] object-contain opacity-[0.05]"
+        />
+      </div>
+
       {/* Main content: no left pad on mobile, pl-60 on desktop */}
       <div className="md:pl-60 min-h-screen flex flex-col pb-16 md:pb-0">
         {children}

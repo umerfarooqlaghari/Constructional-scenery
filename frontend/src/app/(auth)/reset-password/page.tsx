@@ -48,7 +48,7 @@ export default function ResetPasswordPage() {
       {/* Logo */}
       <div className="flex justify-center mb-8">
         <div className="flex items-center gap-3">
-          <img src="/deepsian_logo_construct_scenery.png" alt="Construct Scenery Database" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
+          <img src="/construct scenery logo.png" alt="Construct Scenery Database" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
           <div>
             <p className="text-slate-900 font-bold text-lg leading-tight">Construct Scenery Database</p>
           </div>
