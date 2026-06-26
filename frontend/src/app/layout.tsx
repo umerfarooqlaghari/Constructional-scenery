@@ -10,11 +10,11 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "DEEPSIAN — Construct Scenery Database",
-  description: "DEEPSIAN — Construct Scenery Database management platform",
+  title: "Construct Scenery Database",
+  description: "Construct Scenery Database management platform",
   icons: {
-    icon: "/icon.png",
-    apple: "/icon.png",
+    icon: "/deepsian_logo_construct_scenery.png",
+    apple: "/deepsian_logo_construct_scenery.png",
   },
 };
 
