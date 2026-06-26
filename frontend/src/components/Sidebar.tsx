@@ -76,7 +76,7 @@ export default function Sidebar() {
     <aside className="hidden md:flex fixed inset-y-0 left-0 w-60 bg-slate-900 flex-col z-30">
       {/* Logo */}
       <div className="flex items-center gap-3 px-5 py-5 border-b border-slate-700/60">
-        <img src="/deepsian favicon.png" alt="Construct Scenery Database" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
+        <img src="/deepsian_logo_construct_scenery.png" alt="Construct Scenery Database" className="w-8 h-8 rounded-lg object-cover flex-shrink-0" />
         <div>
           <p className="text-white font-bold text-sm leading-tight">Construct Scenery</p>
           <p className="text-blue-400 text-[10px] leading-tight tracking-wider uppercase">Database</p>

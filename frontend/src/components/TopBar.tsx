@@ -18,7 +18,7 @@ export default function TopBar({ title, subtitle }: TopBarProps) {
   return (
     <header className="h-14 md:h-16 bg-white border-b border-slate-200 flex items-center px-4 md:px-6 gap-3 sticky top-0 z-20">
       {/* Mobile: logo */}
-      <img src="/deepsian favicon.png" alt="Construct Scenery Database" className="md:hidden w-7 h-7 rounded-lg object-cover flex-shrink-0" />
+      <img src="/deepsian_logo_construct_scenery.png" alt="Construct Scenery Database" className="md:hidden w-7 h-7 rounded-lg object-cover flex-shrink-0" />
 
       {/* Title */}
       <div className="flex-1 min-w-0">
