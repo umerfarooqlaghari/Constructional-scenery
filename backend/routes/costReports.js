@@ -44,7 +44,7 @@ router.post('/:productionId/budget',                            requireRole(...W
 router.patch('/:productionId/po-billing/:sourceId',             requireRole(...WRITERS), ctrl.updatePoBilling);
 router.post('/:productionId/omit-entry',                        requireRole(...WRITERS), ctrl.omitEntry);
 router.delete('/:productionId/omit-entry/:entryId',             requireRole(...WRITERS), ctrl.unomitEntry);
-router.put('/:productionId/margins-reference',                  requireRole(MD), ctrl.updateMarginsReference);
+router.put('/:productionId/margins-reference',                  requireRole(...WRITERS), ctrl.updateMarginsReference);
 router.put('/:productionId/weekly-pl/:weekEndingDate',          requireRole(...WRITERS), ctrl.upsertWeeklyPL);
 
 module.exports = router;
