@@ -473,11 +473,12 @@ function CostReportContent() {
         )}
 
         {/* ── Type 2 (Cost Plus) UI ── */}
-        {isCostPlus && type2Report && !loading && (
+        {isCostPlus && type2Report && (
           <CostReportType2 report={type2Report} onRefresh={loadReport} userRole={user?.role} />
         )}
 
-        {isCostPlus && loading && (
+        {/* Skeleton only on initial load (before first data arrives) */}
+        {isCostPlus && loading && !type2Report && (
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {Array.from({ length: 4 }).map((_, i) => <SkeletonCard key={i} />)}
           </div>

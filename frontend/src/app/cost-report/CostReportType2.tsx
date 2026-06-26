@@ -1355,25 +1355,32 @@ function TabMargins({ marginsRef, productionId, onRefresh, canEdit }: {
       </div>
 
       {editMode ? (
-        <div className="space-y-2">
-          {editItems.map((item, i) => (
-            <div key={i} className="flex items-center gap-2">
-              <input value={item} onChange={e => updateItem(i, e.target.value)}
-                className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
-              <button onClick={() => deleteItem(i)} className="text-slate-300 hover:text-red-500 shrink-0">
-                <Trash2 size={14} />
-              </button>
-            </div>
-          ))}
-          <div className="flex items-center gap-2 pt-1">
+        <div className="space-y-3">
+          {/* Add new item — at the top so it's immediately visible */}
+          <div className="flex items-center gap-2 pb-1 border-b border-slate-100">
             <input value={newItem} onChange={e => setNewItem(e.target.value)}
               onKeyDown={e => e.key === 'Enter' && addItem()}
-              placeholder="Add new item…"
-              className="flex-1 text-xs border border-dashed border-slate-300 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              placeholder="Type a new reference item and press Enter or click Add…"
+              autoFocus
+              className="flex-1 text-xs border border-blue-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-blue-50/40 placeholder-slate-400" />
             <button onClick={addItem}
-              className="flex items-center gap-1 text-xs text-blue-600 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50">
+              className="flex items-center gap-1 text-xs text-white bg-blue-600 font-medium px-3 py-2 rounded-lg hover:bg-blue-700 whitespace-nowrap shrink-0">
               <Plus size={12} /> Add
             </button>
+          </div>
+
+          {/* Existing items — editable */}
+          <div className="space-y-2">
+            {editItems.map((item, i) => (
+              <div key={i} className="flex items-center gap-2">
+                <input value={item} onChange={e => updateItem(i, e.target.value)}
+                  className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-400 text-slate-800" />
+                <button onClick={() => deleteItem(i)} title="Remove this item"
+                  className="text-slate-300 hover:text-red-500 shrink-0">
+                  <Trash2 size={14} />
+                </button>
+              </div>
+            ))}
           </div>
         </div>
       ) : (
