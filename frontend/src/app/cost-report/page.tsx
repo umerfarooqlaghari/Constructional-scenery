@@ -177,6 +177,7 @@ function CostReportContent() {
   const [weekFrom, setWeekFrom] = useState('');
   const [weekTo, setWeekTo] = useState('');
   const [showCostFilters, setShowCostFilters] = useState(false);
+  const [exportError, setExportError] = useState('');
 
   useEffect(() => {
     productionsApi.list().then(data => {
@@ -275,13 +276,22 @@ function CostReportContent() {
 
   const exportType2CSV = async (costType: 'labour' | 'supplier') => {
     if (!type2Report || !selectedId) return;
-    const params: Record<string, string> = { report_type: 'cost_plus', cost_type: costType };
-    if (asAtDate) params.as_at_date = asAtDate;
-    const res = await costReportExtApi.exportCSV(selectedId, params);
-    if (!res.ok) return;
-    const blob = await res.blob();
-    const suffix = new Date().toISOString().slice(0, 10);
-    triggerDownload(blob, `${costType}-costs-cost-plus-${suffix}.csv`);
+    setExportError('');
+    try {
+      const params: Record<string, string> = { report_type: 'cost_plus', cost_type: costType };
+      if (asAtDate) params.as_at_date = asAtDate;
+      const res = await costReportExtApi.exportCSV(selectedId, params);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: `Server error ${res.status}` }));
+        setExportError(body.error || `Export failed (${res.status})`);
+        return;
+      }
+      const blob = await res.blob();
+      const suffix = new Date().toISOString().slice(0, 10);
+      triggerDownload(blob, `${costType}-costs-cost-plus-${suffix}.csv`);
+    } catch (err) {
+      setExportError(err instanceof Error ? err.message : 'Export failed');
+    }
   };
 
   const exportType2PDF = async () => {
@@ -454,6 +464,12 @@ function CostReportContent() {
 
         {error && (
           <div className="bg-red-50 border border-red-100 rounded-xl px-5 py-4 text-red-600 text-sm">{error}</div>
+        )}
+        {exportError && (
+          <div className="bg-red-50 border border-red-200 rounded-lg px-4 py-2.5 text-red-700 text-sm flex items-center justify-between">
+            <span>Export failed: {exportError}</span>
+            <button onClick={() => setExportError('')} className="ml-4 text-red-400 hover:text-red-600 font-bold">×</button>
+          </div>
         )}
 
         {/* ── Type 2 (Cost Plus) UI ── */}

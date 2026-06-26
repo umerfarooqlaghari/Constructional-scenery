@@ -163,6 +163,7 @@
       "PATCH /api/cost-reports/:productionId/po-billing/:sourceId",
       "POST /api/cost-reports/:productionId/omit-entry",
       "DELETE /api/cost-reports/:productionId/omit-entry/:entryId",
+      "PUT /api/cost-reports/:productionId/margins-reference",
       "PUT /api/cost-reports/:productionId/weekly-pl/:weekEndingDate",
 
       "GET /api/purchase-orders",

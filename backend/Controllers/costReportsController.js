@@ -906,7 +906,7 @@ const exportCostReportCSV = async (req, res) => {
       const { rows: entries } = await db.query(
         `SELECT cre.*, po.description AS po_description
          FROM   cost_report_entries cre
-         LEFT JOIN purchase_orders po ON po.id::text = cre.source_id
+         LEFT JOIN purchase_orders po ON po.id = cre.source_id
                                      AND cre.source_type = 'purchase_order'
          WHERE  ${conds.join(' AND ')}
          ORDER  BY cre.date DESC, cre.created_at DESC`,

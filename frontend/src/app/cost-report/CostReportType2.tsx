@@ -1278,11 +1278,11 @@ const DEFAULT_MARGIN_ITEMS = [
   'Professional memberships', 'Telephone', 'Payroll accountancy',
 ];
 
-function TabMargins({ marginsRef, productionId, onRefresh, isMD }: {
+function TabMargins({ marginsRef, productionId, onRefresh, canEdit }: {
   marginsRef: Type2Report['margins_reference'];
   productionId: string;
   onRefresh: () => void;
-  isMD: boolean;
+  canEdit: boolean;
 }) {
   const serverItems = (marginsRef?.items?.length ? marginsRef.items : DEFAULT_MARGIN_ITEMS) as string[];
   const [editMode,  setEditMode]  = useState(false);
@@ -1330,9 +1330,9 @@ function TabMargins({ marginsRef, productionId, onRefresh, isMD }: {
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-slate-900 font-semibold text-sm">What the Margin Covers</h3>
-          <p className="text-slate-400 text-xs mt-0.5">{isMD ? 'Editable — MD only' : 'Read-only reference'}</p>
+          <p className="text-slate-400 text-xs mt-0.5">{canEdit ? 'Click Edit to add, change, or remove items' : 'Read-only reference'}</p>
         </div>
-        {isMD && !editMode && (
+        {canEdit && !editMode && (
           <button onClick={startEdit}
             className="flex items-center gap-1.5 text-xs text-blue-600 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50">
             <Pencil size={12} /> Edit
@@ -1461,7 +1461,7 @@ export default function CostReportType2({ report, onRefresh, userRole }: {
               onRestored={onRefresh}
             />
           )}
-          {activeTab === 'margins'   && <TabMargins marginsRef={report.margins_reference} productionId={report.production.id} onRefresh={onRefresh} isMD={isMD} />}
+          {activeTab === 'margins'   && <TabMargins marginsRef={report.margins_reference} productionId={report.production.id} onRefresh={onRefresh} canEdit={canEdit} />}
         </div>
       </div>
     </div>
