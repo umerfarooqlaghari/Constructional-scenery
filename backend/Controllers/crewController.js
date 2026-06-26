@@ -393,7 +393,7 @@ const deleteCrewMember = async (req, res) => {
 const csvParse = require('csv-parse/sync');
 
 const IMPORT_TEMPLATE_HEADER = [
-  'First Name', 'Last Name', 'Date of Birth', 'Home Address', 'Employment Status',
+  'First Name', 'Last Name', 'Email', 'Date of Birth', 'Home Address', 'Employment Status',
   'Crew Trade', 'Crew Rank', 'PAYE Withholding Rate', 'Company/Business Name',
   'Company Registration Number or UTR', 'VAT Registration Number',
   'Account Name', 'Account Number', 'Sort Code',
@@ -527,17 +527,18 @@ const importCSV = async (req, res) => {
       const crew_number = await generateCrewNumber();
       await db.query(
         `INSERT INTO crew_members
-           (crew_number, first_name, last_name, date_of_birth, home_address,
+           (crew_number, first_name, last_name, email, date_of_birth, home_address,
             employment_status, crew_trade, crew_rank, paye_withholding_rate,
             company_name, company_registration_number, vat_registration_number,
             account_name, account_number, sort_code,
             emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
             is_active)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,true)`,
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)`,
         [
           crew_number,
           row['First Name']?.trim(),
           row['Last Name']?.trim(),
+          row['Email']?.trim() || null,
           dob || null,
           row['Home Address']?.trim() ? encrypt(row['Home Address'].trim()) : null,
           normaliseEmploymentStatus(row['Employment Status']),

@@ -41,10 +41,9 @@ export default function LoginPage() {
       {/* Logo */}
       <div className="flex justify-center mb-8">
         <div className="flex items-center gap-3">
-          <img src="/deepsian favicon.png" alt="DEEPSIAN" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
+          <img src="/deepsian favicon.png" alt="Construct Scenery Database" className="w-10 h-10 rounded-xl object-cover shadow-lg flex-shrink-0" />
           <div>
-            <p className="text-slate-900 font-bold text-lg leading-tight">DEEPSIAN</p>
-            <p className="text-slate-400 text-xs leading-tight">Construct Scenery Database</p>
+            <p className="text-slate-900 font-bold text-lg leading-tight">Construct Scenery Database</p>
           </div>
         </div>
       </div>
