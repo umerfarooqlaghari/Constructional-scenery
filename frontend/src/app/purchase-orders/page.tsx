@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import TopBar from '@/components/TopBar';
@@ -84,6 +84,17 @@ function fmtDate(iso: string): string {
   }
 }
 
+const DEPARTMENTS = [
+  'Construction',
+  'Scenic Art',
+  'Metalwork',
+  'Plastering / Sculpting',
+  'Rigging',
+  'Logistics / Transport',
+  'Accounts / Admin',
+  'Props'
+];
+
 type NewPOForm = {
   supplier_name: string;
   supplier_email: string;
@@ -97,6 +108,8 @@ type NewPOForm = {
   set_code: string;
   account_code: string;
   description: string;
+  department: string;
+  custom_department: string;
   net_amount: string;
   vat: string;
   gross_amount: string;
@@ -116,6 +129,8 @@ const EMPTY_FORM: NewPOForm = {
   set_code: '',
   account_code: '',
   description: '',
+  department: '',
+  custom_department: '',
   net_amount: '',
   vat: '',
   gross_amount: '',
@@ -125,7 +140,7 @@ const EMPTY_FORM: NewPOForm = {
 function SkeletonRow() {
   return (
     <tr className="animate-pulse border-b border-slate-100">
-      {Array.from({ length: 12 }).map((_, i) => (
+      {Array.from({ length: 14 }).map((_, i) => (
         <td key={i} className="px-4 py-3.5">
           <div className="h-3 bg-slate-200 rounded w-full" />
         </td>
@@ -164,6 +179,7 @@ export default function PurchaseOrdersPage() {
     set_code: '',
     account_code: '',
     paid_from: '',
+    department: '',
   });
 
   const activeFilterCount = Object.values(poFilters).filter((v) => v !== '').length;
@@ -210,6 +226,7 @@ export default function PurchaseOrdersPage() {
       if (poFilters.set_code)       params.set_code       = poFilters.set_code;
       if (poFilters.account_code)   params.account_code   = poFilters.account_code;
       if (poFilters.paid_from)      params.paid_from      = poFilters.paid_from;
+      if (poFilters.department)     params.department     = poFilters.department;
 
       const [poList, prodList] = await Promise.all([
         purchaseOrdersApi.list(Object.keys(params).length ? params : undefined),
@@ -238,8 +255,12 @@ export default function PurchaseOrdersPage() {
       !q ||
       po.supplier_name.toLowerCase().includes(q) ||
       po.po_number.toLowerCase().includes(q) ||
-      (po.description ?? '').toLowerCase().includes(q);
-    return matchStatus && matchSearch;
+      (po.description ?? '').toLowerCase().includes(q) ||
+      (po.department ?? '').toLowerCase().includes(q);
+    const matchDept =
+      !poFilters.department ||
+      (po.department ?? '').toLowerCase() === poFilters.department.toLowerCase();
+    return matchStatus && matchSearch && matchDept;
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredPos.length / PAGE_SIZE));
@@ -297,6 +318,7 @@ export default function PurchaseOrdersPage() {
 
   function openEdit(po: PurchaseOrder) {
     setEditPO(po);
+    const isStandardDept = po.department && DEPARTMENTS.includes(po.department);
     setEditForm({
       supplier_name:  po.supplier_name,
       supplier_email: po.supplier_email ?? '',
@@ -310,6 +332,8 @@ export default function PurchaseOrdersPage() {
       set_code:       po.set_code ?? '',
       account_code:   po.account_code ?? '',
       description:    po.description ?? '',
+      department:     isStandardDept ? po.department! : (po.department ? 'Other' : ''),
+      custom_department: isStandardDept ? '' : (po.department ?? ''),
       net_amount:     po.net_amount,
       vat:            po.vat,
       gross_amount:   po.gross_amount,
@@ -323,6 +347,7 @@ export default function PurchaseOrdersPage() {
     setEditError('');
     if (!editForm.supplier_name.trim()) { setEditError('Supplier name is required.'); return; }
     if (!editForm.production_id) { setEditError('Production is required.'); return; }
+    if (editForm.department === 'Other' && !editForm.custom_department.trim()) { setEditError('Please enter a custom department.'); return; }
     if (!editForm.net_amount) { setEditError('Net amount is required.'); return; }
     if (!editForm.gross_amount) { setEditError('Gross amount is required.'); return; }
     setEditLoading(true);
@@ -340,6 +365,7 @@ export default function PurchaseOrdersPage() {
         set_code:       editForm.set_code       || null,
         account_code:   editForm.account_code   || null,
         description:    editForm.description    || null,
+        department:     editForm.department === 'Other' ? editForm.custom_department : (editForm.department || null),
         net_amount:     editForm.net_amount,
         vat:            editForm.vat            || '0',
         gross_amount:   editForm.gross_amount,
@@ -358,6 +384,7 @@ export default function PurchaseOrdersPage() {
     setFormError('');
     if (!newForm.supplier_name.trim()) { setFormError('Supplier name is required.'); return; }
     if (!newForm.production_id) { setFormError('Production is required.'); return; }
+    if (newForm.department === 'Other' && !newForm.custom_department.trim()) { setFormError('Please enter a custom department.'); return; }
     if (!newForm.net_amount) { setFormError('Net amount is required.'); return; }
     if (!newForm.gross_amount) { setFormError('Gross amount is required.'); return; }
     setFormLoading(true);
@@ -375,6 +402,7 @@ export default function PurchaseOrdersPage() {
         set_code:       newForm.set_code        || null,
         account_code:   newForm.account_code    || null,
         description:    newForm.description     || null,
+        department:     newForm.department === 'Other' ? newForm.custom_department : (newForm.department || null),
         net_amount:     newForm.net_amount,
         vat:            newForm.vat             || '0',
         gross_amount:   newForm.gross_amount,
@@ -498,25 +526,23 @@ export default function PurchaseOrdersPage() {
                   </button>
                 )}
               </div>
-              {/* Filter toggle — hidden for MD (view-only approved) */}
-              {!isMD && (
-                <button
-                  onClick={() => setShowFilters(v => !v)}
-                  className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
-                    showFilters || activeFilterCount > 0
-                      ? 'bg-blue-50 border-blue-300 text-blue-700'
-                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
-                  }`}
-                >
-                  <SlidersHorizontal size={13} />
-                  Filters
-                  {activeFilterCount > 0 && (
-                    <span className="ml-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
-                      {activeFilterCount}
-                    </span>
-                  )}
-                </button>
-              )}
+              {/* Filter toggle */}
+              <button
+                onClick={() => setShowFilters(v => !v)}
+                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
+                  showFilters || activeFilterCount > 0
+                    ? 'bg-blue-50 border-blue-300 text-blue-700'
+                    : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
+                }`}
+              >
+                <SlidersHorizontal size={13} />
+                Filters
+                {activeFilterCount > 0 && (
+                  <span className="ml-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                    {activeFilterCount}
+                  </span>
+                )}
+              </button>
             </div>
             {isCoordinator && (
               <button
@@ -602,6 +628,19 @@ export default function PurchaseOrdersPage() {
                     <option value="pleo_charge_card">Pleo Charge Card</option>
                   </select>
                 </div>
+                {/* Department */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Department</label>
+                  <select
+                    value={poFilters.department}
+                    onChange={e => { setPoFilters(f => ({ ...f, department: e.target.value })); setPage(1); }}
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
+                  >
+                    <option value="">All departments</option>
+                    {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                    <option value="Other">Other / Custom</option>
+                  </select>
+                </div>
                 {/* Net Amount Min */}
                 <div>
                   <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Net £ Min</label>
@@ -658,7 +697,7 @@ export default function PurchaseOrdersPage() {
               {activeFilterCount > 0 && (
                 <button
                   onClick={() => {
-                    setPoFilters({ production_id: '', date_from: '', date_to: '', net_amount_min: '', net_amount_max: '', gross_amount_min: '', gross_amount_max: '', set_code: '', account_code: '', paid_from: '' });
+                    setPoFilters({ production_id: '', date_from: '', date_to: '', net_amount_min: '', net_amount_max: '', gross_amount_min: '', gross_amount_max: '', set_code: '', account_code: '', paid_from: '', department: '' });
                     setPage(1);
                   }}
                   className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
@@ -683,7 +722,9 @@ export default function PurchaseOrdersPage() {
               <thead>
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap sticky left-0 bg-slate-50 z-10">PO Number</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Date</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Department</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Production</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Set / Account</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Description</th>
@@ -702,7 +743,7 @@ export default function PurchaseOrdersPage() {
                   : pagePos.length === 0
                   ? (
                     <tr>
-                      <td colSpan={12} className="px-5 py-12 text-center text-slate-400 text-sm">
+                      <td colSpan={14} className="px-5 py-12 text-center text-slate-400 text-sm">
                         No purchase orders found.
                       </td>
                     </tr>
@@ -713,13 +754,18 @@ export default function PurchaseOrdersPage() {
                       <tr key={po.id} className="hover:bg-slate-50/50 transition-colors">
                         <td className="px-5 py-3.5 sticky left-0 bg-white z-10 group-hover:bg-slate-50/50">
                           <p className="text-blue-700 font-semibold text-xs font-mono whitespace-nowrap">{po.po_number}</p>
-                          <p className="text-slate-400 text-[10px] mt-0.5">{fmtDate(po.date_of_po)}</p>
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-600 text-xs whitespace-nowrap">
+                          {fmtDate(po.date_of_po)}
                         </td>
                         <td className="px-4 py-3.5 max-w-[160px]">
                           <p className="text-slate-800 font-medium text-sm truncate">{po.supplier_name}</p>
                           {po.supplier_address && (
                             <p className="text-slate-400 text-xs truncate">{po.supplier_address}</p>
                           )}
+                        </td>
+                        <td className="px-4 py-3.5 text-slate-700 font-medium text-xs whitespace-nowrap">
+                          {po.department || <span className="text-slate-300">—</span>}
                         </td>
                         <td className="px-4 py-3.5 text-slate-600 text-sm whitespace-nowrap">
                           {po.prod_name ?? po.production_id}
@@ -1072,6 +1118,30 @@ export default function PurchaseOrdersPage() {
                       placeholder="e.g. MAT-001"
                     />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
+                    <select
+                      value={newForm.department}
+                      onChange={(e) => { updateField('department', e.target.value); if (e.target.value !== 'Other') updateField('custom_department', ''); }}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
+                    >
+                      <option value="">— Select department —</option>
+                      {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                      <option value="Other">Other / Custom</option>
+                    </select>
+                  </div>
+                  {newForm.department === 'Other' && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Custom Department <span className="text-red-500">*</span></label>
+                      <input
+                        type="text"
+                        value={newForm.custom_department}
+                        onChange={(e) => updateField('custom_department', e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                        placeholder="Enter department name"
+                      />
+                    </div>
+                  )}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                     <textarea
@@ -1313,6 +1383,29 @@ export default function PurchaseOrdersPage() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Account Code</label>
                     <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.account_code} onChange={e => setEditForm(f => ({ ...f, account_code: e.target.value }))} />
                   </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
+                    <select
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                      value={editForm.department}
+                      onChange={e => setEditForm(f => ({ ...f, department: e.target.value, custom_department: e.target.value === 'Other' ? f.custom_department : '' }))}
+                    >
+                      <option value="">— Select department —</option>
+                      {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
+                      <option value="Other">Other / Custom</option>
+                    </select>
+                  </div>
+                  {editForm.department === 'Other' && (
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Custom Department *</label>
+                      <input
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        value={editForm.custom_department}
+                        onChange={e => setEditForm(f => ({ ...f, custom_department: e.target.value }))}
+                        placeholder="Enter department name"
+                      />
+                    </div>
+                  )}
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                     <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />

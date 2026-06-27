@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useEffect } from 'react';
 import { usePathname, useRouter } from 'next/navigation';
@@ -53,7 +53,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           src="/construct scenery logo.png"
           alt=""
           aria-hidden="true"
-          className="w-[460px] h-[460px] object-contain opacity-[0.05]"
+          className="w-[80%] h-[80%] object-cover opacity-[0.03]"
         />
       </div>
 

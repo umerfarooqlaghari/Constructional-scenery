@@ -431,6 +431,7 @@ export type PurchaseOrder = {
   set_code: string | null;
   account_code: string | null;
   description: string | null;
+  department?: string | null;
   net_amount: string;
   vat: string;
   gross_amount: string;

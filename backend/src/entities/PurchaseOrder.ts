@@ -42,6 +42,9 @@ export class PurchaseOrder {
   @Column({ type: 'text', nullable: true })
   description: string | null;
 
+  @Column({ type: 'text', name: 'department', nullable: true })
+  department: string | null;
+
   @Column({ type: 'decimal', precision: 12, scale: 2, name: 'net_amount' })
   netAmount: number;
 
