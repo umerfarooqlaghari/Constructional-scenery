@@ -476,6 +476,22 @@ export const purchaseOrdersApi = {
     }).then(r => r.json()) as Promise<{ message: string; po: PurchaseOrder }>,
   delete: (id: string) =>
     request<{ message: string }>(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
+  import: (formData: FormData) =>
+    fetch('/api/purchase-orders/import', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
+      },
+      body: formData,
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); }
+      return r.json() as Promise<{
+        total_rows: number;
+        imported_count: number;
+        skipped_count: number;
+        errors: Array<{ row: number; data: Record<string, string>; error: string }>;
+      }>;
+    }),
 };
 
 // ─── Crew types ────────────────────────────────────────────────────────────────

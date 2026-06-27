@@ -28,6 +28,27 @@ import {
 
 const PAGE_SIZE = 20;
 
+const CSV_HEADERS = [
+  'PO Number',
+  'Date',
+  'Supplier Name',
+  'Supplier Email',
+  'Street Name',
+  'Zip Code',
+  'City',
+  'County',
+  'Production Name',
+  'Set Code',
+  'Account Code',
+  'Description',
+  'Department',
+  'Net Amount',
+  'VAT',
+  'Gross Amount',
+  'Payment Method',
+  'Status'
+];
+
 type TabFilter = POStatus | 'all' | 'pending';
 const STATUS_TABS: { label: string; value: TabFilter }[] = [
   { label: 'All',               value: 'all' },
@@ -161,6 +182,17 @@ export default function PurchaseOrdersPage() {
   const [productions, setProductions] = useState<Production[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importLoading, setImportLoading] = useState(false);
+  const [importError, setImportError] = useState<string | null>(null);
+  const [importResult, setImportResult] = useState<{
+    total_rows: number;
+    imported_count: number;
+    skipped_count: number;
+    errors: Array<{ row: number; data: Record<string, string>; error: string }>;
+  } | null>(null);
 
   const [statusFilter, setStatusFilter] = useState<TabFilter>(isMD ? 'approved' : 'all');
   const [actionError, setActionError] = useState<{ id: string; msg: string } | null>(null);
@@ -418,6 +450,68 @@ export default function PurchaseOrdersPage() {
     }
   }
 
+  const [copiedText, setCopiedText] = useState(false);
+
+  const downloadTemplate = async () => {
+    try {
+      const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+      const res = await fetch('/api/purchase-orders/import/template', {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!res.ok) throw new Error('Failed to download template');
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'purchase_orders_import_template.csv';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err: any) {
+      alert(err.message || 'Download failed');
+    }
+  };
+
+  const handleImportSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!importFile) return;
+    setImportLoading(true);
+    setImportError(null);
+    setImportResult(null);
+
+    const formData = new FormData();
+    formData.append('csv', importFile);
+
+    try {
+      const res = await purchaseOrdersApi.import(formData);
+      setImportResult(res);
+      if (res.imported_count > 0) {
+        await loadData();
+      }
+    } catch (err: any) {
+      setImportError(err.message || 'Import failed. Please make sure the file format is correct.');
+    } finally {
+      setImportLoading(false);
+    }
+  };
+
+  const handleCopySkipped = () => {
+    if (!importResult || importResult.errors.length === 0) return;
+    const headerLine = CSV_HEADERS.join(',');
+    const skippedLines = importResult.errors.map(err => {
+      return CSV_HEADERS.map(col => {
+        const val = err.data[col] ?? '';
+        return val.includes(',') || val.includes('"') ? `"${val.replace(/"/g, '""')}"` : val;
+      }).join(',');
+    }).join('\r\n');
+    
+    const clipboardContent = `${headerLine}\r\n${skippedLines}`;
+    navigator.clipboard.writeText(clipboardContent);
+    setCopiedText(true);
+    setTimeout(() => setCopiedText(false), 2000);
+  };
+
   async function handleAttachInvoice() {
     if (!invoiceModal || !invoiceFile) return;
     setInvoiceError('');
@@ -545,13 +639,22 @@ export default function PurchaseOrdersPage() {
               </button>
             </div>
             {isCoordinator && (
-              <button
-                onClick={() => { setShowNewModal(true); setFormError(''); setNewForm(EMPTY_FORM); }}
-                className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
-              >
-                <Plus size={14} />
-                New PO
-              </button>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setShowImportModal(true); setImportFile(null); setImportError(null); setImportResult(null); }}
+                  className="flex items-center justify-center gap-2 bg-slate-100 border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2 hover:bg-slate-200 transition-colors font-medium whitespace-nowrap"
+                >
+                  <Upload size={14} />
+                  Import CSV
+                </button>
+                <button
+                  onClick={() => { setShowNewModal(true); setFormError(''); setNewForm(EMPTY_FORM); }}
+                  className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
+                >
+                  <Plus size={14} />
+                  New PO
+                </button>
+              </div>
             )}
           </div>
 
@@ -955,6 +1058,151 @@ export default function PurchaseOrdersPage() {
           </div>
         </div>
       </main>
+
+      {/* Import CSV Modal */}
+      {showImportModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!importLoading) setShowImportModal(false); }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-slate-900 font-semibold text-base font-sans">Bulk Import Purchase Orders</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Import historical PO data via CSV template</p>
+              </div>
+              <button
+                disabled={importLoading}
+                onClick={() => setShowImportModal(false)}
+                className="text-slate-400 hover:text-slate-600 disabled:opacity-40 transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Step 1: Download Template */}
+              <div className="space-y-2 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                <h3 className="text-slate-800 text-xs font-semibold uppercase tracking-wider">Step 1: Download CSV Template</h3>
+                <p className="text-slate-500 text-xs leading-relaxed">
+                  Prepare your purchase order data using our official CSV template. We've included a demo row with expected formats (e.g. YYYY-MM-DD dates, numeric amounts).
+                </p>
+                <button
+                  type="button"
+                  onClick={downloadTemplate}
+                  className="mt-2 text-xs text-blue-600 font-semibold hover:text-blue-800 transition-colors flex items-center gap-1.5 cursor-pointer underline"
+                >
+                  Download CSV Template with Demo Row
+                </button>
+              </div>
+
+              {/* Step 2: Upload CSV */}
+              <form onSubmit={handleImportSubmit} className="space-y-4">
+                <div className="space-y-2">
+                  <h3 className="text-slate-800 text-xs font-semibold uppercase tracking-wider">Step 2: Upload CSV File</h3>
+                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center bg-slate-50/50 hover:bg-slate-50 transition-colors relative">
+                    <input
+                      type="file"
+                      accept=".csv"
+                      onChange={(e) => {
+                        const file = e.target.files?.[0] || null;
+                        setImportFile(file);
+                        setImportResult(null);
+                        setImportError(null);
+                      }}
+                      disabled={importLoading}
+                      className="absolute inset-0 opacity-0 cursor-pointer w-full h-full"
+                    />
+                    <Upload className="text-slate-400 mb-2" size={24} />
+                    <p className="text-slate-600 text-sm font-medium">
+                      {importFile ? importFile.name : 'Select or drag CSV file'}
+                    </p>
+                    <p className="text-slate-400 text-xs mt-1">
+                      {importFile ? `${(importFile.size / 1024).toFixed(1)} KB` : 'Only .csv files supported'}
+                    </p>
+                  </div>
+                </div>
+
+                {importError && (
+                  <div className="flex items-start gap-2 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl p-3">
+                    <AlertCircle size={14} className="flex-shrink-0 mt-0.5" />
+                    <span>{importError}</span>
+                  </div>
+                )}
+
+                {importLoading && (
+                  <div className="flex items-center justify-center gap-2 text-blue-600 text-xs bg-blue-50 border border-blue-100 rounded-xl p-3 font-medium">
+                    <Loader2 className="animate-spin" size={14} />
+                    Processing CSV rows...
+                  </div>
+                )}
+
+                {importResult && (
+                  <div className="space-y-4 bg-slate-50 border border-slate-100 rounded-xl p-4">
+                    <div className="flex items-center justify-between border-b border-slate-100 pb-2">
+                      <h4 className="text-slate-800 text-xs font-semibold uppercase tracking-wider">Import Result</h4>
+                      <span className="text-[10px] text-slate-400 font-mono">Total rows: {importResult.total_rows}</span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-3 text-center">
+                      <div className="bg-green-50 border border-green-200 rounded-lg p-2.5">
+                        <p className="text-green-700 font-bold text-lg leading-none">{importResult.imported_count}</p>
+                        <p className="text-green-600 text-[10px] uppercase font-semibold mt-1">Imported</p>
+                      </div>
+                      <div className="bg-red-50 border border-red-200 rounded-lg p-2.5">
+                        <p className="text-red-700 font-bold text-lg leading-none">{importResult.skipped_count}</p>
+                        <p className="text-red-600 text-[10px] uppercase font-semibold mt-1">Skipped</p>
+                      </div>
+                    </div>
+
+                    {importResult.errors.length > 0 && (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between">
+                          <p className="text-slate-600 text-xs font-semibold">Skipped Rows Details ({importResult.errors.length})</p>
+                          <button
+                            type="button"
+                            onClick={handleCopySkipped}
+                            className="text-[11px] text-blue-600 hover:text-blue-800 font-medium cursor-pointer underline"
+                          >
+                            {copiedText ? 'Copied CSV!' : 'Copy all to clipboard'}
+                          </button>
+                        </div>
+                        <div className="max-h-48 overflow-y-auto space-y-2 border border-slate-100 bg-white rounded-lg p-2">
+                          {importResult.errors.map((err, i) => (
+                            <div key={i} className="text-xs border-b border-slate-50 pb-2 last:border-0 last:pb-0">
+                              <p className="font-semibold text-slate-800">Row {err.row}</p>
+                              <p className="text-red-600 text-[11px] mt-0.5">{err.error}</p>
+                              <pre className="text-[10px] text-slate-500 bg-slate-50 rounded p-1.5 mt-1 overflow-x-auto font-mono">
+                                {JSON.stringify(err.data, null, 2)}
+                              </pre>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-3 justify-end pt-2 border-t border-slate-100">
+                  <button
+                    type="button"
+                    disabled={importLoading}
+                    onClick={() => setShowImportModal(false)}
+                    className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50 disabled:opacity-40 transition-colors font-medium cursor-pointer font-sans"
+                  >
+                    Close
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={importLoading || !importFile}
+                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg disabled:opacity-40 transition-colors font-medium flex items-center gap-1.5 cursor-pointer font-sans"
+                  >
+                    {importLoading && <Loader2 className="animate-spin" size={13} />}
+                    Upload and Import
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* New PO Modal */}
       {showNewModal && (

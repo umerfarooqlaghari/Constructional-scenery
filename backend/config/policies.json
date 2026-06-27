@@ -245,6 +245,8 @@
       "DELETE /api/purchase-orders/:id",
       "POST /api/purchase-orders/:id/submit",
       "POST /api/purchase-orders/:id/attach-invoice",
+      "GET /api/purchase-orders/import/template",
+      "POST /api/purchase-orders/import",
 
       "GET /api/crew",
       "GET /api/crew/trades",
