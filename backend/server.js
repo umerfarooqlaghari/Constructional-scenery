@@ -18,16 +18,15 @@ app.use(cors({
   origin: (origin, callback) => {
     // Allow requests with no origin (Postman, server-to-server)
     if (!origin) return callback(null, true);
-    // In production CLIENT_URL must be set; in dev accept any localhost
-    if (allowedOrigins) {
-      return callback(
-        allowedOrigins.includes(origin) ? null : new Error('Not allowed by CORS'),
-        allowedOrigins.includes(origin)
-      );
-    }
-    // Dev: allow any localhost or 127.0.0.1 origin
-    if (/^https?:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/.test(origin)) {
+    // Always allow localhost, 127.0.0.1, and local network IPs (e.g. 192.168.x.x)
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) {
       return callback(null, true);
+    }
+    // In production CLIENT_URL must be set
+    if (allowedOrigins) {
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
     }
     return callback(new Error('Not allowed by CORS'), false);
   },

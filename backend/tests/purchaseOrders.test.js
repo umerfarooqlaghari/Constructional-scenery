@@ -193,3 +193,68 @@ describe('POST /api/purchase-orders/:id/approve', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ─── Department and Date Range Enhancements ───────────────────────────────────
+describe('Purchase Orders - Department and Date Range Enhancements', () => {
+  beforeEach(() => dbMock.reset());
+
+  test('Coordinator creates PO with department — 201', async () => {
+    dbMock.respond([{ status: 'active_build' }]);              // production lookup
+    dbMock.respond({ rows: [{ max_num: 3 }] });                 // generatePoNumber
+    dbMock.respond([{ ...SAMPLE_PO, po_number: 'PO-0004', department: 'Scenic Art' }]);   // INSERT
+
+    const res = await request(app)
+      .post('/api/purchase-orders')
+      .set(authHeader('coordinator'))
+      .send({ supplier_name: 'Treeline Timber', production_id: 'prod-1', net_amount: '500.00', department: 'Scenic Art' });
+
+    expect(res.status).toBe(201);
+    expect(res.body.po_number).toBe('PO-0004');
+    expect(res.body.department).toBe('Scenic Art');
+  });
+
+  test('Coordinator updates PO department — 200', async () => {
+    dbMock.respond([{ status: 'draft' }]);                          // existing status check
+    dbMock.respond([{ ...SAMPLE_PO, department: 'Construction' }]); // UPDATE RETURNING
+
+    const res = await request(app)
+      .put('/api/purchase-orders/po-001')
+      .set(authHeader('coordinator'))
+      .send({ department: 'Construction' });
+
+    expect(res.status).toBe(200);
+    expect(res.body.department).toBe('Construction');
+  });
+
+  test('MD or Accountant cannot create/update PO department — 403', async () => {
+    // MD create attempt
+    const res1 = await request(app)
+      .post('/api/purchase-orders')
+      .set(authHeader('md'))
+      .send({ supplier_name: 'Treeline Timber', production_id: 'prod-1', net_amount: '500.00', department: 'Scenic Art' });
+    expect(res1.status).toBe(403);
+
+    // Accountant update attempt
+    const res2 = await request(app)
+      .put('/api/purchase-orders/po-001')
+      .set(authHeader('accountant'))
+      .send({ department: 'Construction' });
+    expect(res2.status).toBe(403);
+  });
+
+  test('Filtering by department, date range boundaries, and future dates — 200', async () => {
+    dbMock.respond([
+      { ...SAMPLE_PO, department: 'Metalwork', date_of_po: '2026-12-25' } // future date
+    ]);
+
+    const res = await request(app)
+      .get('/api/purchase-orders?department=Metalwork&date_from=2026-06-01&date_to=2027-01-01')
+      .set(authHeader('md'));
+
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveLength(1);
+    expect(res.body[0].department).toBe('Metalwork');
+    expect(res.body[0].date_of_po).toBe('2026-12-25');
+  });
+});
+

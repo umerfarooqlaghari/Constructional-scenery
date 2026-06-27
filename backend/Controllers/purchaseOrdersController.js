@@ -19,6 +19,7 @@ const buildPoFilterConditions = (query) => {
   if (query.paid_from)     { conditions.push(`po.paid_from = $${i++}`);            params.push(query.paid_from); }
   if (query.date_from)     { conditions.push(`po.date_of_po >= $${i++}`);          params.push(query.date_from); }
   if (query.date_to)       { conditions.push(`po.date_of_po <= $${i++}`);          params.push(query.date_to); }
+  if (query.department)    { conditions.push(`po.department = $${i++}`);           params.push(query.department); }
   if (query.amount_min)    { conditions.push(`po.gross_amount >= $${i++}`);        params.push(query.amount_min); }
   if (query.amount_max)    { conditions.push(`po.gross_amount <= $${i++}`);        params.push(query.amount_max); }
   if (query.net_amount_min){ conditions.push(`po.net_amount >= $${i++}`);          params.push(query.net_amount_min); }
@@ -40,6 +41,7 @@ const buildFilterSummary = (query) => {
     parts.push(`Date: ${query.date_from || '*'} → ${query.date_to || '*'}`);
   if (query.set_code)      parts.push(`Set: ${query.set_code}`);
   if (query.account_code)  parts.push(`Account: ${query.account_code}`);
+  if (query.department)    parts.push(`Dept: ${query.department}`);
   if (query.paid_from)     parts.push(`Pmt: ${query.paid_from.replace(/_/g, ' ')}`);
   if (query.status)        parts.push(`Status: ${query.status}`);
   if (query.net_amount_min || query.net_amount_max)
@@ -113,7 +115,7 @@ const exportCSV = async (req, res) => {
     const fmtD = (d) => d ? new Date(d).toLocaleDateString('en-GB') : '';
 
     const header = [
-      'PO Number', 'Date', 'Supplier', 'Description', 'Set Code', 'Account Code',
+      'PO Number', 'Date', 'Supplier', 'Department', 'Description', 'Set Code', 'Account Code',
       'Net', 'VAT', 'Gross', 'Payment Method', 'Status', 'Approved By', 'Approved At',
     ];
     const lines = [header.map(esc).join(',')];
@@ -122,6 +124,7 @@ const exportCSV = async (req, res) => {
         po.po_number,
         fmtD(po.date_of_po),
         po.supplier_name,
+        po.department,
         po.description,
         po.set_code,
         po.account_code,
@@ -180,7 +183,7 @@ const createPO = async (req, res) => {
     supplier_name, supplier_email, supplier_code, supplier_address,
     street_name, zip_code, city, county,
     date_of_po, production_id,
-    set_code, account_code, description, net_amount, vat, gross_amount, paid_from,
+    set_code, account_code, description, department, net_amount, vat, gross_amount, paid_from,
   } = req.body;
 
   if (!supplier_name || !production_id || !net_amount)
@@ -208,16 +211,16 @@ const createPO = async (req, res) => {
          (po_number, supplier_name, supplier_email, supplier_code, supplier_address,
           street_name, zip_code, city, county,
           date_of_po, production_id,
-          set_code, account_code, description, net_amount, vat, gross_amount, paid_from,
+          set_code, account_code, description, department, net_amount, vat, gross_amount, paid_from,
           status, created_by)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,'draft',$19)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,'draft',$20)
        RETURNING *`,
       [
         po_number, supplier_name, supplier_email || null, supplier_code || null,
         supplier_address || null,
         street_name || null, zip_code || null, city || null, county || null,
         date_of_po || new Date().toISOString().split('T')[0],
-        production_id, set_code, account_code, description,
+        production_id, set_code, account_code, description, department || null,
         net, vatAmount, grossAmount,
         paid_from,
         req.user.id,
@@ -253,7 +256,7 @@ const updatePO = async (req, res) => {
     'supplier_name', 'supplier_email', 'supplier_code', 'supplier_address',
     'street_name', 'zip_code', 'city', 'county',
     'date_of_po', 'production_id',
-    'set_code', 'account_code', 'description', 'net_amount', 'vat', 'gross_amount', 'paid_from',
+    'set_code', 'account_code', 'description', 'department', 'net_amount', 'vat', 'gross_amount', 'paid_from',
   ];
   const updates = {};
   allowed.forEach(f => { if (req.body[f] !== undefined) updates[f] = req.body[f]; });
