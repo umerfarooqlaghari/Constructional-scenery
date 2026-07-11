@@ -7,10 +7,11 @@ type RequestOptions = {
   body?: unknown;
   headers?: Record<string, string>;
   skipAuth?: boolean;
+  cache?: RequestCache;
 };
 
 async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
-  const { method = 'GET', body, headers = {}, skipAuth = false } = opts;
+  const { method = 'GET', body, headers = {}, skipAuth = false, cache } = opts;
 
   const requestHeaders: Record<string, string> = {
     'Content-Type': 'application/json',
@@ -26,6 +27,7 @@ async function request<T>(path: string, opts: RequestOptions = {}): Promise<T> {
     method,
     headers: requestHeaders,
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    cache,
   });
 
   // If 401 try once to refresh token
@@ -382,6 +384,13 @@ export type Timesheet = {
   week_ending_date: string;
   status: TimesheetStatus;
   grand_total: string | null;
+  gross_total?: string | null;
+  net_total_amount?: string | null;
+  overtime_amount?: string | null;
+  mileage_amount?: string | null;
+  per_diem_amount?: string | null;
+  ad_hoc_amount?: string | null;
+  food_amount?: string | null;
   invoice_attachment_url: string | null;
   invoice_attachment_name: string | null;
   // joined from crew_members
@@ -397,9 +406,9 @@ export type Timesheet = {
 export const timesheetsApi = {
   list: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return request<Timesheet[]>(`/api/timesheets${qs}`);
+    return request<Timesheet[]>(`/api/timesheets${qs}`, { cache: 'no-store' });
   },
-  getById: (id: string) => request<Timesheet>(`/api/timesheets/${id}`),
+  getById: (id: string) => request<Timesheet>(`/api/timesheets/${id}`, { cache: 'no-store' }),
   create: (data: { crew_member_id: string; production_id: string; week_ending_date: string }) =>
     request<Timesheet>('/api/timesheets', { method: 'POST', body: data }),
 };

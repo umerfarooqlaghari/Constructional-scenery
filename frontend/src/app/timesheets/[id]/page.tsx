@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
+import { useParams, useRouter, useSearchParams } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import { timesheetsApi, crewApi, type Timesheet } from '@/lib/api';
 import { ChevronLeft, Save, Loader2, AlertCircle } from 'lucide-react';
@@ -29,6 +29,12 @@ function fmtShort(d: string) {
 function fmtGBP(n: number | string | null | undefined) {
   const v = typeof n === 'string' ? parseFloat(n) : (n ?? 0);
   return `£${(isNaN(v) ? 0 : v).toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+}
+
+function fmtMealValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '';
+  const n = typeof value === 'number' ? value : parseFloat(String(value));
+  return Number.isFinite(n) && n > 0 ? String(n) : '';
 }
 
 // Use local date parts to avoid UTC timezone shift
@@ -64,7 +70,10 @@ type TsRecord = Timesheet & Record<string, unknown>;
 export default function TimesheetDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const id = params.id as string;
+  const returnProductionId = searchParams.get('production_id') ?? '';
+  const returnWeekEnding = searchParams.get('week_ending_date') ?? '';
 
   const [ts, setTs]           = useState<TsRecord | null>(null);
   const [trades, setTrades]   = useState<{ bectu: Record<string, string[]>; non_bectu: string[] } | null>(null);
@@ -73,6 +82,29 @@ export default function TimesheetDetailPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving]   = useState(false);
   const [error, setError]     = useState('');
+  const [isDirty, setIsDirty] = useState(false);
+
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (isDirty) {
+        e.preventDefault();
+        e.returnValue = '';
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, [isDirty]);
+
+  const handleBack = () => {
+    if (isDirty) {
+      const leave = window.confirm('You have unsaved changes. Are you sure you want to leave without saving?');
+      if (!leave) return;
+    }
+    const qs = new URLSearchParams();
+    if (returnProductionId) qs.set('production_id', returnProductionId);
+    if (returnWeekEnding) qs.set('week_ending_date', returnWeekEnding);
+    router.push(qs.toString() ? `/timesheets?${qs.toString()}` : '/timesheets');
+  };
 
   const load = useCallback(async () => {
     try {
@@ -105,9 +137,9 @@ export default function TimesheetDetailPage() {
           mileage:                  String(ex?.mileage ?? '0'),
           per_diem:                 String(ex?.per_diem ?? '0'),
           ad_hoc_reimbursement:     String(ex?.ad_hoc_reimbursement ?? '0'),
-          meal_allowance_breakfast: String(ex?.meal_allowance_breakfast ?? ''),
-          meal_allowance_lunch:     String(ex?.meal_allowance_lunch ?? ''),
-          meal_allowance_supper:    String(ex?.meal_allowance_supper ?? ''),
+          meal_allowance_breakfast: fmtMealValue(ex?.meal_allowance_breakfast),
+          meal_allowance_lunch:     fmtMealValue(ex?.meal_allowance_lunch),
+          meal_allowance_supper:    fmtMealValue(ex?.meal_allowance_supper),
         };
       }));
     } catch (e: unknown) {
@@ -120,6 +152,7 @@ export default function TimesheetDetailPage() {
   useEffect(() => { load(); }, [load]);
 
   const updateEntry = (idx: number, field: keyof DayEntry, value: string | boolean) => {
+    setIsDirty(true);
     setEntries(prev => {
       const next = [...prev];
       next[idx] = { ...next[idx], [field]: value };
@@ -130,43 +163,46 @@ export default function TimesheetDetailPage() {
   const handleSave = async () => {
     setSaving(true); setError('');
     try {
-      const payload: Record<string, unknown> = {
-        entries: entries
-          .filter(e =>
-            e.full_day_worked ||
-            parseFloat(e.overtime_hours || '0') > 0 ||
-            parseFloat(e.travel || '0') > 0 ||
-            parseFloat(e.mileage || '0') > 0 ||
-            parseFloat(e.per_diem || '0') > 0 ||
-            parseFloat(e.ad_hoc_reimbursement || '0') > 0 ||
-            e.meal_allowance_breakfast ||
-            e.meal_allowance_lunch ||
-            e.meal_allowance_supper
-          )
-          .map(e => ({
-            date:                     e.date,
-            day_of_week:              e.day_of_week,
-            full_day_worked:          e.full_day_worked,
-            overtime_hours:           parseFloat(e.overtime_hours || '0'),
-            set_number:               e.set_number || null,
-            site:                     e.site || null,
-            travel:                   parseFloat(e.travel || '0'),
-            mileage:                  parseFloat(e.mileage || '0'),
-            per_diem:                 parseFloat(e.per_diem || '0'),
-            ad_hoc_reimbursement:     parseFloat(e.ad_hoc_reimbursement || '0'),
-            meal_breakfast:           e.meal_allowance_breakfast !== '',
-            meal_lunch:               e.meal_allowance_lunch !== '',
-            meal_supper:              e.meal_allowance_supper !== '',
-            meal_allowance_breakfast: e.meal_allowance_breakfast ? parseFloat(e.meal_allowance_breakfast) : null,
-            meal_allowance_lunch:     e.meal_allowance_lunch     ? parseFloat(e.meal_allowance_lunch)     : null,
-            meal_allowance_supper:    e.meal_allowance_supper    ? parseFloat(e.meal_allowance_supper)    : null,
-          })),
-      };
+      const hasAnyWork = entries.some(e =>
+        e.full_day_worked ||
+        parseFloat(e.overtime_hours || '0') > 0 ||
+        parseFloat(e.travel || '0') > 0 ||
+        parseFloat(e.mileage || '0') > 0 ||
+        parseFloat(e.per_diem || '0') > 0 ||
+        parseFloat(e.ad_hoc_reimbursement || '0') > 0 ||
+        e.meal_allowance_breakfast ||
+        e.meal_allowance_lunch ||
+        e.meal_allowance_supper ||
+        e.set_number.trim() !== '' ||
+        e.site.trim() !== ''
+      );
 
-      if (!payload.entries || (payload.entries as unknown[]).length === 0) {
-        setError('Please tick at least one day worked before saving.');
+      if (!hasAnyWork) {
+        setError('Please tick at least one day worked or enter hours/allowances/details before saving.');
+        setSaving(false);
         return;
       }
+
+      const payload: Record<string, unknown> = {
+        entries: entries.map(e => ({
+          date:                     e.date,
+          day_of_week:              e.day_of_week,
+          full_day_worked:          e.full_day_worked,
+          overtime_hours:           parseFloat(e.overtime_hours || '0'),
+          set_number:               e.set_number || null,
+          site:                     e.site || null,
+          travel:                   parseFloat(e.travel || '0'),
+          mileage:                  parseFloat(e.mileage || '0'),
+          per_diem:                 parseFloat(e.per_diem || '0'),
+          ad_hoc_reimbursement:     parseFloat(e.ad_hoc_reimbursement || '0'),
+          meal_breakfast:           e.meal_allowance_breakfast !== '',
+          meal_lunch:               e.meal_allowance_lunch !== '',
+          meal_supper:              e.meal_allowance_supper !== '',
+          meal_allowance_breakfast: e.meal_allowance_breakfast ? parseFloat(e.meal_allowance_breakfast) : null,
+          meal_allowance_lunch:     e.meal_allowance_lunch     ? parseFloat(e.meal_allowance_lunch)     : null,
+          meal_allowance_supper:    e.meal_allowance_supper    ? parseFloat(e.meal_allowance_supper)    : null,
+        })),
+      };
 
       const defaultRank = ts ? String(ts.crew_rank ?? '') : '';
       if (rankOverride && rankOverride !== defaultRank) {
@@ -188,9 +224,12 @@ export default function TimesheetDetailPage() {
         return r.json();
       });
 
-      // Invalidate Next.js router cache so the list page and this page re-fetch fresh data
-      router.refresh();
-      router.push('/timesheets');
+      setIsDirty(false);
+      await load();
+      const qs = new URLSearchParams();
+      if (returnProductionId) qs.set('production_id', returnProductionId);
+      if (returnWeekEnding) qs.set('week_ending_date', returnWeekEnding);
+      router.push(qs.toString() ? `/timesheets?${qs.toString()}` : '/timesheets');
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Save failed');
     } finally {
@@ -225,11 +264,13 @@ export default function TimesheetDetailPage() {
   const mileageTotal = entries.reduce((s, e) => s + (parseFloat(e.mileage || '0') || 0), 0);
   const perDiemTotal = entries.reduce((s, e) => s + (parseFloat(e.per_diem || '0') || 0), 0);
   const adHocTotal   = entries.reduce((s, e) => s + (parseFloat(e.ad_hoc_reimbursement || '0') || 0), 0);
+  const foodTotal    = mealTotal;
 
   const weeklyRate     = dailyRate * stdDays;
   const saturdayPay   = satWorked ? dailyRate * 1.5 : 0;
   const sundayPay     = sunWorked ? dailyRate * 2.0  : 0;
   const overtimeAmount = totalOTHours * otRate;
+  const netTotalAmount = overtimeAmount + mileageTotal + perDiemTotal + adHocTotal + foodTotal;
   const grossTotal    = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal + mileageTotal + perDiemTotal + adHocTotal;
   const vat           = vatRegistered ? grossTotal * 0.20 : 0;
   const grandTotal    = grossTotal + vat;
@@ -272,7 +313,10 @@ export default function TimesheetDetailPage() {
 
         {/* Back + Save bar */}
         <div className="flex items-center justify-between">
-          <button onClick={() => router.back()} className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 text-sm font-medium">
+          <button
+            onClick={handleBack}
+            className="flex items-center gap-1.5 text-slate-500 hover:text-slate-800 text-sm font-medium"
+          >
             <ChevronLeft size={16} /> Back to Timesheets
           </button>
           {!isLocked && (
@@ -307,7 +351,10 @@ export default function TimesheetDetailPage() {
             </p>
             <select
               value={rankOverride || defaultRank}
-              onChange={e => setRankOverride(e.target.value === defaultRank ? '' : e.target.value)}
+              onChange={e => {
+                setIsDirty(true);
+                setRankOverride(e.target.value === defaultRank ? '' : e.target.value);
+              }}
               className={selectCls + ' w-64'}
             >
               <option value={defaultRank}>{defaultRank} (default)</option>
@@ -515,6 +562,38 @@ export default function TimesheetDetailPage() {
             </div>
           </div>
         )}
+
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
+          <h2 className="text-slate-900 font-semibold text-sm mb-4">Net Amount Summary</h2>
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+            <div>
+              <p className="text-slate-400 text-xs mb-0.5">OT Amount</p>
+              <p className="text-slate-900 font-semibold">{fmtGBP(overtimeAmount)}</p>
+              <p className="text-slate-400 text-[10px]">{totalOTHours}h × {fmtGBP(otRate)}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs mb-0.5">Mileage Amount</p>
+              <p className="text-slate-900 font-semibold">{fmtGBP(mileageTotal)}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs mb-0.5">Per Diem Amount</p>
+              <p className="text-slate-900 font-semibold">{fmtGBP(perDiemTotal)}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs mb-0.5">Ad Hoc Amount</p>
+              <p className="text-slate-900 font-semibold">{fmtGBP(adHocTotal)}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs mb-0.5">Food Amount</p>
+              <p className="text-slate-900 font-semibold">{fmtGBP(foodTotal)}</p>
+              <p className="text-slate-400 text-[10px]">Breakfast + Lunch + Supper</p>
+            </div>
+            <div className="lg:col-span-1">
+              <p className="text-slate-400 text-xs mb-0.5">Net Total Amount</p>
+              <p className="text-blue-700 font-bold text-lg">{fmtGBP(netTotalAmount)}</p>
+            </div>
+          </div>
+        </div>
 
         {/* Bottom save bar */}
         {!isLocked && (

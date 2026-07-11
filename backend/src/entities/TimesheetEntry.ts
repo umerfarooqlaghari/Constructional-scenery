@@ -24,7 +24,7 @@ export class TimesheetEntry {
   @Column({ type: 'boolean', name: 'full_day_worked', default: false })
   fullDayWorked: boolean;
 
-  @Column({ type: 'decimal', precision: 4, scale: 2, name: 'overtime_hours', default: 0 })
+  @Column({ type: 'decimal', precision: 6, scale: 2, name: 'overtime_hours', default: 0 })
   overtimeHours: number;
 
   @Column({ type: 'text', name: 'set_number', nullable: true })
