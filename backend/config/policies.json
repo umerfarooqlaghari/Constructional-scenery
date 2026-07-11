@@ -43,6 +43,7 @@
 
       "GET /api/timesheets",
       "GET /api/timesheets/:id",
+      "GET /api/timesheets/:id/verification-pack",
       "GET /api/timesheets/export/csv",
       "GET /api/timesheets/export/pdf",
 
@@ -129,6 +130,7 @@
       "GET /api/timesheets/export/pdf",
       "POST /api/timesheets",
       "GET /api/timesheets/:id",
+      "GET /api/timesheets/:id/verification-pack",
       "PATCH /api/timesheets/:id",
       "PUT /api/timesheets/:id/entries",
       "POST /api/timesheets/bulk-distribute",

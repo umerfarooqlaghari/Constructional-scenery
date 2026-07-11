@@ -21,6 +21,56 @@ const logEmail = async (module, relatedRecordId, recipientEmail, recipientName, 
 const STANDARD_START = '07:30';
 const MEAL_RATES     = { breakfast: 10.50, lunch: 14.00, supper: 10.50 };
 
+const toAmount = (value) => {
+  const parsed = typeof value === 'number' ? value : parseFloat(value ?? 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+};
+
+const summarizeTimesheetEntries = (entries = []) => entries.reduce((summary, entry) => {
+  summary.overtime_hours_total += toAmount(entry.overtime_hours);
+  summary.mileage_total        += toAmount(entry.mileage);
+  summary.per_diem_total       += toAmount(entry.per_diem);
+  summary.ad_hoc_total         += toAmount(entry.ad_hoc_reimbursement);
+  summary.food_total           += toAmount(
+    entry.meal_allowance_breakfast != null ? entry.meal_allowance_breakfast : (entry.meal_breakfast ? MEAL_RATES.breakfast : 0)
+  ) + toAmount(
+    entry.meal_allowance_lunch != null ? entry.meal_allowance_lunch : (entry.meal_lunch ? MEAL_RATES.lunch : 0)
+  ) + toAmount(
+    entry.meal_allowance_supper != null ? entry.meal_allowance_supper : (entry.meal_supper ? MEAL_RATES.supper : 0)
+  );
+  return summary;
+}, {
+  overtime_hours_total: 0,
+  mileage_total: 0,
+  per_diem_total: 0,
+  ad_hoc_total: 0,
+  food_total: 0,
+});
+
+const enrichTimesheetSummary = (ts, entries = []) => {
+  const source = entries.length ? summarizeTimesheetEntries(entries) : {
+    overtime_hours_total: toAmount(ts.overtime_hours_total),
+    mileage_total:        toAmount(ts.mileage_total),
+    per_diem_total:       toAmount(ts.per_diem_total),
+    ad_hoc_total:         toAmount(ts.ad_hoc_total),
+    food_total:           toAmount(ts.food_total),
+  };
+  const overtimeRate   = toAmount(ts.overtime_rate);
+  const overtimeAmount = source.overtime_hours_total * overtimeRate;
+  const netTotalAmount = overtimeAmount + source.mileage_total + source.per_diem_total + source.ad_hoc_total + source.food_total;
+
+  return {
+    ...ts,
+    overtime_hours_total: source.overtime_hours_total.toFixed(2),
+    overtime_amount:      overtimeAmount.toFixed(2),
+    mileage_amount:       source.mileage_total.toFixed(2),
+    per_diem_amount:      source.per_diem_total.toFixed(2),
+    ad_hoc_amount:        source.ad_hoc_total.toFixed(2),
+    food_amount:          source.food_total.toFixed(2),
+    net_total_amount:     netTotalAmount.toFixed(2),
+  };
+};
+
 // BECTU rate years run 1 July → 30 June (e.g. '2025/26' covers Jul 2025 – Jun 2026).
 // This maps a week_ending_date to the matching rate_year string.
 const getRateYear = (weekEndingDate) => {
@@ -102,14 +152,41 @@ const getAllTimesheets = async (req, res) => {
       `SELECT t.*,
               cm.id AS cm_id, cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank,
               p.id AS prod_id, p.name AS prod_name
+              , COALESCE(te_agg.overtime_hours_total, 0) AS overtime_hours_total
+              , COALESCE(te_agg.mileage_total, 0)        AS mileage_total
+              , COALESCE(te_agg.per_diem_total, 0)       AS per_diem_total
+              , COALESCE(te_agg.ad_hoc_total, 0)         AS ad_hoc_total
+              , COALESCE(te_agg.food_total, 0)           AS food_total
+              , (
+                  SELECT br.overtime_rate
+                  FROM bectu_rates br
+                  WHERE br.trade = cm.crew_trade
+                    AND br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+                  ORDER BY br.effective_from DESC
+                  LIMIT 1
+                ) AS overtime_rate
        FROM   timesheets t
        JOIN   crew_members cm ON t.crew_member_id = cm.id
        JOIN   productions p  ON t.production_id   = p.id
+       LEFT JOIN (
+         SELECT te.timesheet_id,
+                COALESCE(SUM(te.overtime_hours), 0) AS overtime_hours_total,
+                COALESCE(SUM(te.mileage), 0)        AS mileage_total,
+                COALESCE(SUM(te.per_diem), 0)       AS per_diem_total,
+                COALESCE(SUM(te.ad_hoc_reimbursement), 0) AS ad_hoc_total,
+                COALESCE(SUM(
+                  COALESCE(te.meal_allowance_breakfast, CASE WHEN te.meal_breakfast THEN 10.50 ELSE 0 END)
+                  + COALESCE(te.meal_allowance_lunch, CASE WHEN te.meal_lunch THEN 14.00 ELSE 0 END)
+                  + COALESCE(te.meal_allowance_supper, CASE WHEN te.meal_supper THEN 10.50 ELSE 0 END)
+                ), 0) AS food_total
+         FROM timesheet_entries te
+         GROUP BY te.timesheet_id
+       ) te_agg ON te_agg.timesheet_id = t.id
        ${where}
        ORDER BY t.week_ending_date DESC`,
       params
     );
-    res.json(rows);
+    res.json(rows.map(row => enrichTimesheetSummary(row)));
   } catch (err) {
     console.error('getAllTimesheets:', err);
     res.status(500).json({ error: err.message });
@@ -386,7 +463,7 @@ const getTimesheetById = async (req, res) => {
       time_out: e.full_day_worked ? calcTimeOut(e.overtime_hours) : null,
     }));
 
-    res.json(ts);
+    res.json(enrichTimesheetSummary(ts, entries));
   } catch (err) {
     console.error('getTimesheetById:', err);
     res.status(500).json({ error: err.message });
@@ -1067,6 +1144,60 @@ const generateVerificationPackPdf = async (req, res) => {
   }
 };
 
+// ─── GET /api/timesheets/:id/verification-pack ────────────────────────────────
+const getTimesheetVerificationPack = async (req, res) => {
+  try {
+    const { rows: [ts] } = await db.query(
+      `SELECT t.*,
+              cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank,
+              cm.employment_status, cm.company_name, cm.vat_registration_number,
+              p.id AS prod_id, p.name AS prod_name,
+              (SELECT br.daily_rate
+               FROM bectu_rates br
+               WHERE br.trade = cm.crew_trade
+                 AND br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER BY br.effective_from DESC
+               LIMIT 1) AS daily_rate,
+              (SELECT br.overtime_rate
+               FROM bectu_rates br
+               WHERE br.trade = cm.crew_trade
+                 AND br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER BY br.effective_from DESC
+               LIMIT 1) AS overtime_rate
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       JOIN productions p   ON t.production_id   = p.id
+       WHERE t.id = $1`,
+      [req.params.id]
+    );
+
+    if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
+
+    const { rows: entries } = await db.query(
+      'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+      [req.params.id]
+    );
+
+    const pack = await generateVerificationPack([
+      {
+        ...enrichTimesheetSummary(ts, entries),
+        entries,
+      },
+    ], ts.prod_name);
+
+    const safeCrew = `${ts.first_name || 'Crew'}_${ts.last_name || 'Member'}`.replace(/[^a-zA-Z0-9]+/g, '_');
+    const filename = `VerificationPack_${safeCrew}_w-e-${ts.week_ending_date}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('X-Pack-Summary', JSON.stringify({ crew_count: 1, timesheet_page_count: pack.timesheetPageCount, invoice_page_count: pack.invoicePageCount }));
+    res.send(Buffer.from(pack.pdfBytes));
+  } catch (err) {
+    console.error('getTimesheetVerificationPack:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ─── GET /api/timesheets/verification-pack/:weekEndingDate/:productionId ──────
 const getVerificationPack = async (req, res) => {
   try {
@@ -1117,5 +1248,5 @@ module.exports = {
   saveEntries, patchTimesheet,
   bulkDistribute, resendTimesheet,
   attachInvoice, chaseInvoices, verifyTimesheet,
-  generateVerificationPackPdf, getVerificationPack,
+  generateVerificationPackPdf, getVerificationPack, getTimesheetVerificationPack,
 };

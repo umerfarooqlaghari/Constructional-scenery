@@ -27,6 +27,7 @@ router.post('/bulk-distribute',   requireRole(ACCOUNTANT), ctrl.bulkDistribute);
 router.post('/chase-invoices',    requireRole(ACCOUNTANT), ctrl.chaseInvoices);
 router.post('/verification-pack', requireRole(ACCOUNTANT), ctrl.generateVerificationPackPdf);
 router.get('/verification-pack/:weekEndingDate/:productionId', requireRole(ACCOUNTANT), ctrl.getVerificationPack);
+router.get('/:id/verification-pack', requireRole(ACCOUNTANT), ctrl.getTimesheetVerificationPack);
 router.get('/export/csv',         exportRateLimit, ctrl.exportTimesheetsCSV);
 router.get('/export/pdf',         exportRateLimit, ctrl.exportTimesheetsPDF);
 

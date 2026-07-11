@@ -1,12 +1,13 @@
-﻿'use client';
+'use client';
 
-import { useState, useEffect, useCallback, useRef } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState, useEffect, useCallback, useRef, Fragment } from 'react';
+import { useRouter, useSearchParams, usePathname } from 'next/navigation';
 import TopBar from '@/components/TopBar';
 import Link from 'next/link';
 import {
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
   Mail, Paperclip, ShieldCheck, X, Plus, ExternalLink, UserX, Send, FileText,
+  ChevronDown, Download,
 } from 'lucide-react';
 import {
   timesheetsApi, productionsApi, crewApi,
@@ -279,13 +280,25 @@ function NewTimesheetModal({ productions, weekEndingDate, onClose, onCreated }: 
 export default function TimesheetsPage() {
   const { user } = useAuth();
   const canAct = user?.role === 'construction_accountant';
+  const router = useRouter();
+  const pathname = usePathname();
+  const searchParams = useSearchParams();
+
+  const urlWeekEnding = searchParams.get('week_ending_date') ?? '';
+  const urlProductionId = searchParams.get('production_id') ?? '';
 
   // Week state — start on current week-ending Sunday
-  const [weekEnding, setWeekEnding] = useState<Date>(() => nextSunday(new Date()));
+  const [weekEnding, setWeekEnding] = useState<Date>(() => {
+    if (urlWeekEnding) {
+      const parsed = new Date(`${urlWeekEnding}T00:00:00Z`);
+      if (!Number.isNaN(parsed.getTime())) return parsed;
+    }
+    return nextSunday(new Date());
+  });
 
   // Productions
   const [productions, setProductions]   = useState<Production[]>([]);
-  const [selectedProd, setSelectedProd] = useState<string>('');
+  const [selectedProd, setSelectedProd] = useState<string>(urlProductionId);
 
   // Timesheets
   const [sheets, setSheets]   = useState<Timesheet[]>([]);
@@ -300,7 +313,9 @@ export default function TimesheetsPage() {
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkMsg, setBulkMsg]         = useState('');
   const [packGenerating, setPackGenerating] = useState(false);
+  const [packDownloadingId, setPackDownloadingId] = useState<string | null>(null);
   const [packMsg, setPackMsg]               = useState('');
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
 
   // Filter state (client-side, applied to the fetched week's data)
   const [statusFilter, setStatusFilter] = useState<TimesheetStatus | 'all'>('all');
@@ -314,12 +329,30 @@ export default function TimesheetsPage() {
     productionsApi.list()
       .then(data => {
         setProductions(data);
-        if (data.length > 0) setSelectedProd(data[0].id);
+        if (!urlProductionId && data.length > 0) setSelectedProd(data[0].id);
       })
       .catch(() => { /* silently ignore */ });
-  }, []);
+  }, [urlProductionId]);
+
+  useEffect(() => {
+    if (productions.length === 0) return;
+    if (selectedProd) return;
+    if (urlProductionId && productions.some(p => p.id === urlProductionId)) {
+      setSelectedProd(urlProductionId);
+      return;
+    }
+    setSelectedProd(productions[0].id);
+  }, [productions, selectedProd, urlProductionId]);
 
   const weekEndingISO = toISODate(weekEnding);
+
+  const setContextUrl = useCallback((nextWeekEndingISO: string, nextProductionId: string) => {
+    const params = new URLSearchParams();
+    if (nextWeekEndingISO) params.set('week_ending_date', nextWeekEndingISO);
+    if (nextProductionId) params.set('production_id', nextProductionId);
+    const qs = params.toString();
+    router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
+  }, [pathname, router]);
 
   const loadSheets = useCallback(async () => {
     if (!selectedProd) return;
@@ -339,6 +372,11 @@ export default function TimesheetsPage() {
   }, [selectedProd, weekEndingISO]);
 
   useEffect(() => { loadSheets(); }, [loadSheets]);
+
+  useEffect(() => {
+    if (!selectedProd) return;
+    setContextUrl(weekEndingISO, selectedProd);
+  }, [selectedProd, weekEndingISO, setContextUrl]);
 
   // Auto-dismiss success messages after 3 seconds
   useEffect(() => { if (!bulkMsg)  return; const t = setTimeout(() => setBulkMsg(''),  3000); return () => clearTimeout(t); }, [bulkMsg]);
@@ -370,8 +408,17 @@ export default function TimesheetsPage() {
   const crewOnSheet      = sheets.length;
   const invoicesReceived = sheets.filter(s => hasInvoice(s)).length;
   const nonDraftSheets   = sheets.filter(s => s.status !== 'draft');
-  const totalNet  = nonDraftSheets.reduce((acc, s) => acc + (s.grand_total ? parseFloat(s.grand_total) : 0), 0);
-  const totalGross = totalNet;
+  // Use gross_total (pre-VAT) for Net stat, grand_total (inc. VAT) for Gross stat
+  const totalNet  = nonDraftSheets.reduce((acc, s) => acc + (s.gross_total ? parseFloat(s.gross_total) : (s.grand_total ? parseFloat(s.grand_total) : 0)), 0);
+  const totalGross = nonDraftSheets.reduce((acc, s) => acc + (s.grand_total ? parseFloat(s.grand_total) : 0), 0);
+
+  const toggleRow = (id: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   // Verify handler
   const handleVerify = async (id: string) => {
@@ -479,6 +526,37 @@ export default function TimesheetsPage() {
     }
   };
 
+  const handleGenerateRowPack = async (ts: Timesheet) => {
+    setPackDownloadingId(ts.id);
+    setPackMsg('');
+    try {
+      const res = await fetch(`/api/timesheets/${ts.id}/verification-pack`, {
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+        },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPackMsg((data as { error?: string }).error ?? 'Failed to generate verification pack');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const crewName = `${ts.first_name ?? ''} ${ts.last_name ?? ''}`.trim() || 'Crew';
+      const prodName = ts.prod_name ?? selectedProdName ?? 'Production';
+      a.download = `VerificationPack_${crewName.replace(/[^a-zA-Z0-9]+/g, '_')}_${prodName.replace(/[^a-zA-Z0-9]+/g, '_')}_w-e-${ts.week_ending_date}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPackMsg(`Verification pack downloaded for ${crewName}`);
+    } catch (err: unknown) {
+      setPackMsg(err instanceof Error ? err.message : 'Failed to generate verification pack');
+    } finally {
+      setPackDownloadingId(null);
+    }
+  };
+
   const selectedProdName = productions.find(p => p.id === selectedProd)?.name ?? '';
 
   return (
@@ -509,7 +587,7 @@ export default function TimesheetsPage() {
             {/* Week selector */}
             <div className="flex items-center gap-1 bg-white border border-slate-200 rounded-lg px-3 py-2.5 shadow-sm">
               <button
-                onClick={prevWeek}
+                onClick={() => { prevWeek(); }}
                 className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors"
                 aria-label="Previous week"
               >
@@ -519,7 +597,7 @@ export default function TimesheetsPage() {
                 Week ending: {fmtWeek(weekEnding)}
               </span>
               <button
-                onClick={nextWeek}
+                onClick={() => { nextWeek(); }}
                 className="p-0.5 text-slate-400 hover:text-slate-700 transition-colors"
                 aria-label="Next week"
               >
@@ -677,7 +755,7 @@ export default function TimesheetsPage() {
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Crew Member</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Trade / Rank</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Net</th>
+                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Total (Gross)</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
                   {canAct && <th className="px-4 py-3 text-xs font-semibold text-slate-500">Actions</th>}
@@ -705,87 +783,186 @@ export default function TimesheetsPage() {
                     const colorClass = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                     const badge = STATUS_BADGE[ts.status] ?? STATUS_BADGE.draft;
                     const invoiced = hasInvoice(ts);
-                    const net = ts.grand_total ? parseFloat(ts.grand_total) : null;
+                    // Always show grand_total (full payable amount incl. VAT) in the main column
+                    const grandTotalNum = ts.grand_total ? parseFloat(ts.grand_total) : null;
+                    const grossTotalNum = ts.gross_total ? parseFloat(ts.gross_total) : null;
                     const firstName = ts.first_name ?? '';
                     const lastName  = ts.last_name  ?? '';
                     const fullName  = `${firstName} ${lastName}`.trim() || 'Unknown';
+                    const isExpanded = expandedRows.has(ts.id);
+
+                    // Sub-amounts
+                    const otAmt      = parseFloat(ts.overtime_amount  ?? '0') || 0;
+                    const mileageAmt = parseFloat(ts.mileage_amount    ?? '0') || 0;
+                    const perDiemAmt = parseFloat(ts.per_diem_amount   ?? '0') || 0;
+                    const adHocAmt   = parseFloat(ts.ad_hoc_amount     ?? '0') || 0;
+                    const foodAmt    = parseFloat(ts.food_amount       ?? '0') || 0;
+                    const extrasTotal = otAmt + mileageAmt + perDiemAmt + adHocAmt + foodAmt;
+                    const hasSubAmounts = extrasTotal > 0 || ts.status !== 'draft';
+                    const colSpan = canAct ? 6 : 5;
+
+                    const fmtAmt = (n: number) =>
+                      `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 
                     return (
-                      <tr key={ts.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3.5 sticky left-0 bg-white z-10">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center flex-shrink-0`}>
-                              <span className="text-white text-xs font-bold">
-                                {getInitials(firstName, lastName)}
-                              </span>
-                            </div>
-                            <div>
-                              <p className="text-slate-900 font-medium text-sm">{fullName}</p>
-                              <p className="text-slate-400 text-xs">
-                                {ts.crew_trade ?? ''}
-                                {ts.crew_rank ? ` · ${ts.crew_rank}` : ''}
-                                {ts.crew_number ? ` · ${ts.crew_number}` : ''}
-                              </p>
-                            </div>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <p className="text-slate-600 text-xs">{ts.crew_trade ?? '—'}</p>
-                          {ts.crew_rank && <p className="text-slate-400 text-xs">{ts.crew_rank}</p>}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-700 text-sm text-right font-medium">
-                          {net !== null ? `£${net.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : '—'}
-                        </td>
-                        <td className="px-4 py-3.5 text-center">
-                          {invoiced
-                            ? <CheckCircle2 size={16} className="text-green-500 mx-auto" />
-                            : <AlertCircle size={16} className="text-orange-400 mx-auto" />}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badge.className}`}>
-                            {badge.label}
-                          </span>
-                        </td>
-                        {canAct && (
-                          <td className="px-4 py-3.5">
-                            <div className="flex items-center gap-2">
-                              {/* Verify — distributed or amendment_requested */}
-                              {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
-                                <button
-                                  onClick={() => handleVerify(ts.id)}
-                                  disabled={verifying === ts.id}
-                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors font-medium"
-                                >
-                                  {verifying === ts.id
-                                    ? <Loader2 size={12} className="animate-spin" />
-                                    : <ShieldCheck size={12} />}
-                                  Verify
-                                </button>
-                              )}
-                              {/* Edit entries link — not for finalised */}
-                              {ts.status !== 'finalised' && (
-                                <Link
-                                  href={`/timesheets/${ts.id}`}
-                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
-                                >
-                                  <ExternalLink size={12} />
-                                  Edit Entries
-                                </Link>
-                              )}
-                              {/* Attach Invoice — distributed or amendment_requested */}
-                              {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
-                                <button
-                                  onClick={() => setAttachModal({ id: ts.id, name: fullName })}
-                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
-                                >
-                                  <Paperclip size={12} />
-                                  {ts.invoice_attachment_url ? 'Replace Invoice' : 'Attach Invoice'}
-                                </button>
-                              )}
+                      <Fragment key={ts.id}>
+                        <tr className="hover:bg-slate-50/50 transition-colors">
+                          <td className="px-5 py-3.5 sticky left-0 bg-white z-10">
+                            <div className="flex items-center gap-3">
+                              {/* Expand toggle */}
+                              <button
+                                onClick={() => toggleRow(ts.id)}
+                                className="p-0.5 text-slate-400 hover:text-slate-600 transition-colors flex-shrink-0"
+                                title={isExpanded ? 'Collapse details' : 'Show sub-amounts'}
+                              >
+                                <ChevronDown size={14} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                              </button>
+                              <div className={`w-8 h-8 rounded-full ${colorClass} flex items-center justify-center flex-shrink-0`}>
+                                <span className="text-white text-xs font-bold">
+                                  {getInitials(firstName, lastName)}
+                                </span>
+                              </div>
+                              <div>
+                                <p className="text-slate-900 font-medium text-sm">{fullName}</p>
+                                <p className="text-slate-400 text-xs">
+                                  {ts.crew_trade ?? ''}
+                                  {ts.crew_rank ? ` · ${ts.crew_rank}` : ''}
+                                  {ts.crew_number ? ` · ${ts.crew_number}` : ''}
+                                </p>
+                              </div>
                             </div>
                           </td>
+                          <td className="px-4 py-3.5">
+                            <p className="text-slate-600 text-xs">{ts.crew_trade ?? '—'}</p>
+                            {ts.crew_rank && <p className="text-slate-400 text-xs">{ts.crew_rank}</p>}
+                          </td>
+                          <td className="px-4 py-3.5 text-right">
+                            <p className="text-slate-900 font-semibold text-sm">
+                              {grandTotalNum !== null ? fmtAmt(grandTotalNum) : '—'}
+                            </p>
+                            {grossTotalNum !== null && grandTotalNum !== null && Math.abs(grandTotalNum - grossTotalNum) > 0.01 && (
+                              <p className="text-slate-400 text-[10px]">excl. VAT {fmtAmt(grossTotalNum)}</p>
+                            )}
+                          </td>
+                          <td className="px-4 py-3.5 text-center">
+                            {invoiced
+                              ? <CheckCircle2 size={16} className="text-green-500 mx-auto" />
+                              : <AlertCircle size={16} className="text-orange-400 mx-auto" />}
+                          </td>
+                          <td className="px-4 py-3.5">
+                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badge.className}`}>
+                              {badge.label}
+                            </span>
+                          </td>
+                          {canAct && (
+                            <td className="px-4 py-3.5">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {/* Verify — distributed or amendment_requested */}
+                                {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
+                                  <button
+                                    onClick={() => handleVerify(ts.id)}
+                                    disabled={verifying === ts.id}
+                                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:opacity-60 transition-colors font-medium"
+                                  >
+                                    {verifying === ts.id
+                                      ? <Loader2 size={12} className="animate-spin" />
+                                      : <ShieldCheck size={12} />}
+                                    Verify
+                                  </button>
+                                )}
+                                {/* Edit entries link — not for finalised */}
+                                {ts.status !== 'finalised' && (
+                                  <Link
+                                    href={{
+                                      pathname: `/timesheets/${ts.id}`,
+                                      query: { production_id: selectedProd, week_ending_date: weekEndingISO },
+                                    }}
+                                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                                  >
+                                    <ExternalLink size={12} />
+                                    Edit Entries
+                                  </Link>
+                                )}
+                                {/* Per-row PDF verification pack download */}
+                                {ts.status !== 'draft' && (
+                                  <button
+                                    onClick={() => handleGenerateRowPack(ts)}
+                                    disabled={packDownloadingId === ts.id}
+                                    title={`Download PDF verification pack for ${fullName}`}
+                                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 transition-colors font-medium disabled:opacity-60"
+                                  >
+                                    {packDownloadingId === ts.id
+                                      ? <Loader2 size={12} className="animate-spin" />
+                                      : <Download size={12} />}
+                                    PDF Pack
+                                  </button>
+                                )}
+                                {/* Attach Invoice — distributed or amendment_requested */}
+                                {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
+                                  <button
+                                    onClick={() => setAttachModal({ id: ts.id, name: fullName })}
+                                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium"
+                                  >
+                                    <Paperclip size={12} />
+                                    {ts.invoice_attachment_url ? 'Replace Invoice' : 'Attach Invoice'}
+                                  </button>
+                                )}
+                              </div>
+                            </td>
+                          )}
+                        </tr>
+
+                        {/* ── Expandable sub-amounts row ────────────────── */}
+                        {isExpanded && (
+                          <tr key={`${ts.id}-expand`} className="bg-slate-50/70 border-t border-slate-100">
+                            <td colSpan={colSpan} className="px-6 py-3">
+                              <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">OT Amount</span>
+                                  <span className="text-xs font-semibold text-slate-700">{fmtAmt(otAmt)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Mileage</span>
+                                  <span className="text-xs font-semibold text-slate-700">{fmtAmt(mileageAmt)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Per Diem</span>
+                                  <span className="text-xs font-semibold text-slate-700">{fmtAmt(perDiemAmt)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Ad Hoc</span>
+                                  <span className="text-xs font-semibold text-slate-700">{fmtAmt(adHocAmt)}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Food (B+L+S)</span>
+                                  <span className="text-xs font-semibold text-slate-700">{fmtAmt(foodAmt)}</span>
+                                </div>
+                                <div className="h-3 w-px bg-slate-300" />
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-indigo-500 uppercase tracking-wide">Extras Total</span>
+                                  <span className="text-xs font-bold text-indigo-700">{fmtAmt(extrasTotal)}</span>
+                                  <span className="text-[9px] text-slate-400">(OT + Mileage + PerDiem + AdHoc + Food)</span>
+                                </div>
+                                {grossTotalNum !== null && (
+                                  <>
+                                    <div className="h-3 w-px bg-slate-300" />
+                                    <div className="flex items-center gap-1.5">
+                                      <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Gross (pre-VAT)</span>
+                                      <span className="text-xs font-semibold text-slate-700">{fmtAmt(grossTotalNum)}</span>
+                                    </div>
+                                  </>
+                                )}
+                                {grandTotalNum !== null && grossTotalNum !== null && Math.abs(grandTotalNum - grossTotalNum) > 0.01 && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] font-semibold text-green-600 uppercase tracking-wide">Grand Total (inc. VAT)</span>
+                                    <span className="text-xs font-bold text-green-700">{fmtAmt(grandTotalNum)}</span>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
                         )}
-                      </tr>
+                      </Fragment>
                     );
                   })
                 )}
@@ -819,7 +996,7 @@ export default function TimesheetsPage() {
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700 disabled:opacity-60 transition-colors font-medium"
                 >
                   {packGenerating ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
-                  Generate Verification Pack
+                  Generate Week Pack
                 </button>
               </div>
             )}

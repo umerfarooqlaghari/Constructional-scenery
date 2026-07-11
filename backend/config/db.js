@@ -1,4 +1,6 @@
-const { Pool } = require('pg');
+const { Pool, types } = require('pg');
+types.setTypeParser(1082, (val) => val);
+
 
 // Parse the DATABASE_URL manually so that pg-connection-string never sees
 // the sslmode=verify-full query param (which makes pg try to load a local CA
