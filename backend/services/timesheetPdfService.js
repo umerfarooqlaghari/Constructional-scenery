@@ -109,11 +109,10 @@ const generateTimesheetPdf = (ts, entries) => {
     const cols = [
       { label: 'Day',      w: 40,  right: false },
       { label: 'Date',     w: 55,  right: false },
-      { label: 'Full Day', w: 45,  right: true  },
       { label: 'Time Out', w: 50,  right: true  },
       { label: 'OT Hrs',   w: 42,  right: true  },
       { label: 'Set No.',  w: 50,  right: false },
-      { label: 'Site',     w: 103, right: false },
+      { label: 'Site',     w: 148, right: false },
       { label: 'Travel',   w: 45,  right: true  },
       { label: 'B',        w: 18,  right: true  },
       { label: 'L',        w: 18,  right: true  },
@@ -141,7 +140,6 @@ const generateTimesheetPdf = (ts, entries) => {
 
       const vals = [
         row.day, row.date,
-        row.fullDay ? '✓' : '—',
         row.timeOut, row.ot, row.set, row.site, row.travel,
         row.breakfast ? '✓' : '',
         row.lunch     ? '✓' : '',
@@ -190,6 +188,39 @@ const generateTimesheetPdf = (ts, entries) => {
       totRow('VAT (20%)', ts.vat);
     }
     totRow('GRAND TOTAL', ts.grand_total, true, true);
+
+    // ── Info Paragraph Notice Box ──────────────────────────────────────────────
+    y = Math.max(y, 480) + 15;
+    
+    doc.save()
+       .rect(L, y, W, 175)
+       .fillColor('#f8fafc')
+       .strokeColor('#e2e8f0')
+       .lineWidth(0.5)
+       .fillAndStroke()
+       .restore();
+
+    let noteY = y + 12;
+    doc.fontSize(8).font('Helvetica-Oblique').fillColor('#334155')
+       .text('If your timesheet this week is inaccurate in anyway, please respond to this email or contact Ben on Whats App (+44 7474 309837) with what should be changed.', L + 15, noteY, { width: W - 30, lineGap: 2 });
+
+    noteY += 28;
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a')
+       .text('Please raise and send your invoice to ', L + 15, noteY, { continued: true })
+       .font('Helvetica-Bold').fillColor('#2563eb')
+       .text('invoice@constructscenery.co.uk.');
+
+    noteY += 14;
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#475569')
+       .text('The invoice should be addressed to:', L + 15, noteY);
+
+    noteY += 12;
+    doc.fontSize(8).font('Helvetica').fillColor('#0f172a')
+       .text('Construct Scenery Limited\nUnit 4C Canal Wharf\nStation Road\nLangley\nSL3 6EG', L + 15, noteY, { lineGap: 1.5 });
+
+    noteY += 58;
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#0f172a')
+       .text('Please ensure that your full bank details are correct and on your invoice otherwise we will be unable to make payment.', L + 15, noteY, { width: W - 30 });
 
     // ── Footer ─────────────────────────────────────────────────────────────────
     const footerY = 760;
