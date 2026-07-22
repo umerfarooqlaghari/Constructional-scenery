@@ -72,6 +72,8 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
     emergency_contact_relationship: member.emergency_contact_relationship ?? '',
     emergency_contact_phone:        member.emergency_contact_phone ?? '',
     is_active:                      member.is_active,
+    company_utr:                    member.company_utr ?? '',
+    qualifications:                 member.qualifications ?? [],
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -123,6 +125,8 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
         emergency_contact_relationship: form.emergency_contact_relationship || null,
         emergency_contact_phone:        form.emergency_contact_phone || null,
         is_active:                      form.is_active,
+        company_utr:                    isSE ? (form.company_utr || null) : null,
+        qualifications:                 form.qualifications,
       });
       onSaved();
     } catch (err: unknown) {
@@ -227,6 +231,7 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
                 <div className="sm:col-span-2"><label className={lbl}>Company Name</label><input className={inp} value={form.company_name} onChange={set('company_name')} /></div>
                 <div><label className={lbl}>Company Reg. Number</label><input className={inp} value={form.company_registration_number} onChange={set('company_registration_number')} /></div>
                 <div><label className={lbl}>VAT Reg. Number</label><input className={inp} value={form.vat_registration_number} onChange={set('vat_registration_number')} /></div>
+                <div><label className={lbl}>Company UTR</label><input className={inp} placeholder="e.g. 12345 67890" value={form.company_utr} onChange={set('company_utr')} /></div>
               </div>
             </div>
           )}
@@ -238,6 +243,31 @@ function EditCrewModal({ member, onClose, onSaved }: EditModalProps) {
               <div><label className={lbl}>Account Name</label><input className={inp} value={form.account_name} onChange={set('account_name')} /></div>
               <div><label className={lbl}>Account Number</label><input className={inp} value={form.account_number} onChange={set('account_number')} /></div>
               <div><label className={lbl}>Sort Code</label><input className={inp} value={form.sort_code} onChange={set('sort_code')} /></div>
+            </div>
+          </div>
+
+          {/* Qualifications */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Qualifications</p>
+            <div className="flex flex-wrap gap-3">
+              {['PAL', 'Forklift Certificate', 'RTITB', 'AFTT', 'First Aid'].map(qual => (
+                <label key={qual} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    checked={form.qualifications.includes(qual)}
+                    onChange={e => {
+                      setForm(f => ({
+                        ...f,
+                        qualifications: e.target.checked
+                          ? [...f.qualifications, qual]
+                          : f.qualifications.filter(q => q !== qual),
+                      }));
+                    }}
+                  />
+                  {qual}
+                </label>
+              ))}
             </div>
           </div>
 

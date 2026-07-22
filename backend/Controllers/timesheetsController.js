@@ -38,6 +38,7 @@ const summarizeTimesheetEntries = (entries = []) => entries.reduce((summary, ent
   ) + toAmount(
     entry.meal_allowance_supper != null ? entry.meal_allowance_supper : (entry.meal_supper ? MEAL_RATES.supper : 0)
   );
+  if (entry.full_day_worked) summary.days_worked += 1;
   return summary;
 }, {
   overtime_hours_total: 0,
@@ -45,6 +46,7 @@ const summarizeTimesheetEntries = (entries = []) => entries.reduce((summary, ent
   per_diem_total: 0,
   ad_hoc_total: 0,
   food_total: 0,
+  days_worked: 0,
 });
 
 const enrichTimesheetSummary = (ts, entries = []) => {
@@ -68,6 +70,7 @@ const enrichTimesheetSummary = (ts, entries = []) => {
     ad_hoc_amount:        source.ad_hoc_total.toFixed(2),
     food_amount:          source.food_total.toFixed(2),
     net_total_amount:     netTotalAmount.toFixed(2),
+    days_worked:          source.days_worked ?? ts.days_worked ?? 0,
   };
 };
 
@@ -153,6 +156,7 @@ const getAllTimesheets = async (req, res) => {
               cm.id AS cm_id, cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank,
               p.id AS prod_id, p.name AS prod_name
               , COALESCE(te_agg.overtime_hours_total, 0) AS overtime_hours_total
+              , COALESCE(te_agg.days_worked, 0)::int   AS days_worked
               , COALESCE(te_agg.mileage_total, 0)        AS mileage_total
               , COALESCE(te_agg.per_diem_total, 0)       AS per_diem_total
               , COALESCE(te_agg.ad_hoc_total, 0)         AS ad_hoc_total
@@ -171,6 +175,7 @@ const getAllTimesheets = async (req, res) => {
        LEFT JOIN (
          SELECT te.timesheet_id,
                 COALESCE(SUM(te.overtime_hours), 0) AS overtime_hours_total,
+                COUNT(*) FILTER (WHERE te.full_day_worked = true) AS days_worked,
                 COALESCE(SUM(te.mileage), 0)        AS mileage_total,
                 COALESCE(SUM(te.per_diem), 0)       AS per_diem_total,
                 COALESCE(SUM(te.ad_hoc_reimbursement), 0) AS ad_hoc_total,
@@ -764,6 +769,46 @@ const resendTimesheet = async (req, res) => {
   }
 };
 
+// ─── POST /api/timesheets/:id/send ───────────────────────────────────────────
+// Sends a single draft timesheet to the crew member.
+const sendSingleTimesheet = async (req, res) => {
+  try {
+    const { rows: [ts] } = await db.query(
+      `SELECT t.*,
+              cm.first_name, cm.last_name, cm.email, cm.crew_number,
+              cm.crew_trade, cm.crew_rank, cm.employment_status, cm.company_name,
+              p.name AS prod_name
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       JOIN productions p   ON t.production_id  = p.id
+       WHERE t.id = $1`,
+      [req.params.id]
+    );
+    if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
+    if (ts.status !== 'draft')
+      return res.status(409).json({ error: 'Only draft timesheets can be sent for the first time' });
+
+    if (!ts.email) {
+      await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [ts.id]);
+      return res.json({ message: 'Marked as distributed (crew member has no email address)', timesheet_id: ts.id });
+    }
+
+    const { rows: entries } = await db.query(
+      'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+      [req.params.id]
+    );
+
+    await sendTimesheetEmail(ts, entries);
+    await db.query(`UPDATE timesheets SET status = 'distributed' WHERE id = $1`, [req.params.id]);
+    await logEmail('timesheet_distribution', ts.id, ts.email, `${ts.first_name} ${ts.last_name}`, true);
+
+    res.json({ message: 'Timesheet sent to crew member', timesheet_id: ts.id });
+  } catch (err) {
+    console.error('sendSingleTimesheet:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ─── POST /api/timesheets/:id/attach-invoice ──────────────────────────────────
 const attachInvoice = async (req, res) => {
   let invoice_attachment_url  = req.body.invoice_attachment_url;
@@ -1198,6 +1243,55 @@ const getTimesheetVerificationPack = async (req, res) => {
   }
 };
 
+// ─── GET /api/timesheets/:id/draft-pdf ──────────────────────────────────────
+const getDraftPdf = async (req, res) => {
+  try {
+    const { rows: [ts] } = await db.query(
+      `SELECT t.*,
+              cm.crew_number, cm.first_name, cm.last_name, cm.crew_trade, cm.crew_rank,
+              cm.employment_status, cm.company_name, cm.vat_registration_number,
+              p.id AS prod_id, p.name AS prod_name,
+              (SELECT br.daily_rate
+               FROM bectu_rates br
+               WHERE br.trade = cm.crew_trade
+                 AND br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER BY br.effective_from DESC
+               LIMIT 1) AS daily_rate,
+              (SELECT br.overtime_rate
+               FROM bectu_rates br
+               WHERE br.trade = cm.crew_trade
+                 AND br.rank  = COALESCE(t.rank_override, cm.crew_rank)
+               ORDER BY br.effective_from DESC
+               LIMIT 1) AS overtime_rate
+       FROM timesheets t
+       JOIN crew_members cm ON t.crew_member_id = cm.id
+       JOIN productions p   ON t.production_id   = p.id
+       WHERE t.id = $1`,
+      [req.params.id]
+    );
+
+    if (!ts) return res.status(404).json({ error: 'Timesheet not found' });
+
+    const { rows: entries } = await db.query(
+      'SELECT * FROM timesheet_entries WHERE timesheet_id = $1 ORDER BY date',
+      [req.params.id]
+    );
+
+    const pdfBuffer = await generateTimesheetPdf(enrichTimesheetSummary(ts, entries), entries);
+
+    const safeCrew = `${ts.first_name || 'Crew'}_${ts.last_name || 'Member'}`.replace(/[^a-zA-Z0-9]+/g, '_');
+    const safeProd = (ts.prod_name || 'Production').replace(/[^a-zA-Z0-9]+/g, '_');
+    const filename = `Timesheet_Draft_${safeCrew}_${safeProd}_w-e-${ts.week_ending_date}.pdf`;
+
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(pdfBuffer);
+  } catch (err) {
+    console.error('getDraftPdf:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ─── GET /api/timesheets/verification-pack/:weekEndingDate/:productionId ──────
 const getVerificationPack = async (req, res) => {
   try {
@@ -1246,7 +1340,7 @@ module.exports = {
   getAllTimesheets, exportTimesheetsCSV, exportTimesheetsPDF,
   createTimesheet, getTimesheetById,
   saveEntries, patchTimesheet,
-  bulkDistribute, resendTimesheet,
+  bulkDistribute, resendTimesheet, sendSingleTimesheet,
   attachInvoice, chaseInvoices, verifyTimesheet,
-  generateVerificationPackPdf, getVerificationPack, getTimesheetVerificationPack,
+  generateVerificationPackPdf, getVerificationPack, getTimesheetVerificationPack, getDraftPdf,
 };

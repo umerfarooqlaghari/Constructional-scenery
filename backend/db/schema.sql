@@ -114,6 +114,10 @@ CREATE TABLE crew_members (
   emergency_contact_relationship  TEXT,
   emergency_contact_phone         TEXT,
 
+  -- Professional
+  qualifications                  TEXT[] DEFAULT '{}',
+  company_utr                     TEXT,
+
   is_active                       BOOLEAN DEFAULT TRUE,
   created_at                      TIMESTAMPTZ DEFAULT NOW(),
   updated_at                      TIMESTAMPTZ DEFAULT NOW()

@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
@@ -65,6 +65,8 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
     emergency_contact_name: '',
     emergency_contact_relationship: '',
     emergency_contact_phone: '',
+    company_utr: '',
+    qualifications: [] as string[],
   });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
@@ -140,6 +142,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
         date_of_birth: form.date_of_birth || null,
         company_name:                isSE ? (form.company_name || null) : null,
         company_registration_number: isSE ? (form.company_registration_number || null) : null,
+        company_utr:                 isSE ? (form.company_utr || null) : null,
         vat_registration_number:     isSE ? (form.vat_registration_number || null) : null,
         paye_withholding_rate: form.paye_withholding_rate ? Number(form.paye_withholding_rate) : null,
         account_name:   form.account_name   || null,
@@ -148,6 +151,7 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
         emergency_contact_name:         form.emergency_contact_name         || null,
         emergency_contact_relationship: form.emergency_contact_relationship || null,
         emergency_contact_phone:        form.emergency_contact_phone        || null,
+        qualifications:                 form.qualifications,
       });
       onCreated();
     } catch (err: unknown) {
@@ -288,6 +292,10 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
                   <input className={inputCls} placeholder="e.g. 12345678" value={form.company_registration_number} onChange={set('company_registration_number')} />
                 </div>
                 <div>
+                  <label className={labelCls}>Company UTR</label>
+                  <input className={inputCls} placeholder="e.g. 12345 67890" value={form.company_utr} onChange={set('company_utr')} />
+                </div>
+                <div>
                   <label className={labelCls}>VAT Reg. Number</label>
                   <input className={inputCls} placeholder="e.g. GB123456789" value={form.vat_registration_number} onChange={set('vat_registration_number')} />
                 </div>
@@ -311,6 +319,31 @@ function RegisterCrewModal({ onClose, onCreated }: RegisterCrewModalProps) {
                 <label className={labelCls}>Sort Code</label>
                 <input className={inputCls} placeholder="00-00-00" value={form.sort_code} onChange={set('sort_code')} />
               </div>
+            </div>
+          </div>
+
+          {/* Qualifications */}
+          <div>
+            <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Qualifications</p>
+            <div className="flex flex-wrap gap-3">
+              {['PAL', 'Forklift Certificate', 'RTITB', 'AFTT', 'First Aid'].map(qual => (
+                <label key={qual} className="flex items-center gap-2 text-sm text-slate-700 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    className="w-4 h-4 text-blue-600 border-slate-300 rounded focus:ring-blue-500"
+                    checked={form.qualifications.includes(qual)}
+                    onChange={e => {
+                      setForm(f => ({
+                        ...f,
+                        qualifications: e.target.checked
+                          ? [...f.qualifications, qual]
+                          : f.qualifications.filter(q => q !== qual),
+                      }));
+                    }}
+                  />
+                  {qual}
+                </label>
+              ))}
             </div>
           </div>
 

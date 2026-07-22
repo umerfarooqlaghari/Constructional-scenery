@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback } from 'react';
 import TopBar from '@/components/TopBar';
@@ -6,6 +6,7 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   purchaseOrdersApi,
   productionsApi,
+  supplierCatalogueApi,
   type PurchaseOrder,
   type POStatus,
   type Production,
@@ -144,6 +145,7 @@ export default function PurchaseOrdersPage() {
 
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
+  const [suppliers, setSuppliers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -195,6 +197,10 @@ export default function PurchaseOrdersPage() {
       setSetsCache(c => ({ ...c, [productionId]: sets }));
     } catch { /* non-critical */ }
   };
+
+  useEffect(() => {
+    supplierCatalogueApi.getSuppliers().then(setSuppliers).catch(() => {});
+  }, []);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -935,13 +941,16 @@ export default function PurchaseOrdersPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
-                    <input
-                      type="text"
+                    <select
                       value={newForm.supplier_name}
                       onChange={(e) => updateField('supplier_name', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. Treeline Timber Co."
-                    />
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
+                    >
+                      <option value="">Select a supplier...</option>
+                      {suppliers.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
@@ -1256,7 +1265,16 @@ export default function PurchaseOrdersPage() {
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name *</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.supplier_name} onChange={e => setEditForm(f => ({ ...f, supplier_name: e.target.value }))} />
+                    <select
+                      value={editForm.supplier_name}
+                      onChange={e => setEditForm(f => ({ ...f, supplier_name: e.target.value }))}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    >
+                      <option value="">Select a supplier...</option>
+                      {suppliers.map(s => (
+                        <option key={s} value={s}>{s}</option>
+                      ))}
+                    </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
