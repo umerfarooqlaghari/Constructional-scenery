@@ -137,6 +137,8 @@
       "POST /api/timesheets/chase-invoices",
       "POST /api/timesheets/verification-pack",
       "GET /api/timesheets/verification-pack/:weekEndingDate/:productionId",
+      "GET /api/timesheets/:id/draft-pdf",
+      "POST /api/timesheets/:id/send",
       "POST /api/timesheets/:id/resend",
       "POST /api/timesheets/:id/attach-invoice",
       "POST /api/timesheets/:id/verify",

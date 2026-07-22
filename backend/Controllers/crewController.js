@@ -125,6 +125,7 @@ const createCrewMember = async (req, res) => {
     company_name, company_registration_number, vat_registration_number,
     account_name, account_number, sort_code,
     emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
+    qualifications, company_utr,
   } = req.body;
 
   if (!first_name || !last_name || !employment_status || !crew_trade || !crew_rank)
@@ -141,8 +142,9 @@ const createCrewMember = async (req, res) => {
           company_name, company_registration_number, vat_registration_number,
           account_name, account_number, sort_code,
           emergency_contact_name, emergency_contact_relationship, emergency_contact_phone,
+          qualifications, company_utr,
           is_active)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,true)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,true)
        RETURNING *`,
       [
         crew_number, first_name, last_name, date_of_birth || null,
@@ -156,6 +158,8 @@ const createCrewMember = async (req, res) => {
         encrypt(sort_code) || null,
         emergency_contact_name, emergency_contact_relationship,
         encrypt(emergency_contact_phone) || null,
+        qualifications || [],
+        company_utr || null,
       ]
     );
     res.status(201).json(decryptCrewMember(rows[0]));
@@ -230,6 +234,7 @@ const updateCrewMember = async (req, res) => {
     'company_name', 'company_registration_number', 'vat_registration_number',
     'account_name', 'account_number', 'sort_code',
     'emergency_contact_name', 'emergency_contact_relationship', 'emergency_contact_phone',
+    'qualifications', 'company_utr',
     'is_active',
   ];
   const updates = {};

@@ -1,0 +1,3 @@
+ALTER TABLE crew_members
+ADD COLUMN IF NOT EXISTS qualifications TEXT[] DEFAULT '{}',
+ADD COLUMN IF NOT EXISTS company_utr TEXT;

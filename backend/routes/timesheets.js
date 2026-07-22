@@ -28,6 +28,7 @@ router.post('/chase-invoices',    requireRole(ACCOUNTANT), ctrl.chaseInvoices);
 router.post('/verification-pack', requireRole(ACCOUNTANT), ctrl.generateVerificationPackPdf);
 router.get('/verification-pack/:weekEndingDate/:productionId', requireRole(ACCOUNTANT), ctrl.getVerificationPack);
 router.get('/:id/verification-pack', requireRole(ACCOUNTANT), ctrl.getTimesheetVerificationPack);
+router.get('/:id/draft-pdf',      requireRole(ACCOUNTANT), ctrl.getDraftPdf);
 router.get('/export/csv',         exportRateLimit, ctrl.exportTimesheetsCSV);
 router.get('/export/pdf',         exportRateLimit, ctrl.exportTimesheetsPDF);
 
@@ -37,6 +38,7 @@ router.get('/:id',               ctrl.getTimesheetById);
 router.patch('/:id',             requireRole(ACCOUNTANT), ctrl.patchTimesheet);
 router.put('/:id/entries',       requireRole(ACCOUNTANT), ctrl.saveEntries);
 router.post('/:id/resend',       requireRole(ACCOUNTANT), ctrl.resendTimesheet);
+router.post('/:id/send',         requireRole(ACCOUNTANT), ctrl.sendSingleTimesheet);
 router.post('/:id/attach-invoice', upload.single('invoice'), requireRole(ACCOUNTANT), ctrl.attachInvoice);
 router.post('/:id/verify',       requireRole(ACCOUNTANT), ctrl.verifyTimesheet);
 

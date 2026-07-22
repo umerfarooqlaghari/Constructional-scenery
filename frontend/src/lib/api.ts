@@ -391,6 +391,8 @@ export type Timesheet = {
   per_diem_amount?: string | null;
   ad_hoc_amount?: string | null;
   food_amount?: string | null;
+  days_worked?: number | null;
+  overtime_hours_total?: number | null;
   invoice_attachment_url: string | null;
   invoice_attachment_name: string | null;
   // joined from crew_members
@@ -528,6 +530,8 @@ export type CrewMember = {
   emergency_contact_name: string | null;
   emergency_contact_relationship: string | null;
   emergency_contact_phone: string | null;
+  qualifications: string[];
+  company_utr: string | null;
   created_at: string;
   active_productions?: string[];
 };

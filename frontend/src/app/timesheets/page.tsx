@@ -323,13 +323,24 @@ export default function TimesheetsPage() {
   const [tradeFilter, setTradeFilter] = useState('');
   const [crewSearch, setCrewSearch] = useState('');
   const [showNewTs, setShowNewTs]   = useState(false);
+  const [sendingId, setSendingId]   = useState<string | null>(null);
+  
+  // Sorting state
+  const [sortConfig, setSortConfig] = useState<{ key: 'trade_rank' | 'status', direction: 'asc' | 'desc' } | null>(null);
 
   // Load productions once
   useEffect(() => {
     productionsApi.list()
       .then(data => {
         setProductions(data);
-        if (!urlProductionId && data.length > 0) setSelectedProd(data[0].id);
+        if (!urlProductionId && data.length > 0) {
+          const stored = localStorage.getItem('cs_last_production_id');
+          if (stored && data.some(p => p.id === stored)) {
+            setSelectedProd(stored);
+          } else {
+            setSelectedProd(data[0].id);
+          }
+        }
       })
       .catch(() => { /* silently ignore */ });
   }, [urlProductionId]);
@@ -341,7 +352,12 @@ export default function TimesheetsPage() {
       setSelectedProd(urlProductionId);
       return;
     }
-    setSelectedProd(productions[0].id);
+    const stored = localStorage.getItem('cs_last_production_id');
+    if (stored && productions.some(p => p.id === stored)) {
+      setSelectedProd(stored);
+    } else {
+      setSelectedProd(productions[0].id);
+    }
   }, [productions, selectedProd, urlProductionId]);
 
   const weekEndingISO = toISODate(weekEnding);
@@ -375,6 +391,7 @@ export default function TimesheetsPage() {
 
   useEffect(() => {
     if (!selectedProd) return;
+    localStorage.setItem('cs_last_production_id', selectedProd);
     setContextUrl(weekEndingISO, selectedProd);
   }, [selectedProd, weekEndingISO, setContextUrl]);
 
@@ -402,6 +419,24 @@ export default function TimesheetsPage() {
       if (!name.includes(q) && !(s.crew_number ?? '').toLowerCase().includes(q)) return false;
     }
     return true;
+  });
+
+  const sortedSheets = [...filteredSheets].sort((a, b) => {
+    if (!sortConfig) return 0;
+    let aVal = '';
+    let bVal = '';
+
+    if (sortConfig.key === 'trade_rank') {
+      aVal = `${a.crew_trade ?? ''} ${a.crew_rank ?? ''}`.toLowerCase();
+      bVal = `${b.crew_trade ?? ''} ${b.crew_rank ?? ''}`.toLowerCase();
+    } else if (sortConfig.key === 'status') {
+      aVal = a.status.toLowerCase();
+      bVal = b.status.toLowerCase();
+    }
+
+    if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
+    if (aVal > bVal) return sortConfig.direction === 'asc' ? 1 : -1;
+    return 0;
   });
 
   // Stats from full unfiltered week data
@@ -554,6 +589,54 @@ export default function TimesheetsPage() {
       setPackMsg(err instanceof Error ? err.message : 'Failed to generate verification pack');
     } finally {
       setPackDownloadingId(null);
+    }
+  };
+
+  const handleDownloadDraft = async (ts: Timesheet) => {
+    setPackDownloadingId(ts.id);
+    setPackMsg('');
+    try {
+      const res = await fetch(`/api/timesheets/${ts.id}/draft-pdf`, {
+        headers: { Authorization: `Bearer ${localStorage.getItem('cs_token')}` },
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setPackMsg((data as { error?: string }).error ?? 'Failed to download draft PDF');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const crewName = `${ts.first_name ?? ''} ${ts.last_name ?? ''}`.trim() || 'Crew';
+      const prodName = ts.prod_name ?? selectedProdName ?? 'Production';
+      a.download = `Timesheet_Draft_${crewName.replace(/[^a-zA-Z0-9]+/g, '_')}_${prodName.replace(/[^a-zA-Z0-9]+/g, '_')}_w-e-${ts.week_ending_date}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      setPackMsg(`Draft PDF downloaded for ${crewName}`);
+    } catch (err: unknown) {
+      setPackMsg(err instanceof Error ? err.message : 'Failed to download draft PDF');
+    } finally {
+      setPackDownloadingId(null);
+    }
+  };
+
+  const handleSendSingle = async (ts: Timesheet) => {
+    setSendingId(ts.id);
+    setPackMsg('');
+    try {
+      const res = await fetch(`/api/timesheets/${ts.id}/send`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${localStorage.getItem('cs_token')}` },
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Failed to send timesheet');
+      setPackMsg(data.message ?? 'Timesheet sent successfully');
+      loadSheets(); // Reload to reflect status change
+    } catch (err: unknown) {
+      setPackMsg(err instanceof Error ? err.message : 'Failed to send timesheet');
+    } finally {
+      setSendingId(null);
     }
   };
 
@@ -754,10 +837,46 @@ export default function TimesheetsPage() {
               <thead>
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Crew Member</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Trade / Rank</th>
+                  <th 
+                    className="px-4 py-3 text-xs font-semibold text-slate-500 cursor-pointer select-none hover:text-slate-700 transition-colors"
+                    onClick={() => {
+                      setSortConfig(current => {
+                        if (!current || current.key !== 'trade_rank') return { key: 'trade_rank', direction: 'asc' };
+                        if (current.direction === 'asc') return { key: 'trade_rank', direction: 'desc' };
+                        return null;
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      Trade / Rank
+                      {sortConfig?.key === 'trade_rank' && (
+                        <span className="text-slate-400">
+                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
+                  </th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Total (Gross)</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
+                  <th 
+                    className="px-4 py-3 text-xs font-semibold text-slate-500 cursor-pointer select-none hover:text-slate-700 transition-colors"
+                    onClick={() => {
+                      setSortConfig(current => {
+                        if (!current || current.key !== 'status') return { key: 'status', direction: 'asc' };
+                        if (current.direction === 'asc') return { key: 'status', direction: 'desc' };
+                        return null;
+                      });
+                    }}
+                  >
+                    <div className="flex items-center gap-1">
+                      Status
+                      {sortConfig?.key === 'status' && (
+                        <span className="text-slate-400">
+                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
+                        </span>
+                      )}
+                    </div>
+                  </th>
                   {canAct && <th className="px-4 py-3 text-xs font-semibold text-slate-500">Actions</th>}
                 </tr>
               </thead>
@@ -772,14 +891,14 @@ export default function TimesheetsPage() {
                       ))}
                     </tr>
                   ))
-                ) : filteredSheets.length === 0 ? (
+                ) : sortedSheets.length === 0 ? (
                   <tr>
                     <td colSpan={canAct ? 6 : 5} className="px-5 py-10 text-center text-slate-400 text-sm">
                       {sheets.length === 0 ? 'No timesheets found for this week and production.' : 'No timesheets match the current filters.'}
                     </td>
                   </tr>
                 ) : (
-                  filteredSheets.map((ts, idx) => {
+                  sortedSheets.map((ts, idx) => {
                     const colorClass = AVATAR_COLORS[idx % AVATAR_COLORS.length];
                     const badge = STATUS_BADGE[ts.status] ?? STATUS_BADGE.draft;
                     const invoiced = hasInvoice(ts);
@@ -897,6 +1016,33 @@ export default function TimesheetsPage() {
                                     PDF Pack
                                   </button>
                                 )}
+                                {/* Draft PDF & Send Individual Buttons */}
+                                {ts.status === 'draft' && (
+                                  <>
+                                    <button
+                                      onClick={() => handleDownloadDraft(ts)}
+                                      disabled={packDownloadingId === ts.id}
+                                      title={`Download Draft PDF for ${fullName}`}
+                                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-60"
+                                    >
+                                      {packDownloadingId === ts.id
+                                        ? <Loader2 size={12} className="animate-spin" />
+                                        : <Download size={12} />}
+                                      Draft PDF
+                                    </button>
+                                    <button
+                                      onClick={() => handleSendSingle(ts)}
+                                      disabled={sendingId === ts.id}
+                                      title={`Send Timesheet to ${fullName}`}
+                                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium"
+                                    >
+                                      {sendingId === ts.id
+                                        ? <Loader2 size={12} className="animate-spin" />
+                                        : <Send size={12} />}
+                                      Send
+                                    </button>
+                                  </>
+                                )}
                                 {/* Attach Invoice — distributed or amendment_requested */}
                                 {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
                                   <button
@@ -917,6 +1063,14 @@ export default function TimesheetsPage() {
                           <tr key={`${ts.id}-expand`} className="bg-slate-50/70 border-t border-slate-100">
                             <td colSpan={colSpan} className="px-6 py-3">
                               <div className="flex flex-wrap items-center gap-x-6 gap-y-2">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Days</span>
+                                  <span className="text-xs font-semibold text-slate-700">{ts.days_worked ?? 0}</span>
+                                </div>
+                                <div className="flex items-center gap-1.5">
+                                  <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">OT Hours</span>
+                                  <span className="text-xs font-semibold text-slate-700">{ts.overtime_hours_total ?? 0}</span>
+                                </div>
                                 <div className="flex items-center gap-1.5">
                                   <span className="text-[10px] font-semibold text-slate-500 uppercase tracking-wide">OT Amount</span>
                                   <span className="text-xs font-semibold text-slate-700">{fmtAmt(otAmt)}</span>
