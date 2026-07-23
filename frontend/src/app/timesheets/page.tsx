@@ -313,6 +313,7 @@ export default function TimesheetsPage() {
   const [bulkSending, setBulkSending] = useState(false);
   const [bulkMsg, setBulkMsg]         = useState('');
   const [packGenerating, setPackGenerating] = useState(false);
+  const [pdfPackGenerating, setPdfPackGenerating] = useState(false);
   const [packDownloadingId, setPackDownloadingId] = useState<string | null>(null);
   const [packMsg, setPackMsg]               = useState('');
   const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
@@ -563,7 +564,7 @@ export default function TimesheetsPage() {
 
   const handleGeneratePdfPack = async () => {
     if (!selectedProd) return;
-    setPackGenerating(true); setPackMsg('');
+    setPdfPackGenerating(true); setPackMsg('');
     try {
       const res = await fetch('/api/timesheets/verification-pack-pdf', {
         method: 'POST',
@@ -602,7 +603,7 @@ export default function TimesheetsPage() {
     } catch (err: unknown) {
       setPackMsg(err instanceof Error ? err.message : 'Failed to generate PDF pack');
     } finally {
-      setPackGenerating(false);
+      setPdfPackGenerating(false);
     }
   };
 
@@ -1198,10 +1199,10 @@ export default function TimesheetsPage() {
                 </button>
                 <button
                   onClick={handleGeneratePdfPack}
-                  disabled={packGenerating || !selectedProd}
+                  disabled={pdfPackGenerating || !selectedProd}
                   className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 disabled:opacity-60 transition-colors font-medium"
                 >
-                  {packGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                  {pdfPackGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
                   Generate PDF Pack
                 </button>
               </div>
