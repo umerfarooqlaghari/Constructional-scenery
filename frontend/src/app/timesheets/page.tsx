@@ -561,6 +561,51 @@ export default function TimesheetsPage() {
     }
   };
 
+  const handleGeneratePdfPack = async () => {
+    if (!selectedProd) return;
+    setPackGenerating(true); setPackMsg('');
+    try {
+      const res = await fetch('/api/timesheets/verification-pack-pdf', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${localStorage.getItem('cs_token')}`,
+        },
+        body: JSON.stringify({ week_ending_date: weekEndingISO, production_id: selectedProd }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        const notDone = (data as { not_verified?: string[] }).not_verified;
+        if (notDone?.length) {
+          setPackMsg(`Not yet verified: ${notDone.join(', ')}`);
+        } else {
+          setPackMsg((data as { error?: string }).error ?? 'Failed to generate PDF pack');
+        }
+        return;
+      }
+      // Trigger browser download
+      const blob = await res.blob();
+      const summary = res.headers.get('X-Pack-Summary');
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      const prodName = productions.find(p => p.id === selectedProd)?.name ?? 'Production';
+      a.download = `VerificationPack_${prodName.replace(/[^a-zA-Z0-9]+/g,'_')}_w-e-${weekEndingISO}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+      if (summary) {
+        const s = JSON.parse(summary) as { crew_count?: number };
+        setPackMsg(`PDF Pack downloaded — ${s.crew_count} crew`);
+      } else {
+        setPackMsg('PDF Verification pack downloaded');
+      }
+    } catch (err: unknown) {
+      setPackMsg(err instanceof Error ? err.message : 'Failed to generate PDF pack');
+    } finally {
+      setPackGenerating(false);
+    }
+  };
+
   const handleGenerateRowPack = async (ts: Timesheet) => {
     setPackDownloadingId(ts.id);
     setPackMsg('');
@@ -1016,33 +1061,32 @@ export default function TimesheetsPage() {
                                     PDF Pack
                                   </button>
                                 )}
-                                {/* Draft PDF & Send Individual Buttons */}
+                                {/* Draft PDF Button */}
                                 {ts.status === 'draft' && (
-                                  <>
-                                    <button
-                                      onClick={() => handleDownloadDraft(ts)}
-                                      disabled={packDownloadingId === ts.id}
-                                      title={`Download Draft PDF for ${fullName}`}
-                                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-60"
-                                    >
-                                      {packDownloadingId === ts.id
-                                        ? <Loader2 size={12} className="animate-spin" />
-                                        : <Download size={12} />}
-                                      Draft PDF
-                                    </button>
-                                    <button
-                                      onClick={() => handleSendSingle(ts)}
-                                      disabled={sendingId === ts.id}
-                                      title={`Send Timesheet to ${fullName}`}
-                                      className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium"
-                                    >
-                                      {sendingId === ts.id
-                                        ? <Loader2 size={12} className="animate-spin" />
-                                        : <Send size={12} />}
-                                      Send
-                                    </button>
-                                  </>
+                                  <button
+                                    onClick={() => handleDownloadDraft(ts)}
+                                    disabled={packDownloadingId === ts.id}
+                                    title={`Download Draft PDF for ${fullName}`}
+                                    className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors font-medium disabled:opacity-60"
+                                  >
+                                    {packDownloadingId === ts.id
+                                      ? <Loader2 size={12} className="animate-spin" />
+                                      : <Download size={12} />}
+                                    Draft PDF
+                                  </button>
                                 )}
+                                {/* Send Individual Button (Available for all statuses) */}
+                                <button
+                                  onClick={() => handleSendSingle(ts)}
+                                  disabled={sendingId === ts.id}
+                                  title={`Send Timesheet to ${fullName}`}
+                                  className="flex items-center gap-1.5 text-xs px-2.5 py-1.5 bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors font-medium"
+                                >
+                                  {sendingId === ts.id
+                                    ? <Loader2 size={12} className="animate-spin" />
+                                    : <Send size={12} />}
+                                  Send
+                                </button>
                                 {/* Attach Invoice — distributed or amendment_requested */}
                                 {(ts.status === 'distributed' || ts.status === 'amendment_requested') && (
                                   <button
@@ -1151,6 +1195,14 @@ export default function TimesheetsPage() {
                 >
                   {packGenerating ? <Loader2 size={12} className="animate-spin" /> : <FileText size={12} />}
                   Generate Week Pack
+                </button>
+                <button
+                  onClick={handleGeneratePdfPack}
+                  disabled={packGenerating || !selectedProd}
+                  className="flex items-center gap-1.5 text-xs px-3 py-1.5 border border-indigo-200 bg-indigo-50 text-indigo-700 rounded-lg hover:bg-indigo-100 disabled:opacity-60 transition-colors font-medium"
+                >
+                  {packGenerating ? <Loader2 size={12} className="animate-spin" /> : <Download size={12} />}
+                  Generate PDF Pack
                 </button>
               </div>
             )}

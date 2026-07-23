@@ -26,6 +26,7 @@ const exportRateLimit = (req, res, next) => {
 router.post('/bulk-distribute',   requireRole(ACCOUNTANT), ctrl.bulkDistribute);
 router.post('/chase-invoices',    requireRole(ACCOUNTANT), ctrl.chaseInvoices);
 router.post('/verification-pack', requireRole(ACCOUNTANT), ctrl.generateVerificationPackPdf);
+router.post('/verification-pack-pdf', requireRole(ACCOUNTANT), ctrl.generateVerificationPackCombinedPdf);
 router.get('/verification-pack/:weekEndingDate/:productionId', requireRole(ACCOUNTANT), ctrl.getVerificationPack);
 router.get('/:id/verification-pack', requireRole(ACCOUNTANT), ctrl.getTimesheetVerificationPack);
 router.get('/:id/draft-pdf',      requireRole(ACCOUNTANT), ctrl.getDraftPdf);
