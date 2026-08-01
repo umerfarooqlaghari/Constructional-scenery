@@ -20,19 +20,13 @@ const http                                = require('http');
 
 const A4 = [595.28, 841.89]; // points
 
-// Fetch an invoice file — handles both S3 URLs (https://) and legacy local paths (/uploads/…)
+const fileStorage = require('./fileStorage');
+
+// Fetch an invoice file — handles S3 URLs using fileStorage
 const readUploadedFile = async (url) => {
   if (!url) return null;
   if (url.startsWith('http://') || url.startsWith('https://')) {
-    return new Promise((resolve, reject) => {
-      const client = url.startsWith('https://') ? https : http;
-      client.get(url, (res) => {
-        const chunks = [];
-        res.on('data', (c) => chunks.push(c));
-        res.on('end',  ()  => resolve(Buffer.concat(chunks)));
-        res.on('error', reject);
-      }).on('error', reject);
-    });
+    return fileStorage.getFileBuffer(url);
   }
   // Legacy local path fallback
   const urlPath  = url.startsWith('/') ? url.slice(1) : url;

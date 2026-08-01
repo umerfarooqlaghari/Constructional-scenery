@@ -72,4 +72,29 @@ async function deleteFile(key) {
   }
 }
 
-module.exports = { validate, store, deleteFile, ALLOWED_MIME_TYPES, MAX_FILE_BYTES };
+/**
+ * Get file buffer from S3 by its URL.
+ * @param {string} url - S3 object URL
+ */
+async function getFileBuffer(url) {
+  if (!url) return null;
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  
+  // Extract key from URL
+  let key = url;
+  if (url.includes('.amazonaws.com/')) {
+    key = url.split('.amazonaws.com/')[1];
+  } else if (url.startsWith('/')) {
+    key = url.slice(1);
+  }
+
+  try {
+    const response = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: decodeURIComponent(key) }));
+    return Buffer.from(await response.Body.transformToByteArray());
+  } catch (err) {
+    console.error('fileStorage.getFileBuffer failed:', err.message);
+    throw err;
+  }
+}
+
+module.exports = { validate, store, deleteFile, getFileBuffer, ALLOWED_MIME_TYPES, MAX_FILE_BYTES };
