@@ -40,6 +40,7 @@ router.patch('/:id',             requireRole(ACCOUNTANT), ctrl.patchTimesheet);
 router.put('/:id/entries',       requireRole(ACCOUNTANT), ctrl.saveEntries);
 router.post('/:id/resend',       requireRole(ACCOUNTANT), ctrl.resendTimesheet);
 router.post('/:id/send',         requireRole(ACCOUNTANT), ctrl.sendSingleTimesheet);
+router.post('/:id/submit',       requireRole(ACCOUNTANT), ctrl.submitTimesheet);
 router.post('/:id/attach-invoice', upload.single('invoice'), requireRole(ACCOUNTANT), ctrl.attachInvoice);
 router.post('/:id/verify',       requireRole(ACCOUNTANT), ctrl.verifyTimesheet);
 

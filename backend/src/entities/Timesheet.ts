@@ -78,4 +78,7 @@ export class Timesheet {
 
   @UpdateDateColumn({ name: 'updated_at', type: 'timestamptz' })
   updatedAt: Date;
+
+  @Column({ name: 'amended_at', type: 'timestamptz', nullable: true })
+  amendedAt: Date | null;
 }

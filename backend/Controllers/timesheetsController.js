@@ -161,6 +161,7 @@ const getAllTimesheets = async (req, res) => {
               , COALESCE(te_agg.per_diem_total, 0)       AS per_diem_total
               , COALESCE(te_agg.ad_hoc_total, 0)         AS ad_hoc_total
               , COALESCE(te_agg.food_total, 0)           AS food_total
+              , te_agg.attendance_days                   AS attendance_days
               , (
                   SELECT br.overtime_rate
                   FROM bectu_rates br
@@ -183,7 +184,8 @@ const getAllTimesheets = async (req, res) => {
                   COALESCE(te.meal_allowance_breakfast, CASE WHEN te.meal_breakfast THEN 10.50 ELSE 0 END)
                   + COALESCE(te.meal_allowance_lunch, CASE WHEN te.meal_lunch THEN 14.00 ELSE 0 END)
                   + COALESCE(te.meal_allowance_supper, CASE WHEN te.meal_supper THEN 10.50 ELSE 0 END)
-                ), 0) AS food_total
+                ), 0) AS food_total,
+                JSON_AGG(JSON_BUILD_OBJECT('day', te.day_of_week, 'worked', te.full_day_worked)) AS attendance_days
          FROM timesheet_entries te
          GROUP BY te.timesheet_id
        ) te_agg ON te_agg.timesheet_id = t.id
@@ -492,7 +494,7 @@ const saveEntries = async (req, res) => {
 
     // Get timesheet with crew details
     const { rows: [ts] } = await client.query(
-      `SELECT t.*, cm.crew_trade, cm.crew_rank, cm.employment_status, cm.vat_registration_number
+      `SELECT t.*, cm.crew_trade, cm.crew_rank, cm.employment_status, cm.vat_registration_number, cm.email
        FROM timesheets t
        JOIN crew_members cm ON t.crew_member_id = cm.id
        WHERE t.id = $1`,
@@ -609,7 +611,8 @@ const saveEntries = async (req, res) => {
       `UPDATE timesheets SET
          weekly_rate = $1, sixth_day_payment = $2, seventh_day_payment = $3,
          overtime_amount = $4, meal_allowance_total = $5, mileage_and_travel = $6,
-         vat = $7, gross_total = $8, grand_total = $9
+         vat = $7, gross_total = $8, grand_total = $9,
+         amended_at = CASE WHEN status = 'distributed' THEN NOW() ELSE amended_at END
        WHERE id = $10
        RETURNING *`,
       [weeklyRate, sixthDayPayment, seventhDayPayment, overtimeAmount,
@@ -617,6 +620,25 @@ const saveEntries = async (req, res) => {
     );
 
     await client.query('COMMIT');
+
+    if (ts.status === 'distributed' && ts.email) {
+      // Re-fetch fully populated timesheet for the PDF and email
+      const { rows: [fullTs] } = await db.query(
+        `SELECT t.*, cm.first_name, cm.last_name, cm.email, cm.crew_number,
+                cm.crew_trade, cm.crew_rank, cm.employment_status, cm.company_name,
+                p.name AS prod_name
+         FROM timesheets t
+         JOIN crew_members cm ON t.crew_member_id = cm.id
+         JOIN productions p   ON t.production_id  = p.id
+         WHERE t.id = $1`,
+        [req.params.id]
+      );
+      if (fullTs) {
+        sendTimesheetEmail(fullTs, rows).catch(err => {
+          console.error('saveEntries resend email failed:', err);
+        });
+      }
+    }
     res.json(updated);
   } catch (err) {
     await client.query('ROLLBACK');
@@ -641,6 +663,22 @@ const sendTimesheetEmail = async (ts, entries) => {
   });
 };
 
+// ─── POST /api/timesheets/:id/submit ──────────────────────────────────────────
+const submitTimesheet = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { rows } = await db.query(
+      `UPDATE timesheets SET status = 'submitted' WHERE id = $1 AND status = 'draft' RETURNING *`,
+      [id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'Timesheet not found or not in draft status' });
+    res.json({ message: 'Timesheet submitted', timesheet: rows[0] });
+  } catch (err) {
+    console.error('submitTimesheet:', err);
+    res.status(500).json({ error: err.message });
+  }
+};
+
 // ─── POST /api/timesheets/bulk-distribute ─────────────────────────────────────
 // Sends all DRAFT timesheets for the week. Status advances to distributed only
 // on successful email send. Already-distributed timesheets are skipped entirely.
@@ -650,7 +688,7 @@ const bulkDistribute = async (req, res) => {
     return res.status(400).json({ error: 'week_ending_date is required' });
 
   try {
-    const conditions = ["t.week_ending_date = $1", "t.status = 'draft'"];  // TimesheetStatus.DRAFT
+    const conditions = ["t.week_ending_date = $1", "t.status = 'submitted'"];  // TimesheetStatus.SUBMITTED
     const params     = [week_ending_date];
     if (production_id) { conditions.push(`t.production_id = $2`); params.push(production_id); }
 
@@ -667,7 +705,7 @@ const bulkDistribute = async (req, res) => {
     );
 
     if (!timesheets.length)
-      return res.status(400).json({ error: 'No draft timesheets found for this week' });
+      return res.status(400).json({ error: 'No submitted timesheets found for this week' });
 
     const results = { sent: [], failed: [], no_email: [] };
 
@@ -1417,7 +1455,7 @@ module.exports = {
   getAllTimesheets, exportTimesheetsCSV, exportTimesheetsPDF,
   createTimesheet, getTimesheetById,
   saveEntries, patchTimesheet,
-  bulkDistribute, resendTimesheet, sendSingleTimesheet,
+  bulkDistribute, resendTimesheet, sendSingleTimesheet, submitTimesheet,
   attachInvoice, chaseInvoices, verifyTimesheet,
   generateVerificationPackPdf, generateVerificationPackCombinedPdf, getVerificationPack, getTimesheetVerificationPack, getDraftPdf,
 };
