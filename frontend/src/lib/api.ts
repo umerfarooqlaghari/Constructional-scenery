@@ -375,7 +375,7 @@ export const dashboardApi = {
 };
 
 // ─── Timesheet types ───────────────────────────────────────────────────────────
-export type TimesheetStatus = 'draft' | 'distributed' | 'amendment_requested' | 'finalised';
+export type TimesheetStatus = 'draft' | 'submitted' | 'distributed' | 'amendment_requested' | 'finalised';
 
 export type Timesheet = {
   id: string;
@@ -403,6 +403,8 @@ export type Timesheet = {
   crew_rank?: string;
   // joined from productions
   prod_name?: string;
+  amended_at?: string | null;
+  attendance_days?: Array<{ day: string; worked: boolean }>;
 };
 
 export const timesheetsApi = {
@@ -413,6 +415,10 @@ export const timesheetsApi = {
   getById: (id: string) => request<Timesheet>(`/api/timesheets/${id}`, { cache: 'no-store' }),
   create: (data: { crew_member_id: string; production_id: string; week_ending_date: string }) =>
     request<Timesheet>('/api/timesheets', { method: 'POST', body: data }),
+  submit: (id: string) =>
+    request<{ message: string; timesheet: Timesheet }>(`/api/timesheets/${id}/submit`, { method: 'POST' }),
+  bulkDistribute: (data: { week_ending_date: string; production_id?: string }) =>
+    request<{ message: string }>('/api/timesheets/bulk-distribute', { method: 'POST', body: data }),
 };
 
 export type GatewayError = {

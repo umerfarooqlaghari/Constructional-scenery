@@ -237,6 +237,27 @@ export default function TimesheetDetailPage() {
     }
   };
 
+  const handleSubmit = async () => {
+    // Automatically save entries first
+    await handleSave();
+    if (error) return; // if save failed, abort submit
+    
+    setSaving(true);
+    setError('');
+    try {
+      await timesheetsApi.submit(id);
+      await load();
+      const qs = new URLSearchParams();
+      if (returnProductionId) qs.set('production_id', returnProductionId);
+      if (returnWeekEnding) qs.set('week_ending_date', returnWeekEnding);
+      router.push(qs.toString() ? `/timesheets?${qs.toString()}` : '/timesheets');
+    } catch (e: unknown) {
+      setError(e instanceof Error ? e.message : 'Submit failed');
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const defaultRank    = ts ? String(ts.crew_rank ?? '') : '';
   const currentTrade   = ts ? String(ts.crew_trade ?? '') : '';
   const availableRanks: string[] = trades
@@ -307,7 +328,7 @@ export default function TimesheetDetailPage() {
     <>
       <TopBar
         title={`Timesheet — ${crewName}`}
-        subtitle={`${prodName} · w/e ${fmtDate(ts.week_ending_date)}`}
+        subtitle={`${prodName} · w/e ${fmtDate(ts.week_ending_date)}${ts.amended_at ? ` · Amended: ${new Date(ts.amended_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : ''}`}
       />
       <main className="flex-1 p-4 md:p-6 space-y-4">
 
@@ -325,11 +346,21 @@ export default function TimesheetDetailPage() {
               <button
                 onClick={handleSave}
                 disabled={saving}
-                className="flex items-center gap-2 bg-blue-600 text-white text-sm px-4 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-60 shadow-sm"
+                className="flex items-center gap-2 bg-slate-100 text-slate-700 text-sm px-4 py-2 rounded-lg font-medium hover:bg-slate-200 disabled:opacity-60 shadow-sm transition-colors border border-slate-200"
               >
                 {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
                 Save Entries
               </button>
+              {ts.status === 'draft' && (
+                <button
+                  onClick={handleSubmit}
+                  disabled={saving}
+                  className="flex items-center gap-2 bg-blue-600 text-white text-sm px-4 py-2 rounded-lg font-medium hover:bg-blue-700 disabled:opacity-60 shadow-sm transition-colors"
+                >
+                  {saving ? <Loader2 size={14} className="animate-spin" /> : null}
+                  Submit Timesheet
+                </button>
+              )}
             </div>
           )}
         </div>

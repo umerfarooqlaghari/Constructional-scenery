@@ -60,6 +60,7 @@ export enum PurchaseOrderStatus {
 
 export enum TimesheetStatus {
   DRAFT = 'draft',
+  SUBMITTED = 'submitted',
   DISTRIBUTED = 'distributed',
   AMENDMENT_REQUESTED = 'amendment_requested',
   FINALISED = 'finalised',

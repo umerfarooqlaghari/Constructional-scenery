@@ -65,9 +65,9 @@ const MAX_FILE_BYTES = MAX_FILE_MB * 1024 * 1024;
 
 const STATUS_BADGE: Record<POStatus, string> = {
   draft: 'bg-slate-100 text-slate-600',
-  submitted: 'bg-blue-100 text-blue-700',
+  submitted: 'bg-amber-100 text-amber-700',
   issued: 'bg-blue-100 text-blue-700',
-  invoice_received: 'bg-purple-100 text-purple-700',
+  invoice_received: 'bg-amber-100 text-amber-700',
   approved: 'bg-green-100 text-green-700',
 };
 
@@ -219,9 +219,14 @@ export default function PurchaseOrdersPage() {
   const activeFilterCount = Object.values(poFilters).filter((v) => v !== '').length;
 
   const [showNewModal, setShowNewModal] = useState(false);
+  const [newStep, setNewStep] = useState<1 | 2 | 3>(1);
   const [newForm, setNewForm] = useState<NewPOForm>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
+
+  const [viewMode, setViewMode] = useState<'purchasing'|'accounting'>('purchasing');
+  const [viewFullPO, setViewFullPO] = useState<PurchaseOrder | null>(null);
+  const [supplierOverviewModal, setSupplierOverviewModal] = useState<string | null>(null);
 
   const [invoiceModal, setInvoiceModal] = useState<{ id: string; poNumber: string } | null>(null);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
@@ -293,12 +298,14 @@ export default function PurchaseOrdersPage() {
       !q ||
       po.supplier_name.toLowerCase().includes(q) ||
       po.po_number.toLowerCase().includes(q) ||
-      (po.description ?? '').toLowerCase().includes(q) ||
-      (po.department ?? '').toLowerCase().includes(q);
-    const matchDept =
-      !poFilters.department ||
-      (po.department ?? '').toLowerCase() === poFilters.department.toLowerCase();
-    return matchStatus && matchSearch && matchDept;
+      (po.description ?? '').toLowerCase().includes(q);
+    return matchStatus && matchSearch;
+  }).sort((a, b) => {
+    const prodA = a.prod_name || a.production_id;
+    const prodB = b.prod_name || b.production_id;
+    const prodCompare = prodA.localeCompare(prodB);
+    if (prodCompare !== 0) return prodCompare;
+    return a.supplier_name.localeCompare(b.supplier_name);
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredPos.length / PAGE_SIZE));
@@ -416,6 +423,29 @@ export default function PurchaseOrdersPage() {
     } finally {
       setEditLoading(false);
     }
+  }
+
+  function handleCopyPO(po: PurchaseOrder) {
+    setNewForm({
+      ...EMPTY_FORM,
+      supplier_name:  po.supplier_name,
+      supplier_email: po.supplier_email ?? '',
+      supplier_code:  (po as unknown as Record<string, string>).supplier_code ?? '',
+      street_name:    (po as unknown as Record<string, string>).street_name ?? '',
+      zip_code:       (po as unknown as Record<string, string>).zip_code ?? '',
+      city:           (po as unknown as Record<string, string>).city ?? '',
+      county:         (po as unknown as Record<string, string>).county ?? '',
+      production_id:  po.production_id,
+      set_code:       po.set_code ?? '',
+      account_code:   po.account_code ?? '',
+      description:    po.description ?? '',
+      net_amount:     po.net_amount,
+      vat:            po.vat,
+      gross_amount:   po.gross_amount,
+      paid_from:      po.paid_from,
+    });
+    setNewStep(1);
+    setShowNewModal(true);
   }
 
   async function handleCreatePO() {
@@ -626,23 +656,44 @@ export default function PurchaseOrdersPage() {
                   </button>
                 )}
               </div>
-              {/* Filter toggle */}
-              <button
-                onClick={() => setShowFilters(v => !v)}
-                className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
-                  showFilters || activeFilterCount > 0
-                    ? 'bg-blue-50 border-blue-300 text-blue-700'
-                    : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
-                }`}
-              >
-                <SlidersHorizontal size={13} />
-                Filters
-                {activeFilterCount > 0 && (
-                  <span className="ml-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
-                    {activeFilterCount}
-                  </span>
-                )}
-              </button>
+              {/* Filter toggle — hidden for MD (view-only approved) */}
+              {!isMD && (
+                <button
+                  onClick={() => setShowFilters(v => !v)}
+                  className={`flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg border transition-colors font-medium ${
+                    showFilters || activeFilterCount > 0
+                      ? 'bg-blue-50 border-blue-300 text-blue-700'
+                      : 'bg-slate-100 border-slate-200 text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  <SlidersHorizontal size={13} />
+                  Filters
+                  {activeFilterCount > 0 && (
+                    <span className="ml-0.5 bg-blue-600 text-white rounded-full px-1.5 py-0.5 text-[10px] font-bold leading-none">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+              )}
+              {/* View Toggle */}
+              <div className="flex items-center bg-slate-200/50 rounded-lg p-1 ml-auto">
+                <button
+                  onClick={() => setViewMode('purchasing')}
+                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                    viewMode === 'purchasing' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Purchasing
+                </button>
+                <button
+                  onClick={() => setViewMode('accounting')}
+                  className={`text-xs px-3 py-1.5 rounded-md font-medium transition-colors ${
+                    viewMode === 'accounting' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'
+                  }`}
+                >
+                  Accounting
+                </button>
+              </div>
             </div>
             {isCoordinator && (
               <div className="flex gap-2">
@@ -831,18 +882,25 @@ export default function PurchaseOrdersPage() {
               <thead>
                 <tr className="bg-slate-50 text-left">
                   <th className="px-5 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap sticky left-0 bg-slate-50 z-10">PO Number</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Date</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Department</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Production</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Set / Account</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Description</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Net</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">VAT</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Gross</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Paid From</th>
+                  {viewMode === 'purchasing' ? (
+                    <>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Production</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Description</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Amount</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Dept / Set / Account</th>
+                    </>
+                  ) : (
+                    <>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Account Code</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Set Code</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">VAT</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Paid From</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Approval Status</th>
+                    </>
+                  )}
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
                   <th className="px-4 py-3 text-xs font-semibold text-slate-500">Actions</th>
                 </tr>
               </thead>
@@ -860,83 +918,88 @@ export default function PurchaseOrdersPage() {
                   : pagePos.map((po) => {
                     const busy = actionLoading?.startsWith(po.id + ':');
                     return (
-                      <tr key={po.id} className="hover:bg-slate-50/50 transition-colors">
-                        <td className="px-5 py-3.5 sticky left-0 bg-white z-10 group-hover:bg-slate-50/50">
+                      <tr key={po.id} className="hover:bg-slate-50/50 transition-colors even:bg-slate-50/50 border-b border-slate-100 last:border-0">
+                        <td className="px-5 py-3.5 sticky left-0 bg-white group-hover:bg-slate-50/50 z-10">
                           <p className="text-blue-700 font-semibold text-xs font-mono whitespace-nowrap">{po.po_number}</p>
                         </td>
                         <td className="px-4 py-3.5 text-slate-600 text-xs whitespace-nowrap">
                           {fmtDate(po.date_of_po)}
                         </td>
-                        <td className="px-4 py-3.5 max-w-[160px]">
-                          <p className="text-slate-800 font-medium text-sm truncate">{po.supplier_name}</p>
-                          {po.supplier_address && (
-                            <p className="text-slate-400 text-xs truncate">{po.supplier_address}</p>
-                          )}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-700 font-medium text-xs whitespace-nowrap">
-                          {po.department || <span className="text-slate-300">—</span>}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600 text-sm whitespace-nowrap">
-                          {po.prod_name ?? po.production_id}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          {po.set_code && <p className="text-slate-700 text-xs font-mono">{po.set_code}</p>}
-                          {po.account_code && <p className="text-slate-400 text-xs">{po.account_code}</p>}
-                          {!po.set_code && !po.account_code && <span className="text-slate-300 text-xs">—</span>}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-600 text-xs max-w-[180px] truncate">
-                          {po.description ?? '—'}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-700 text-sm text-right font-medium whitespace-nowrap">
-                          {fmt(po.net_amount)}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-500 text-sm text-right whitespace-nowrap">
-                          {fmt(po.vat)}
-                        </td>
-                        <td className="px-4 py-3.5 text-slate-900 text-sm text-right font-semibold whitespace-nowrap">
-                          {fmt(po.gross_amount)}
-                        </td>
-                        <td className="px-4 py-3.5">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${
-                              PAID_FROM_BADGE[po.paid_from] ?? 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {PAID_FROM_LABEL[po.paid_from] ?? po.paid_from}
-                          </span>
-                        </td>
+                        
+                        {viewMode === 'purchasing' ? (
+                          <>
+                            <td className="px-4 py-3.5 text-slate-600 text-sm whitespace-nowrap">
+                              {po.prod_name ?? po.production_id}
+                            </td>
+                            <td className="px-4 py-3.5 max-w-[160px]">
+                              <button onClick={() => setSupplierOverviewModal(po.supplier_name)} className="text-slate-800 font-medium text-sm truncate hover:text-blue-600 hover:underline text-left transition-colors">
+                                {po.supplier_name}
+                              </button>
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-600 text-xs max-w-[180px] truncate" title={po.description ?? ''}>
+                              {po.description ?? '—'}
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-900 text-sm text-right font-semibold whitespace-nowrap">
+                              {fmt(po.gross_amount)}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_BADGE[po.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {STATUS_LABEL[po.status] ?? po.status}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              {po.set_code && <span className="text-slate-700 text-xs font-mono mr-2" title="Set">{po.set_code}</span>}
+                              {po.account_code && <span className="text-slate-400 text-xs" title="Account">{po.account_code}</span>}
+                              {!po.set_code && !po.account_code && <span className="text-slate-300 text-xs">—</span>}
+                            </td>
+                          </>
+                        ) : (
+                          <>
+                            <td className="px-4 py-3.5 text-slate-700 text-sm whitespace-nowrap">
+                              {po.account_code ? <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-xs">{po.account_code}</span> : '—'}
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-700 text-sm whitespace-nowrap">
+                              {po.set_code ? <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-xs">{po.set_code}</span> : '—'}
+                            </td>
+                            <td className="px-4 py-3.5 text-slate-500 text-sm text-right whitespace-nowrap">
+                              {fmt(po.vat)}
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${PAID_FROM_BADGE[po.paid_from] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {PAID_FROM_LABEL[po.paid_from] ?? po.paid_from}
+                              </span>
+                            </td>
+                            <td className="px-4 py-3.5">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${STATUS_BADGE[po.status] ?? 'bg-slate-100 text-slate-600'}`}>
+                                {STATUS_LABEL[po.status] ?? po.status}
+                              </span>
+                            </td>
+                          </>
+                        )}
+                        
                         <td className="px-4 py-3.5 text-center">
                           {po.invoice_attachment_url ? (() => {
-                            // S3 URLs (https://...) are public — open directly.
-                            // Legacy local paths (/uploads/...) proxy through Next.js to backend.
-                            const url = po.invoice_attachment_url.startsWith('http')
-                              ? po.invoice_attachment_url
-                              : encodeURI(decodeURI(po.invoice_attachment_url));
-                            const name = po.invoice_attachment_name ?? po.invoice_attachment_url.split('/').pop() ?? 'invoice';
+                            const url = po.invoice_attachment_url.startsWith('http') ? po.invoice_attachment_url : encodeURI(decodeURI(po.invoice_attachment_url));
                             return (
-                              <button
-                                onClick={() => window.open(url, '_blank', 'noopener,noreferrer')}
-                                className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline"
-                              >
+                              <button onClick={() => window.open(url, '_blank', 'noopener,noreferrer')} className="inline-flex items-center gap-1 text-blue-600 hover:text-blue-800 hover:underline">
                                 <CheckCircle2 size={15} className="text-green-500" />
                                 <span className="text-xs font-medium">View</span>
                               </button>
                             );
                           })() : (
-                            <span title="No invoice attached"><AlertCircle size={16} className="text-orange-400 mx-auto" /></span>
+                            <span title="No invoice attached"><AlertCircle size={16} className="text-amber-400 mx-auto" /></span>
                           )}
                         </td>
                         <td className="px-4 py-3.5">
-                          <span
-                            className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${
-                              STATUS_BADGE[po.status] ?? 'bg-slate-100 text-slate-600'
-                            }`}
-                          >
-                            {STATUS_LABEL[po.status] ?? po.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3.5">
                           <div className="flex items-center gap-1.5 flex-wrap">
+                            {/* View Full PO: All roles */}
+                            <button onClick={() => setViewFullPO(po)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition-colors font-medium">
+                              <Search size={11} /> View
+                            </button>
+                            {/* Copy PO: All roles */}
+                            <button onClick={() => handleCopyPO(po)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium">
+                              <FileText size={11} /> Copy
+                            </button>
                             {/* Edit: Coordinator (James) only, draft only */}
                             {isCoordinator && po.status === 'draft' && (
                               <button
@@ -1218,7 +1281,11 @@ export default function PurchaseOrdersPage() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <div>
                 <h2 className="text-slate-900 font-semibold text-base">New Purchase Order</h2>
-                <p className="text-slate-400 text-xs mt-0.5">Fill in the details below to raise a new PO</p>
+                <p className="text-slate-400 text-xs mt-0.5">
+                  {newStep === 1 && 'Step 1 of 2: Production & Supplier'}
+                  {newStep === 2 && 'Step 2 of 2: Order Details'}
+                  {newStep === 3 && 'Review: Confirm Purchase Order'}
+                </p>
               </div>
               <button
                 onClick={() => setShowNewModal(false)}
@@ -1227,246 +1294,266 @@ export default function PurchaseOrdersPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="px-6 py-5 space-y-4">
-
-              {/* Supplier */}
-              <div className="space-y-3">
-                <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Supplier Details</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
-                    <select
-                      value={newForm.supplier_name}
-                      onChange={(e) => updateField('supplier_name', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                    >
-                      <option value="">Select a supplier...</option>
-                      {suppliers.map(s => (
-                        <option key={s} value={s}>{s}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
-                    <input
-                      type="text"
-                      value={newForm.supplier_code}
-                      onChange={(e) => updateField('supplier_code', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. SUP-001"
-                    />
-                  </div>
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
-                    <input
-                      type="email"
-                      value={newForm.supplier_email}
-                      onChange={(e) => updateField('supplier_email', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="orders@supplier.com"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* Address */}
-              <div className="space-y-3">
-                <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Address</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Street Name</label>
-                    <input
-                      type="text"
-                      value={newForm.street_name}
-                      onChange={(e) => updateField('street_name', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. 12 Industrial Way"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
-                    <input
-                      type="text"
-                      value={newForm.city}
-                      onChange={(e) => updateField('city', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. Manchester"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">County</label>
-                    <input
-                      type="text"
-                      value={newForm.county}
-                      onChange={(e) => updateField('county', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. Greater Manchester"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Zip / Post Code</label>
-                    <input
-                      type="text"
-                      value={newForm.zip_code}
-                      onChange={(e) => updateField('zip_code', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. M1 2AB"
-                    />
-                  </div>
-                </div>
-              </div>
-
-              {/* PO Details */}
-              <div className="space-y-3">
-                <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">PO Details</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Date of PO</label>
-                    <input
-                      type="date"
-                      value={newForm.date_of_po}
-                      onChange={(e) => updateField('date_of_po', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Production <span className="text-red-500">*</span></label>
-                    <select
-                      value={newForm.production_id}
-                      onChange={(e) => { updateField('production_id', e.target.value); updateField('set_code', ''); loadSetsForProduction(e.target.value); }}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                    >
-                      <option value="">Select production…</option>
-                      {productions.map((p) => (
-                        <option key={p.id} value={p.id}>{p.name}</option>
-                      ))}
-                    </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
-                    {setsCache[newForm.production_id]?.length ? (
+            <div className="px-6 py-5 space-y-5">
+              {newStep === 1 && (
+                <>
+                  {/* Production */}
+                  <div className="space-y-3">
+                    <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Production Details</h3>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Production <span className="text-red-500">*</span></label>
                       <select
-                        value={newForm.set_code}
-                        onChange={(e) => updateField('set_code', e.target.value)}
+                        value={newForm.production_id}
+                        onChange={(e) => { updateField('production_id', e.target.value); updateField('set_code', ''); loadSetsForProduction(e.target.value); }}
                         className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
                       >
-                        <option value="">— No set —</option>
-                        {setsCache[newForm.production_id].filter(s => s.set_number).map(s => (
-                          <option key={s.id} value={s.set_number!}>{s.set_number} — {s.set_name}</option>
+                        <option value="">Select production…</option>
+                        {productions.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
                         ))}
                       </select>
-                    ) : (
-                    <input
-                      type="text"
-                      value={newForm.set_code}
-                      onChange={(e) => updateField('set_code', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. S003"
-                    />
-                    )}
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Account Code</label>
-                    <input
-                      type="text"
-                      value={newForm.account_code}
-                      onChange={(e) => updateField('account_code', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="e.g. MAT-001"
-                    />
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
-                    <select
-                      value={newForm.department}
-                      onChange={(e) => { updateField('department', e.target.value); if (e.target.value !== 'Other') updateField('custom_department', ''); }}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                    >
-                      <option value="">— Select department —</option>
-                      {DEPARTMENTS.map(d => <option key={d} value={d}>{d}</option>)}
-                      <option value="Other">Other / Custom</option>
-                    </select>
-                  </div>
-                  {newForm.department === 'Other' && (
-                    <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Custom Department <span className="text-red-500">*</span></label>
-                      <input
-                        type="text"
-                        value={newForm.custom_department}
-                        onChange={(e) => updateField('custom_department', e.target.value)}
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                        placeholder="Enter department name"
-                      />
                     </div>
-                  )}
-                  <div className="sm:col-span-2">
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
-                    <textarea
-                      value={newForm.description}
-                      onChange={(e) => updateField('description', e.target.value)}
-                      rows={2}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-none"
-                      placeholder="Brief description of goods/services"
-                    />
                   </div>
-                </div>
-              </div>
 
-              {/* Financials */}
-              <div className="space-y-3">
-                <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Financials</h3>
-                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Net Amount (£) <span className="text-red-500">*</span></label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={newForm.net_amount}
-                      onChange={(e) => updateField('net_amount', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="0.00"
-                    />
+                  {/* Supplier */}
+                  <div className="space-y-3">
+                    <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Supplier Details</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
+                        <select
+                          value={newForm.supplier_name}
+                          onChange={(e) => updateField('supplier_name', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
+                        >
+                          <option value="">Select a supplier...</option>
+                          {suppliers.map(s => (
+                            <option key={s} value={s}>{s}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
+                        <input
+                          type="text"
+                          value={newForm.supplier_code}
+                          onChange={(e) => updateField('supplier_code', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. SUP-001"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
+                        <input
+                          type="email"
+                          value={newForm.supplier_email}
+                          onChange={(e) => updateField('supplier_email', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="orders@supplier.com"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">VAT (£)</label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={newForm.vat}
-                      onChange={(e) => updateField('vat', e.target.value)}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                      placeholder="0.00"
-                    />
+
+                  {/* Address */}
+                  <div className="space-y-3">
+                    <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Address</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Street Name</label>
+                        <input
+                          type="text"
+                          value={newForm.street_name}
+                          onChange={(e) => updateField('street_name', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. 12 Industrial Way"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
+                        <input
+                          type="text"
+                          value={newForm.city}
+                          onChange={(e) => updateField('city', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. Manchester"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">County</label>
+                        <input
+                          type="text"
+                          value={newForm.county}
+                          onChange={(e) => updateField('county', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. Greater Manchester"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Zip / Post Code</label>
+                        <input
+                          type="text"
+                          value={newForm.zip_code}
+                          onChange={(e) => updateField('zip_code', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. M1 2AB"
+                        />
+                      </div>
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Gross Amount (£) <span className="text-slate-400 font-normal">(auto)</span></label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={newForm.gross_amount}
-                      readOnly
-                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 bg-slate-50 outline-none cursor-default"
-                      placeholder="0.00"
-                    />
+                </>
+              )}
+
+              {newStep === 2 && (
+                <>
+                  {/* PO Details */}
+                  <div className="space-y-3">
+                    <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">PO Details</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Date of PO</label>
+                        <input
+                          type="date"
+                          value={newForm.date_of_po}
+                          onChange={(e) => updateField('date_of_po', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Account Code</label>
+                        <input
+                          type="text"
+                          value={newForm.account_code}
+                          onChange={(e) => updateField('account_code', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. MAT-001"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
+                        {setsCache[newForm.production_id]?.length ? (
+                          <select
+                            value={newForm.set_code}
+                            onChange={(e) => updateField('set_code', e.target.value)}
+                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
+                          >
+                            <option value="">— No set —</option>
+                            {setsCache[newForm.production_id].filter(s => s.set_number).map(s => (
+                              <option key={s.id} value={s.set_number!}>{s.set_number} — {s.set_name}</option>
+                            ))}
+                          </select>
+                        ) : (
+                        <input
+                          type="text"
+                          value={newForm.set_code}
+                          onChange={(e) => updateField('set_code', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. S003"
+                        />
+                        )}
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Description of Goods</label>
+                        <textarea
+                          value={newForm.description}
+                          onChange={(e) => updateField('description', e.target.value)}
+                          rows={4}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 resize-y"
+                          placeholder="Generous space for description..."
+                        />
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Financials */}
+                  <div className="space-y-3">
+                    <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Financials</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Net Amount (£) <span className="text-red-500">*</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newForm.net_amount}
+                          onChange={(e) => updateField('net_amount', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">VAT (£)</label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newForm.vat}
+                          onChange={(e) => updateField('vat', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="0.00"
+                        />
+                      </div>
+                      <div>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Gross Amount (£) <span className="text-slate-400 font-normal">(auto)</span></label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.01"
+                          value={newForm.gross_amount}
+                          readOnly
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-600 bg-slate-50 outline-none cursor-default"
+                          placeholder="0.00"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Paid From</label>
+                      <select
+                        value={newForm.paid_from}
+                        onChange={(e) => updateField('paid_from', e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
+                      >
+                        <option value="supplier_account">Supplier Account</option>
+                        <option value="arbuthnot_current_account">Arbuthnot Current Account</option>
+                        <option value="charge_card">Charge Card</option>
+                        <option value="pleo_charge_card">Pleo Charge Card</option>
+                      </select>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {newStep === 3 && (
+                <div className="space-y-6 text-sm text-slate-700 bg-slate-50 p-5 rounded-xl border border-slate-100">
+                  <div className="grid grid-cols-2 gap-y-4 gap-x-6">
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Production</p>
+                      <p className="font-medium text-slate-900 mt-1">{productions.find(p => p.id === newForm.production_id)?.name || newForm.production_id}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Supplier</p>
+                      <p className="font-medium text-slate-900 mt-1">{newForm.supplier_name}</p>
+                      <p className="text-xs text-slate-500">{[newForm.street_name, newForm.city, newForm.zip_code].filter(Boolean).join(', ') || 'No address provided'}</p>
+                    </div>
+                    <div className="col-span-2">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</p>
+                      <p className="mt-1 whitespace-pre-wrap">{newForm.description || '—'}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Coding</p>
+                      <p className="mt-1">Account: <span className="font-mono">{newForm.account_code || '—'}</span></p>
+                      <p>Set: <span className="font-mono">{newForm.set_code || '—'}</span></p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Financials</p>
+                      <p className="mt-1">Net: {fmt(newForm.net_amount)}</p>
+                      <p>VAT: {fmt(newForm.vat)}</p>
+                      <p className="font-bold text-slate-900">Gross: {fmt(newForm.gross_amount)}</p>
+                      <p className="text-xs mt-1">Paid From: {PAID_FROM_LABEL[newForm.paid_from] || newForm.paid_from}</p>
+                    </div>
                   </div>
                 </div>
-                <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Paid From</label>
-                  <select
-                    value={newForm.paid_from}
-                    onChange={(e) => updateField('paid_from', e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                  >
-                    <option value="supplier_account">Supplier Account</option>
-                    <option value="arbuthnot_current_account">Arbuthnot Current Account</option>
-                    <option value="charge_card">Charge Card</option>
-                    <option value="pleo_charge_card">Pleo Charge Card</option>
-                  </select>
-                </div>
-              </div>
+              )}
 
               {formError && (
                 <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
@@ -1475,21 +1562,54 @@ export default function PurchaseOrdersPage() {
                 </div>
               )}
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50">
-              <button
-                onClick={() => setShowNewModal(false)}
-                className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
-              >
-                Cancel
-              </button>
-              <button
-                disabled={formLoading}
-                onClick={handleCreatePO}
-                className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
-              >
-                {formLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                Create PO
-              </button>
+            
+            <div className="flex items-center justify-between px-6 py-4 border-t border-slate-100 bg-slate-50">
+              <div>
+                {newStep > 1 && (
+                  <button
+                    onClick={() => setNewStep(s => (s - 1) as 1|2|3)}
+                    className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
+                  >
+                    Back
+                  </button>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button
+                  onClick={() => setShowNewModal(false)}
+                  className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
+                >
+                  Cancel
+                </button>
+                {newStep < 3 ? (
+                  <button
+                    onClick={() => {
+                      setFormError('');
+                      if (newStep === 1 && (!newForm.production_id || !newForm.supplier_name.trim())) {
+                        setFormError('Production and Supplier Name are required.');
+                        return;
+                      }
+                      if (newStep === 2 && (!newForm.net_amount || !newForm.gross_amount)) {
+                        setFormError('Net amount and Gross amount are required.');
+                        return;
+                      }
+                      setNewStep(s => (s + 1) as 1|2|3);
+                    }}
+                    className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                  >
+                    Next
+                  </button>
+                ) : (
+                  <button
+                    disabled={formLoading}
+                    onClick={handleCreatePO}
+                    className="flex items-center gap-2 px-5 py-2 text-sm bg-green-600 text-white rounded-lg hover:bg-green-700 transition-colors font-medium disabled:opacity-60"
+                  >
+                    {formLoading ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                    Create PO
+                  </button>
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -1766,6 +1886,85 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
 
+      {/* Supplier Overview Modal */}
+      {supplierOverviewModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setSupplierOverviewModal(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-lg">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <h2 className="text-slate-900 font-semibold text-base">Supplier Overview</h2>
+              <button onClick={() => setSupplierOverviewModal(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6">
+              <p className="text-sm text-slate-600">Quick snapshot for <strong>{supplierOverviewModal}</strong></p>
+              <div className="mt-4 p-4 bg-slate-50 rounded-lg border border-slate-100">
+                <p className="text-xs text-slate-500 mb-2">Total POs:</p>
+                <p className="font-semibold text-slate-900">{pos.filter(p => p.supplier_name === supplierOverviewModal).length}</p>
+                
+                <p className="text-xs text-slate-500 mt-4 mb-2">Total Spent (Gross):</p>
+                <p className="font-semibold text-slate-900">
+                  {fmt(pos.filter(p => p.supplier_name === supplierOverviewModal).reduce((acc, p) => acc + parseFloat(p.gross_amount), 0).toFixed(2))}
+                </p>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* View Full PO Modal */}
+      {viewFullPO && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setViewFullPO(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-slate-900 font-semibold text-base">Purchase Order {viewFullPO.po_number}</h2>
+                <p className="text-slate-400 text-xs mt-0.5">{viewFullPO.status.toUpperCase()}</p>
+              </div>
+              <button onClick={() => setViewFullPO(null)} className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="p-6 space-y-6 text-sm text-slate-700">
+              <div className="grid grid-cols-2 gap-y-4 gap-x-6 bg-slate-50 p-5 rounded-xl border border-slate-100">
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Production</p>
+                  <p className="font-medium text-slate-900 mt-1">{viewFullPO.prod_name || viewFullPO.production_id}</p>
+                  <p className="text-xs text-slate-500 mt-1">Date: {fmtDate(viewFullPO.date_of_po)}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Supplier</p>
+                  <p className="font-medium text-slate-900 mt-1">{viewFullPO.supplier_name}</p>
+                  {viewFullPO.supplier_address && <p className="text-xs text-slate-500">{viewFullPO.supplier_address}</p>}
+                </div>
+                <div className="col-span-2">
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</p>
+                  <p className="mt-1 whitespace-pre-wrap">{viewFullPO.description || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Coding</p>
+                  <p className="mt-1">Account: <span className="font-mono">{viewFullPO.account_code || '—'}</span></p>
+                  <p>Set: <span className="font-mono">{viewFullPO.set_code || '—'}</span></p>
+                </div>
+                <div>
+                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Financials</p>
+                  <p className="mt-1">Net: {fmt(viewFullPO.net_amount)}</p>
+                  <p>VAT: {fmt(viewFullPO.vat)}</p>
+                  <p className="font-bold text-slate-900">Gross: {fmt(viewFullPO.gross_amount)}</p>
+                  <p className="text-xs mt-1">Paid From: {PAID_FROM_LABEL[viewFullPO.paid_from] || viewFullPO.paid_from}</p>
+                </div>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
+              <button onClick={() => setViewFullPO(null)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">
+                Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }

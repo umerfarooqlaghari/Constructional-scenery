@@ -327,7 +327,8 @@ export default function TimesheetsPage() {
   const [sendingId, setSendingId]   = useState<string | null>(null);
   
   // Sorting state
-  const [sortConfig, setSortConfig] = useState<{ key: 'trade_rank' | 'status', direction: 'asc' | 'desc' } | null>(null);
+  type SortKey = 'name' | 'week_ending' | 'production' | 'trade_rank' | 'days_worked' | 'mon' | 'tue' | 'wed' | 'thu' | 'fri' | 'sat' | 'sun' | 'ot_hours' | 'ot_amount' | 'net_amount' | 'invoice' | 'status';
+  const [sortConfig, setSortConfig] = useState<{ key: SortKey, direction: 'asc' | 'desc' } | null>(null);
 
   // Load productions once
   useEffect(() => {
@@ -424,15 +425,65 @@ export default function TimesheetsPage() {
 
   const sortedSheets = [...filteredSheets].sort((a, b) => {
     if (!sortConfig) return 0;
-    let aVal = '';
-    let bVal = '';
+    let aVal: string | number = '';
+    let bVal: string | number = '';
 
-    if (sortConfig.key === 'trade_rank') {
-      aVal = `${a.crew_trade ?? ''} ${a.crew_rank ?? ''}`.toLowerCase();
-      bVal = `${b.crew_trade ?? ''} ${b.crew_rank ?? ''}`.toLowerCase();
-    } else if (sortConfig.key === 'status') {
-      aVal = a.status.toLowerCase();
-      bVal = b.status.toLowerCase();
+    const getAttendance = (ts: Timesheet, day: string) => {
+      if (!ts.attendance_days) return false;
+      const d = ts.attendance_days.find(x => x.day === day);
+      return d ? d.worked : false;
+    };
+
+    switch (sortConfig.key) {
+      case 'name':
+        aVal = `${a.first_name ?? ''} ${a.last_name ?? ''}`.toLowerCase();
+        bVal = `${b.first_name ?? ''} ${b.last_name ?? ''}`.toLowerCase();
+        break;
+      case 'week_ending':
+        aVal = a.week_ending_date;
+        bVal = b.week_ending_date;
+        break;
+      case 'production':
+        aVal = a.prod_name ?? '';
+        bVal = b.prod_name ?? '';
+        break;
+      case 'trade_rank':
+        aVal = `${a.crew_trade ?? ''} ${a.crew_rank ?? ''}`.toLowerCase();
+        bVal = `${b.crew_trade ?? ''} ${b.crew_rank ?? ''}`.toLowerCase();
+        break;
+      case 'days_worked':
+        aVal = a.days_worked ?? 0;
+        bVal = b.days_worked ?? 0;
+        break;
+      case 'mon': aVal = getAttendance(a, 'Monday') ? 1 : 0; bVal = getAttendance(b, 'Monday') ? 1 : 0; break;
+      case 'tue': aVal = getAttendance(a, 'Tuesday') ? 1 : 0; bVal = getAttendance(b, 'Tuesday') ? 1 : 0; break;
+      case 'wed': aVal = getAttendance(a, 'Wednesday') ? 1 : 0; bVal = getAttendance(b, 'Wednesday') ? 1 : 0; break;
+      case 'thu': aVal = getAttendance(a, 'Thursday') ? 1 : 0; bVal = getAttendance(b, 'Thursday') ? 1 : 0; break;
+      case 'fri': aVal = getAttendance(a, 'Friday') ? 1 : 0; bVal = getAttendance(b, 'Friday') ? 1 : 0; break;
+      case 'sat': aVal = getAttendance(a, 'Saturday') ? 1 : 0; bVal = getAttendance(b, 'Saturday') ? 1 : 0; break;
+      case 'sun': aVal = getAttendance(a, 'Sunday') ? 1 : 0; bVal = getAttendance(b, 'Sunday') ? 1 : 0; break;
+      case 'ot_hours':
+        aVal = a.overtime_hours_total ?? 0;
+        bVal = b.overtime_hours_total ?? 0;
+        break;
+      case 'ot_amount':
+        aVal = parseFloat(a.overtime_amount ?? '0');
+        bVal = parseFloat(b.overtime_amount ?? '0');
+        break;
+      case 'net_amount':
+        aVal = parseFloat(a.net_total_amount ?? a.gross_total ?? '0');
+        bVal = parseFloat(b.net_total_amount ?? b.gross_total ?? '0');
+        break;
+      case 'invoice':
+        aVal = hasInvoice(a) ? 1 : 0;
+        bVal = hasInvoice(b) ? 1 : 0;
+        break;
+      case 'status':
+        aVal = a.status.toLowerCase();
+        bVal = b.status.toLowerCase();
+        break;
+      default:
+        break;
     }
 
     if (aVal < bVal) return sortConfig.direction === 'asc' ? -1 : 1;
@@ -688,6 +739,28 @@ export default function TimesheetsPage() {
 
   const selectedProdName = productions.find(p => p.id === selectedProd)?.name ?? '';
 
+  const SortableHeader = ({ label, sortKey, align = 'left' }: { label: string; sortKey: SortKey; align?: 'left' | 'center' | 'right' }) => (
+    <th 
+      className={`px-3 py-3 text-xs font-semibold text-slate-500 cursor-pointer select-none hover:text-slate-700 transition-colors text-${align} whitespace-nowrap`}
+      onClick={() => {
+        setSortConfig(current => {
+          if (!current || current.key !== sortKey) return { key: sortKey, direction: 'asc' };
+          if (current.direction === 'asc') return { key: sortKey, direction: 'desc' };
+          return null;
+        });
+      }}
+    >
+      <div className={`flex items-center gap-1 ${align === 'center' ? 'justify-center' : align === 'right' ? 'justify-end' : ''}`}>
+        {label}
+        {sortConfig?.key === sortKey && (
+          <span className="text-slate-400">
+            {sortConfig.direction === 'asc' ? '↑' : '↓'}
+          </span>
+        )}
+      </div>
+    </th>
+  );
+
   return (
     <>
       {showNewTs && (
@@ -785,12 +858,11 @@ export default function TimesheetsPage() {
         </div>
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
           {[
             { label: 'Crew on Sheet',      value: loading ? null : crewOnSheet,                   sub: selectedProdName || 'this production' },
             { label: 'Invoices Received',  value: loading ? null : `${invoicesReceived} / ${crewOnSheet}`, sub: `${crewOnSheet - invoicesReceived} outstanding` },
             { label: 'Total Net',          value: loading ? null : `£${totalNet.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'non-draft timesheets' },
-            { label: 'Total Gross',        value: loading ? null : `£${totalGross.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`, sub: 'non-draft timesheets' },
           ].map(s => (
             <div key={s.label} className="bg-white rounded-xl border border-slate-200 px-5 py-4 shadow-sm">
               <p className="text-slate-500 text-xs font-medium">{s.label}</p>
@@ -882,64 +954,40 @@ export default function TimesheetsPage() {
             <table className="w-full text-sm min-w-[560px]">
               <thead>
                 <tr className="bg-slate-50 text-left">
-                  <th className="px-5 py-3 text-xs font-semibold text-slate-500 sticky left-0 bg-slate-50 z-10">Crew Member</th>
-                  <th 
-                    className="px-4 py-3 text-xs font-semibold text-slate-500 cursor-pointer select-none hover:text-slate-700 transition-colors"
-                    onClick={() => {
-                      setSortConfig(current => {
-                        if (!current || current.key !== 'trade_rank') return { key: 'trade_rank', direction: 'asc' };
-                        if (current.direction === 'asc') return { key: 'trade_rank', direction: 'desc' };
-                        return null;
-                      });
-                    }}
-                  >
-                    <div className="flex items-center gap-1">
-                      Trade / Rank
-                      {sortConfig?.key === 'trade_rank' && (
-                        <span className="text-slate-400">
-                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Total (Gross)</th>
-                  <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-center">Invoice</th>
-                  <th 
-                    className="px-4 py-3 text-xs font-semibold text-slate-500 cursor-pointer select-none hover:text-slate-700 transition-colors"
-                    onClick={() => {
-                      setSortConfig(current => {
-                        if (!current || current.key !== 'status') return { key: 'status', direction: 'asc' };
-                        if (current.direction === 'asc') return { key: 'status', direction: 'desc' };
-                        return null;
-                      });
-                    }}
-                  >
-                    <div className="flex items-center gap-1">
-                      Status
-                      {sortConfig?.key === 'status' && (
-                        <span className="text-slate-400">
-                          {sortConfig.direction === 'asc' ? '↑' : '↓'}
-                        </span>
-                      )}
-                    </div>
-                  </th>
-                  {canAct && <th className="px-4 py-3 text-xs font-semibold text-slate-500">Actions</th>}
+                  <SortableHeader label="Crew Member" sortKey="name" />
+                  <SortableHeader label="Week Ending" sortKey="week_ending" />
+                  <SortableHeader label="Production" sortKey="production" />
+                  <SortableHeader label="Trade / Rank" sortKey="trade_rank" />
+                  <SortableHeader label="Total Days" sortKey="days_worked" align="center" />
+                  <SortableHeader label="M" sortKey="mon" align="center" />
+                  <SortableHeader label="T" sortKey="tue" align="center" />
+                  <SortableHeader label="W" sortKey="wed" align="center" />
+                  <SortableHeader label="T" sortKey="thu" align="center" />
+                  <SortableHeader label="F" sortKey="fri" align="center" />
+                  <SortableHeader label="S" sortKey="sat" align="center" />
+                  <SortableHeader label="S" sortKey="sun" align="center" />
+                  <SortableHeader label="OT Hrs" sortKey="ot_hours" align="right" />
+                  <SortableHeader label="OT Amt" sortKey="ot_amount" align="right" />
+                  <SortableHeader label="Net Amt" sortKey="net_amount" align="right" />
+                  <SortableHeader label="Invoice" sortKey="invoice" align="center" />
+                  <SortableHeader label="Status" sortKey="status" />
+                  {canAct && <th className="px-3 py-3 text-xs font-semibold text-slate-500">Actions</th>}
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {loading ? (
                   Array.from({ length: 5 }).map((_, i) => (
                     <tr key={i}>
-                      {Array.from({ length: canAct ? 6 : 5 }).map((_, j) => (
-                        <td key={j} className="px-4 py-4">
-                          <div className="h-4 bg-slate-100 rounded animate-pulse w-24" />
+                      {Array.from({ length: canAct ? 18 : 17 }).map((_, j) => (
+                        <td key={j} className="px-3 py-4">
+                          <div className="h-4 bg-slate-100 rounded animate-pulse w-full" />
                         </td>
                       ))}
                     </tr>
                   ))
                 ) : sortedSheets.length === 0 ? (
                   <tr>
-                    <td colSpan={canAct ? 6 : 5} className="px-5 py-10 text-center text-slate-400 text-sm">
+                    <td colSpan={canAct ? 18 : 17} className="px-5 py-10 text-center text-slate-400 text-sm">
                       {sheets.length === 0 ? 'No timesheets found for this week and production.' : 'No timesheets match the current filters.'}
                     </td>
                   </tr>
@@ -956,18 +1004,30 @@ export default function TimesheetsPage() {
                     const fullName  = `${firstName} ${lastName}`.trim() || 'Unknown';
                     const isExpanded = expandedRows.has(ts.id);
 
-                    // Sub-amounts
-                    const otAmt      = parseFloat(ts.overtime_amount  ?? '0') || 0;
-                    const mileageAmt = parseFloat(ts.mileage_amount    ?? '0') || 0;
-                    const perDiemAmt = parseFloat(ts.per_diem_amount   ?? '0') || 0;
-                    const adHocAmt   = parseFloat(ts.ad_hoc_amount     ?? '0') || 0;
-                    const foodAmt    = parseFloat(ts.food_amount       ?? '0') || 0;
+                    const otHrs       = ts.overtime_hours_total ?? 0;
+                    const otAmt       = parseFloat(ts.overtime_amount  ?? '0') || 0;
+                    const netAmt      = parseFloat(ts.net_total_amount ?? ts.gross_total ?? '0') || 0;
+                    const mileageAmt  = parseFloat(ts.mileage_amount ?? '0') || 0;
+                    const perDiemAmt  = parseFloat(ts.per_diem_amount ?? '0') || 0;
+                    const adHocAmt    = parseFloat(ts.ad_hoc_amount ?? '0') || 0;
+                    const foodAmt     = parseFloat(ts.food_amount ?? '0') || 0;
                     const extrasTotal = otAmt + mileageAmt + perDiemAmt + adHocAmt + foodAmt;
-                    const hasSubAmounts = extrasTotal > 0 || ts.status !== 'draft';
-                    const colSpan = canAct ? 6 : 5;
+                    const colSpan     = canAct ? 18 : 17;
 
                     const fmtAmt = (n: number) =>
                       `£${n.toLocaleString('en-GB', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+                    
+                    const getDayWorked = (day: string) => {
+                      if (!ts.attendance_days) return false;
+                      const d = ts.attendance_days.find(x => x.day === day);
+                      return d ? d.worked : false;
+                    };
+                    
+                    const DayCell = ({ day }: { day: string }) => (
+                      <td className="px-3 py-3.5 text-center border-l border-slate-100">
+                        {getDayWorked(day) ? <span className="text-green-500 font-bold">✓</span> : <span className="text-slate-300">-</span>}
+                      </td>
+                    );
 
                     return (
                       <Fragment key={ts.id}>
@@ -997,27 +1057,43 @@ export default function TimesheetsPage() {
                               </div>
                             </div>
                           </td>
-                          <td className="px-4 py-3.5">
+                          <td className="px-3 py-3.5 text-slate-600 text-xs whitespace-nowrap">{ts.week_ending_date}</td>
+                          <td className="px-3 py-3.5 text-slate-600 text-xs">{ts.prod_name ?? selectedProdName ?? '—'}</td>
+                          <td className="px-3 py-3.5">
                             <p className="text-slate-600 text-xs">{ts.crew_trade ?? '—'}</p>
-                            {ts.crew_rank && <p className="text-slate-400 text-xs">{ts.crew_rank}</p>}
+                            {ts.crew_rank && <p className="text-slate-400 text-[10px]">{ts.crew_rank}</p>}
                           </td>
-                          <td className="px-4 py-3.5 text-right">
+                          <td className="px-3 py-3.5 text-center text-slate-900 font-medium text-xs">{ts.days_worked ?? 0}</td>
+                          <DayCell day="Monday" />
+                          <DayCell day="Tuesday" />
+                          <DayCell day="Wednesday" />
+                          <DayCell day="Thursday" />
+                          <DayCell day="Friday" />
+                          <DayCell day="Saturday" />
+                          <DayCell day="Sunday" />
+                          <td className="px-3 py-3.5 text-right text-slate-900 text-xs">{otHrs > 0 ? otHrs : '—'}</td>
+                          <td className="px-3 py-3.5 text-right text-slate-900 text-xs">{otAmt > 0 ? fmtAmt(otAmt) : '—'}</td>
+                          <td className="px-3 py-3.5 text-right">
                             <p className="text-slate-900 font-semibold text-sm">
-                              {grandTotalNum !== null ? fmtAmt(grandTotalNum) : '—'}
+                              {fmtAmt(netAmt)}
                             </p>
-                            {grossTotalNum !== null && grandTotalNum !== null && Math.abs(grandTotalNum - grossTotalNum) > 0.01 && (
-                              <p className="text-slate-400 text-[10px]">excl. VAT {fmtAmt(grossTotalNum)}</p>
-                            )}
                           </td>
-                          <td className="px-4 py-3.5 text-center">
+                          <td className="px-3 py-3.5 text-center">
                             {invoiced
                               ? <CheckCircle2 size={16} className="text-green-500 mx-auto" />
                               : <AlertCircle size={16} className="text-orange-400 mx-auto" />}
                           </td>
-                          <td className="px-4 py-3.5">
-                            <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badge.className}`}>
-                              {badge.label}
-                            </span>
+                          <td className="px-3 py-3.5">
+                            <div className="flex flex-col items-start gap-1">
+                              <span className={`text-xs px-2 py-0.5 rounded-full font-medium whitespace-nowrap ${badge.className}`}>
+                                {badge.label}
+                              </span>
+                              {ts.amended_at && (
+                                <span className="text-[10px] text-slate-400 italic whitespace-nowrap">
+                                  Amended {new Date(ts.amended_at).toLocaleDateString('en-GB', { day: 'numeric', month: 'short' })}
+                                </span>
+                              )}
+                            </div>
                           </td>
                           {canAct && (
                             <td className="px-4 py-3.5">
