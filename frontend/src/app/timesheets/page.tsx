@@ -59,6 +59,7 @@ const AVATAR_COLORS = [
 type TSBadgeDef = { label: string; className: string };
 const STATUS_BADGE: Record<TimesheetStatus, TSBadgeDef> = {
   draft:               { label: 'Draft',               className: 'bg-slate-100 text-slate-500' },
+  submitted:           { label: 'Submitted',           className: 'bg-indigo-100 text-indigo-700' },
   distributed:         { label: 'Distributed',         className: 'bg-blue-100 text-blue-700' },
   amendment_requested: { label: 'Amendment Requested', className: 'bg-amber-100 text-amber-700' },
   finalised:           { label: 'Finalised',           className: 'bg-green-100 text-green-700' },
