@@ -243,6 +243,78 @@ export default function PurchaseOrdersPage() {
   // Sets cache: production_id → sets
   const [setsCache, setSetsCache] = useState<Record<string, ProductionSet[]>>({});
 
+  // Quick Add Production & Supplier modals
+  const [showQuickProdModal, setShowQuickProdModal] = useState(false);
+  const [quickProdName, setQuickProdName] = useState('');
+  const [quickProdContractType, setQuickProdContractType] = useState<'cost_plus'|'on_a_price'>('cost_plus');
+  const [quickProdLoading, setQuickProdLoading] = useState(false);
+  const [quickProdError, setQuickProdError] = useState('');
+
+  const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
+  const [quickSupplierName, setQuickSupplierName] = useState('');
+  const [quickSupplierCode, setQuickSupplierCode] = useState('');
+  const [quickSupplierEmail, setQuickSupplierEmail] = useState('');
+  const [quickSupplierLoading, setQuickSupplierLoading] = useState(false);
+  const [quickSupplierError, setQuickSupplierError] = useState('');
+
+  const handleQuickAddProduction = async () => {
+    if (!quickProdName.trim()) {
+      setQuickProdError('Production name is required');
+      return;
+    }
+    setQuickProdLoading(true);
+    setQuickProdError('');
+    try {
+      const newProd = await productionsApi.create({
+        name: quickProdName.trim(),
+        contract_type: quickProdContractType,
+        status: 'pre_production',
+      });
+      setProductions(prev => [newProd, ...prev]);
+      updateField('production_id', newProd.id);
+      updateField('set_code', '');
+      loadSetsForProduction(newProd.id);
+      setShowQuickProdModal(false);
+      setQuickProdName('');
+    } catch (err: unknown) {
+      setQuickProdError(err instanceof Error ? err.message : 'Failed to add production');
+    } finally {
+      setQuickProdLoading(false);
+    }
+  };
+
+  const handleQuickAddSupplier = async () => {
+    if (!quickSupplierName.trim()) {
+      setQuickSupplierError('Supplier name is required');
+      return;
+    }
+    setQuickSupplierLoading(true);
+    setQuickSupplierError('');
+    try {
+      const sName = quickSupplierName.trim();
+      await supplierCatalogueApi.create({
+        supplier_name: sName,
+        product_description: 'General Supply',
+        unit_of_measure: 'item',
+        unit_price: 0,
+      });
+      if (!suppliers.includes(sName)) {
+        setSuppliers(prev => [...prev, sName].sort());
+      }
+      updateField('supplier_name', sName);
+      if (quickSupplierCode.trim()) updateField('supplier_code', quickSupplierCode.trim());
+      if (quickSupplierEmail.trim()) updateField('supplier_email', quickSupplierEmail.trim());
+      setShowQuickSupplierModal(false);
+      setQuickSupplierName('');
+      setQuickSupplierCode('');
+      setQuickSupplierEmail('');
+    } catch (err: unknown) {
+      setQuickSupplierError(err instanceof Error ? err.message : 'Failed to add supplier');
+    } finally {
+      setQuickSupplierLoading(false);
+    }
+  };
+
   const loadSetsForProduction = async (productionId: string) => {
     if (!productionId || setsCache[productionId]) return;
     try {
@@ -1301,7 +1373,18 @@ export default function PurchaseOrdersPage() {
                   <div className="space-y-3">
                     <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Production Details</h3>
                     <div>
-                      <label className="block text-xs font-medium text-slate-600 mb-1">Production <span className="text-red-500">*</span></label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="block text-xs font-medium text-slate-600">Production <span className="text-red-500">*</span></label>
+                        {(isMD || isAccountant || isCoordinator) && (
+                          <button
+                            type="button"
+                            onClick={() => { setQuickProdError(''); setShowQuickProdModal(true); }}
+                            className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
+                          >
+                            <Plus size={12} /> Add New Production
+                          </button>
+                        )}
+                      </div>
                       <select
                         value={newForm.production_id}
                         onChange={(e) => { updateField('production_id', e.target.value); updateField('set_code', ''); loadSetsForProduction(e.target.value); }}
@@ -1320,7 +1403,18 @@ export default function PurchaseOrdersPage() {
                     <h3 className="text-slate-700 text-xs font-semibold uppercase tracking-wide">Supplier Details</h3>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="block text-xs font-medium text-slate-600">Supplier Name <span className="text-red-500">*</span></label>
+                          {(isMD || isAccountant || isCoordinator) && (
+                            <button
+                              type="button"
+                              onClick={() => { setQuickSupplierError(''); setShowQuickSupplierModal(true); }}
+                              className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1 cursor-pointer"
+                            >
+                              <Plus size={12} /> Add New Supplier
+                            </button>
+                          )}
+                        </div>
                         <select
                           value={newForm.supplier_name}
                           onChange={(e) => updateField('supplier_name', e.target.value)}
@@ -1960,6 +2054,141 @@ export default function PurchaseOrdersPage() {
             <div className="px-6 py-4 border-t border-slate-100 bg-slate-50 flex justify-end">
               <button onClick={() => setViewFullPO(null)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">
                 Close
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Production Modal */}
+      {showQuickProdModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!quickProdLoading) setShowQuickProdModal(false); }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-slate-900 font-semibold text-base">Add New Production</h3>
+              <button onClick={() => setShowQuickProdModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            {quickProdError && (
+              <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg p-2.5">
+                <AlertCircle size={14} />
+                {quickProdError}
+              </div>
+            )}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Production Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={quickProdName}
+                  onChange={(e) => setQuickProdName(e.target.value)}
+                  placeholder="e.g. Star Wars: Season 2"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Contract Type</label>
+                <select
+                  value={quickProdContractType}
+                  onChange={(e) => setQuickProdContractType(e.target.value as 'cost_plus'|'on_a_price')}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none bg-white"
+                >
+                  <option value="cost_plus">Cost Plus</option>
+                  <option value="on_a_price">On a Price</option>
+                </select>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowQuickProdModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={quickProdLoading}
+                onClick={handleQuickAddProduction}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {quickProdLoading && <Loader2 className="animate-spin" size={14} />}
+                Save Production
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Quick Add Supplier Modal */}
+      {showQuickSupplierModal && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!quickSupplierLoading) setShowQuickSupplierModal(false); }} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <h3 className="text-slate-900 font-semibold text-base">Add New Supplier</h3>
+              <button onClick={() => setShowQuickSupplierModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X size={18} />
+              </button>
+            </div>
+            {quickSupplierError && (
+              <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg p-2.5">
+                <AlertCircle size={14} />
+                {quickSupplierError}
+              </div>
+            )}
+            <div className="space-y-3">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
+                <input
+                  type="text"
+                  value={quickSupplierName}
+                  onChange={(e) => setQuickSupplierName(e.target.value)}
+                  placeholder="e.g. Travis Perkins"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
+                  <input
+                    type="text"
+                    value={quickSupplierCode}
+                    onChange={(e) => setQuickSupplierCode(e.target.value)}
+                    placeholder="e.g. SUP-99"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
+                  <input
+                    type="email"
+                    value={quickSupplierEmail}
+                    onChange={(e) => setQuickSupplierEmail(e.target.value)}
+                    placeholder="orders@supplier.com"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none"
+                  />
+                </div>
+              </div>
+            </div>
+            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
+              <button
+                type="button"
+                onClick={() => setShowQuickSupplierModal(false)}
+                className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={quickSupplierLoading}
+                onClick={handleQuickAddSupplier}
+                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium flex items-center gap-1.5 disabled:opacity-60"
+              >
+                {quickSupplierLoading && <Loader2 className="animate-spin" size={14} />}
+                Save Supplier
               </button>
             </div>
           </div>

@@ -20,6 +20,7 @@
       "GET /api/dashboard/forecast-variance",
 
       "GET /api/productions",
+      "POST /api/productions",
       "GET /api/productions/:id",
       "GET /api/productions/:id/sets",
       "GET /api/productions/:id/documents",
@@ -181,6 +182,7 @@
       "POST /api/purchase-orders/:id/approve",
 
       "GET /api/productions",
+      "POST /api/productions",
       "GET /api/productions/:id",
       "GET /api/productions/:id/sets",
       "GET /api/productions/:id/documents",
