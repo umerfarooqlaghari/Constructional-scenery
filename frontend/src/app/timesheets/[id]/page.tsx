@@ -291,8 +291,8 @@ export default function TimesheetDetailPage() {
   const saturdayPay   = satWorked ? dailyRate * 1.5 : 0;
   const sundayPay     = sunWorked ? dailyRate * 2.0  : 0;
   const overtimeAmount = totalOTHours * otRate;
-  const netTotalAmount = overtimeAmount + travelTotal + mileageTotal + perDiemTotal + adHocTotal + foodTotal;
-  const grossTotal    = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal + mileageTotal + perDiemTotal + adHocTotal;
+  const netTotalAmount = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal + mileageTotal + perDiemTotal + adHocTotal;
+  const grossTotal    = netTotalAmount;
   const vat           = vatRegistered ? grossTotal * 0.20 : 0;
   const grandTotal    = grossTotal + vat;
   const hasTotals     = dailyRate > 0; // show totals as soon as we have a rate

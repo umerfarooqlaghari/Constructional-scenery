@@ -59,10 +59,18 @@ const enrichTimesheetSummary = (ts, entries = []) => {
     per_diem_total:       toAmount(ts.per_diem_total),
     ad_hoc_total:         toAmount(ts.ad_hoc_total),
     food_total:           toAmount(ts.food_total),
+    days_worked:          toAmount(ts.days_worked),
   };
+  const dailyRate      = toAmount(ts.daily_rate);
   const overtimeRate   = toAmount(ts.overtime_rate);
-  const overtimeAmount = source.overtime_hours_total * overtimeRate;
-  const netTotalAmount = overtimeAmount + source.travel_total + source.mileage_total + source.per_diem_total + source.ad_hoc_total + source.food_total;
+
+  const weeklyRate     = toAmount(ts.weekly_rate) || (dailyRate * source.days_worked);
+  const sixthDayPay    = toAmount(ts.sixth_day_payment);
+  const seventhDayPay  = toAmount(ts.seventh_day_payment);
+  const overtimeAmount = toAmount(ts.overtime_amount) || (source.overtime_hours_total * overtimeRate);
+
+  const calculatedNet  = weeklyRate + sixthDayPay + seventhDayPay + overtimeAmount + source.travel_total + source.mileage_total + source.per_diem_total + source.ad_hoc_total + source.food_total;
+  const netTotalAmount = toAmount(ts.gross_total) || calculatedNet;
 
   return {
     ...ts,
