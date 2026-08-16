@@ -1008,11 +1008,12 @@ export default function TimesheetsPage() {
                     const otHrs       = ts.overtime_hours_total ?? 0;
                     const otAmt       = parseFloat(ts.overtime_amount  ?? '0') || 0;
                     const netAmt      = parseFloat(ts.net_total_amount ?? ts.gross_total ?? '0') || 0;
+                    const travelAmt   = parseFloat(ts.travel_amount ?? '0') || 0;
                     const mileageAmt  = parseFloat(ts.mileage_amount ?? '0') || 0;
                     const perDiemAmt  = parseFloat(ts.per_diem_amount ?? '0') || 0;
                     const adHocAmt    = parseFloat(ts.ad_hoc_amount ?? '0') || 0;
                     const foodAmt     = parseFloat(ts.food_amount ?? '0') || 0;
-                    const extrasTotal = otAmt + mileageAmt + perDiemAmt + adHocAmt + foodAmt;
+                    const extrasTotal = otAmt + travelAmt + mileageAmt + perDiemAmt + adHocAmt + foodAmt;
                     const colSpan     = canAct ? 18 : 17;
 
                     const fmtAmt = (n: number) =>

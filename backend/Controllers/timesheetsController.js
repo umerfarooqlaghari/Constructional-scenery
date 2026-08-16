@@ -28,6 +28,7 @@ const toAmount = (value) => {
 
 const summarizeTimesheetEntries = (entries = []) => entries.reduce((summary, entry) => {
   summary.overtime_hours_total += toAmount(entry.overtime_hours);
+  summary.travel_total         += toAmount(entry.travel);
   summary.mileage_total        += toAmount(entry.mileage);
   summary.per_diem_total       += toAmount(entry.per_diem);
   summary.ad_hoc_total         += toAmount(entry.ad_hoc_reimbursement);
@@ -42,6 +43,7 @@ const summarizeTimesheetEntries = (entries = []) => entries.reduce((summary, ent
   return summary;
 }, {
   overtime_hours_total: 0,
+  travel_total: 0,
   mileage_total: 0,
   per_diem_total: 0,
   ad_hoc_total: 0,
@@ -52,6 +54,7 @@ const summarizeTimesheetEntries = (entries = []) => entries.reduce((summary, ent
 const enrichTimesheetSummary = (ts, entries = []) => {
   const source = entries.length ? summarizeTimesheetEntries(entries) : {
     overtime_hours_total: toAmount(ts.overtime_hours_total),
+    travel_total:         toAmount(ts.travel_total),
     mileage_total:        toAmount(ts.mileage_total),
     per_diem_total:       toAmount(ts.per_diem_total),
     ad_hoc_total:         toAmount(ts.ad_hoc_total),
@@ -59,12 +62,13 @@ const enrichTimesheetSummary = (ts, entries = []) => {
   };
   const overtimeRate   = toAmount(ts.overtime_rate);
   const overtimeAmount = source.overtime_hours_total * overtimeRate;
-  const netTotalAmount = overtimeAmount + source.mileage_total + source.per_diem_total + source.ad_hoc_total + source.food_total;
+  const netTotalAmount = overtimeAmount + source.travel_total + source.mileage_total + source.per_diem_total + source.ad_hoc_total + source.food_total;
 
   return {
     ...ts,
     overtime_hours_total: source.overtime_hours_total.toFixed(2),
     overtime_amount:      overtimeAmount.toFixed(2),
+    travel_amount:        source.travel_total.toFixed(2),
     mileage_amount:       source.mileage_total.toFixed(2),
     per_diem_amount:      source.per_diem_total.toFixed(2),
     ad_hoc_amount:        source.ad_hoc_total.toFixed(2),
@@ -177,6 +181,7 @@ const getAllTimesheets = async (req, res) => {
          SELECT te.timesheet_id,
                 COALESCE(SUM(te.overtime_hours), 0) AS overtime_hours_total,
                 COUNT(*) FILTER (WHERE te.full_day_worked = true) AS days_worked,
+                COALESCE(SUM(te.travel), 0)         AS travel_total,
                 COALESCE(SUM(te.mileage), 0)        AS mileage_total,
                 COALESCE(SUM(te.per_diem), 0)       AS per_diem_total,
                 COALESCE(SUM(te.ad_hoc_reimbursement), 0) AS ad_hoc_total,

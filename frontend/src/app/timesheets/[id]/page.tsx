@@ -291,7 +291,7 @@ export default function TimesheetDetailPage() {
   const saturdayPay   = satWorked ? dailyRate * 1.5 : 0;
   const sundayPay     = sunWorked ? dailyRate * 2.0  : 0;
   const overtimeAmount = totalOTHours * otRate;
-  const netTotalAmount = overtimeAmount + mileageTotal + perDiemTotal + adHocTotal + foodTotal;
+  const netTotalAmount = overtimeAmount + travelTotal + mileageTotal + perDiemTotal + adHocTotal + foodTotal;
   const grossTotal    = weeklyRate + saturdayPay + sundayPay + overtimeAmount + mealTotal + travelTotal + mileageTotal + perDiemTotal + adHocTotal;
   const vat           = vatRegistered ? grossTotal * 0.20 : 0;
   const grandTotal    = grossTotal + vat;
@@ -596,11 +596,15 @@ export default function TimesheetDetailPage() {
 
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
           <h2 className="text-slate-900 font-semibold text-sm mb-4">Net Amount Summary</h2>
-          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-4">
+          <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-7 gap-4">
             <div>
               <p className="text-slate-400 text-xs mb-0.5">OT Amount</p>
               <p className="text-slate-900 font-semibold">{fmtGBP(overtimeAmount)}</p>
               <p className="text-slate-400 text-[10px]">{totalOTHours}h × {fmtGBP(otRate)}</p>
+            </div>
+            <div>
+              <p className="text-slate-400 text-xs mb-0.5">Travel Amount</p>
+              <p className="text-slate-900 font-semibold">{fmtGBP(travelTotal)}</p>
             </div>
             <div>
               <p className="text-slate-400 text-xs mb-0.5">Mileage Amount</p>

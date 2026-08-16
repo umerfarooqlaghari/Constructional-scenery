@@ -387,6 +387,7 @@ export type Timesheet = {
   gross_total?: string | null;
   net_total_amount?: string | null;
   overtime_amount?: string | null;
+  travel_amount?: string | null;
   mileage_amount?: string | null;
   per_diem_amount?: string | null;
   ad_hoc_amount?: string | null;
