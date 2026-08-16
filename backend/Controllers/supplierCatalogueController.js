@@ -145,19 +145,32 @@ const importCSV = async (req, res) => {
   if (!records.length)
     return res.status(400).json({ error: 'CSV is empty' });
 
-  const missingCols = REQUIRED_COLS.filter(c => !Object.keys(records[0]).includes(c));
-  if (missingCols.length)
-    return res.status(400).json({ error: `CSV missing required columns: ${missingCols.join(', ')}` });
+  // Flexible column mapper helper
+  const getCol = (row, candidates) => {
+    for (const name of candidates) {
+      const key = Object.keys(row).find(k => k.trim().toLowerCase() === name.toLowerCase());
+      if (key && row[key] !== undefined && row[key] !== null) return String(row[key]);
+    }
+    return '';
+  };
 
   // Validate every row before touching the DB
   const errors = [];
-  records.forEach((row, idx) => {
+  const parsedRows = records.map((row, idx) => {
     const rowNum = idx + 2; // +2 because row 1 is header
-    if (!row['Supplier Name']?.trim())        errors.push({ row: rowNum, field: 'Supplier Name',       message: 'required' });
-    if (!row['Product Description']?.trim())  errors.push({ row: rowNum, field: 'Product Description', message: 'required' });
-    if (!row['Unit of Measure']?.trim())      errors.push({ row: rowNum, field: 'Unit of Measure',     message: 'required' });
-    const price = parseFloat(row['Unit Price']);
-    if (isNaN(price) || price < 0)            errors.push({ row: rowNum, field: 'Unit Price',          message: 'must be a non-negative number' });
+    const supplier_name = getCol(row, ['Supplier Name', 'supplier_name', 'Supplier', 'Vendor']).trim();
+    const product_description = getCol(row, ['Product Description', 'product_description', 'Description', 'Product', 'Item']).trim();
+    const unit_of_measure = getCol(row, ['Unit of Measure', 'unit_of_measure', 'Unit', 'UOM', 'Measure']).trim();
+    const priceRaw = getCol(row, ['Unit Price', 'unit_price', 'Price', 'Cost', 'Rate']).trim();
+    const notes = getCol(row, ['Notes', 'notes', 'Note', 'Comments', 'Comment']).trim();
+
+    if (!supplier_name)       errors.push({ row: rowNum, field: 'Supplier Name',       message: 'required' });
+    if (!product_description) errors.push({ row: rowNum, field: 'Product Description', message: 'required' });
+    if (!unit_of_measure)     errors.push({ row: rowNum, field: 'Unit of Measure',     message: 'required' });
+    const price = parseFloat(priceRaw);
+    if (!priceRaw || isNaN(price) || price < 0) errors.push({ row: rowNum, field: 'Unit Price', message: 'must be a non-negative number' });
+
+    return { supplier_name, product_description, unit_of_measure, unit_price: price, notes: notes || null };
   });
 
   if (errors.length) return res.status(422).json({ errors });
@@ -165,22 +178,16 @@ const importCSV = async (req, res) => {
   const client = await db.connect();
   try {
     await client.query('BEGIN');
-    for (const row of records) {
+    for (const r of parsedRows) {
       await client.query(
         `INSERT INTO supplier_catalogue
            (supplier_name, product_description, unit_of_measure, unit_price, notes)
          VALUES ($1,$2,$3,$4,$5)`,
-        [
-          row['Supplier Name'].trim(),
-          row['Product Description'].trim(),
-          row['Unit of Measure'].trim(),
-          parseFloat(row['Unit Price']),
-          row['Notes']?.trim() || null,
-        ]
+        [r.supplier_name, r.product_description, r.unit_of_measure, r.unit_price, r.notes]
       );
     }
     await client.query('COMMIT');
-    res.status(201).json({ imported: records.length });
+    res.status(201).json({ imported: parsedRows.length });
   } catch (err) {
     await client.query('ROLLBACK');
     console.error('importCSV:', err);

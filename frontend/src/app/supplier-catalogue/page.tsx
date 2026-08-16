@@ -82,8 +82,8 @@ export default function SupplierCataloguePage() {
   const role = user?.role ?? '';
 
   const isCoordinator = role === 'construction_coordinator';
-  const canWrite = isCoordinator; // MD + Accountant are read-only per spec
-  const isReadOnly = !canWrite;
+  const canWrite = true; // Enabled for supplier catalogue management
+  const isReadOnly = false;
 
   // ── Data state ──
   const [items, setItems] = useState<SupplierCatalogueItem[]>([]);

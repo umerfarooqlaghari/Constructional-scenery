@@ -94,6 +94,10 @@
       "GET /api/supplier-catalogue",
       "GET /api/supplier-catalogue/suppliers",
       "GET /api/supplier-catalogue/template",
+      "POST /api/supplier-catalogue",
+      "PATCH /api/supplier-catalogue/:id",
+      "DELETE /api/supplier-catalogue/:id",
+      "POST /api/supplier-catalogue/import",
 
       "GET /api/settings",
       "PATCH /api/settings/:key"
@@ -206,6 +210,10 @@
       "GET /api/supplier-catalogue",
       "GET /api/supplier-catalogue/suppliers",
       "GET /api/supplier-catalogue/template",
+      "POST /api/supplier-catalogue",
+      "PATCH /api/supplier-catalogue/:id",
+      "DELETE /api/supplier-catalogue/:id",
+      "POST /api/supplier-catalogue/import",
 
       "GET /api/percentometer/ratios",
       "POST /api/percentometer/calculate",
