@@ -35,6 +35,17 @@ export class EnsureAllModuleColumns1786900000000 implements MigrationInterface {
         ADD COLUMN IF NOT EXISTS rate_type      TEXT DEFAULT 'bectu'
     `);
 
+    // 5. Purchase orders extra columns
+    await queryRunner.query(`
+      ALTER TABLE purchase_orders
+        ADD COLUMN IF NOT EXISTS supplier_code TEXT,
+        ADD COLUMN IF NOT EXISTS street_name   TEXT,
+        ADD COLUMN IF NOT EXISTS zip_code      TEXT,
+        ADD COLUMN IF NOT EXISTS city          TEXT,
+        ADD COLUMN IF NOT EXISTS county        TEXT,
+        ADD COLUMN IF NOT EXISTS department    TEXT
+    `);
+
     // Backfill effective_from if null
     await queryRunner.query(`
       UPDATE bectu_rates
@@ -44,6 +55,15 @@ export class EnsureAllModuleColumns1786900000000 implements MigrationInterface {
   }
 
   async down(queryRunner: QueryRunner): Promise<void> {
+    await queryRunner.query(`
+      ALTER TABLE purchase_orders
+        DROP COLUMN IF EXISTS department,
+        DROP COLUMN IF EXISTS county,
+        DROP COLUMN IF EXISTS city,
+        DROP COLUMN IF EXISTS zip_code,
+        DROP COLUMN IF EXISTS street_name,
+        DROP COLUMN IF EXISTS supplier_code
+    `);
     await queryRunner.query(`
       ALTER TABLE bectu_rates
         DROP COLUMN IF EXISTS rate_type,
