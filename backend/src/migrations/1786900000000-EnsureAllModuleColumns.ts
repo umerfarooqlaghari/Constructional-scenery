@@ -46,6 +46,14 @@ export class EnsureAllModuleColumns1786900000000 implements MigrationInterface {
         ADD COLUMN IF NOT EXISTS department    TEXT
     `);
 
+    // 6. Production documents extra columns
+    await queryRunner.query(`
+      ALTER TABLE production_documents
+        ADD COLUMN IF NOT EXISTS file_key       TEXT,
+        ADD COLUMN IF NOT EXISTS file_mime_type TEXT,
+        ADD COLUMN IF NOT EXISTS file_size      BIGINT
+    `);
+
     // Backfill effective_from if null
     await queryRunner.query(`
       UPDATE bectu_rates
