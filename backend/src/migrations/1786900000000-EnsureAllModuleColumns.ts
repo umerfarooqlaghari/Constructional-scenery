@@ -54,6 +54,12 @@ export class EnsureAllModuleColumns1786900000000 implements MigrationInterface {
         ADD COLUMN IF NOT EXISTS file_size      BIGINT
     `);
 
+    // 7. Productions extra columns
+    await queryRunner.query(`
+      ALTER TABLE productions
+        ADD COLUMN IF NOT EXISTS rollback_notice TEXT
+    `);
+
     // Backfill effective_from if null
     await queryRunner.query(`
       UPDATE bectu_rates
