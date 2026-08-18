@@ -11,6 +11,8 @@ import {
   type POStatus,
   type Production,
   type ProductionSet,
+  type ContractType,
+  type ProductionStatus,
 } from '@/lib/api';
 import {
   Plus,
@@ -245,69 +247,121 @@ export default function PurchaseOrdersPage() {
 
   // Quick Add Production & Supplier modals
   const [showQuickProdModal, setShowQuickProdModal] = useState(false);
-  const [quickProdName, setQuickProdName] = useState('');
-  const [quickProdContractType, setQuickProdContractType] = useState<'cost_plus'|'on_a_price'>('cost_plus');
+  const [quickProdForm, setQuickProdForm] = useState({
+    name: '',
+    production_company: '',
+    production_designer: '',
+    production_type: '',
+    start_date: '',
+    end_date: '',
+    contract_type: '' as ContractType | '',
+    status: 'pre_production' as ProductionStatus,
+  });
   const [quickProdLoading, setQuickProdLoading] = useState(false);
   const [quickProdError, setQuickProdError] = useState('');
 
   const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
-  const [quickSupplierName, setQuickSupplierName] = useState('');
-  const [quickSupplierCode, setQuickSupplierCode] = useState('');
-  const [quickSupplierEmail, setQuickSupplierEmail] = useState('');
+  const [quickSupplierForm, setQuickSupplierForm] = useState({
+    supplier_name: '',
+    product_description: '',
+    unit_of_measure: '',
+    unit_price: '',
+    notes: '',
+  });
   const [quickSupplierLoading, setQuickSupplierLoading] = useState(false);
   const [quickSupplierError, setQuickSupplierError] = useState('');
 
-  const handleQuickAddProduction = async () => {
-    if (!quickProdName.trim()) {
-      setQuickProdError('Production name is required');
+  const handleQuickAddProduction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!quickProdForm.name.trim()) {
+      setQuickProdError('Production name is required.');
       return;
     }
+    if (!quickProdForm.contract_type) {
+      setQuickProdError('Please select a contract type.');
+      return;
+    }
+    if (quickProdForm.start_date && quickProdForm.end_date && new Date(quickProdForm.end_date) < new Date(quickProdForm.start_date)) {
+      setQuickProdError('End date cannot be before start date.');
+      return;
+    }
+
     setQuickProdLoading(true);
     setQuickProdError('');
     try {
       const newProd = await productionsApi.create({
-        name: quickProdName.trim(),
-        contract_type: quickProdContractType,
-        status: 'pre_production',
+        name: quickProdForm.name.trim(),
+        contract_type: quickProdForm.contract_type as ContractType,
+        status: quickProdForm.status,
+        start_date: quickProdForm.start_date || null,
+        end_date: quickProdForm.end_date || null,
+        production_company: quickProdForm.production_company.trim() || null,
+        production_designer: quickProdForm.production_designer.trim() || null,
+        production_type: quickProdForm.production_type.trim() || null,
       });
       setProductions(prev => [newProd, ...prev]);
-      updateField('production_id', newProd.id);
-      updateField('set_code', '');
+      if (editPO) {
+        setEditForm(f => ({ ...f, production_id: newProd.id, set_code: '' }));
+      } else {
+        updateField('production_id', newProd.id);
+        updateField('set_code', '');
+      }
       loadSetsForProduction(newProd.id);
       setShowQuickProdModal(false);
-      setQuickProdName('');
+      setQuickProdForm({
+        name: '',
+        production_company: '',
+        production_designer: '',
+        production_type: '',
+        start_date: '',
+        end_date: '',
+        contract_type: '',
+        status: 'pre_production',
+      });
     } catch (err: unknown) {
-      setQuickProdError(err instanceof Error ? err.message : 'Failed to add production');
+      setQuickProdError(err instanceof Error ? err.message : 'Failed to create production');
     } finally {
       setQuickProdLoading(false);
     }
   };
 
-  const handleQuickAddSupplier = async () => {
-    if (!quickSupplierName.trim()) {
-      setQuickSupplierError('Supplier name is required');
+  const handleQuickAddSupplier = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const sName = quickSupplierForm.supplier_name.trim();
+    if (!sName) { setQuickSupplierError('Supplier name is required.'); return; }
+    if (!quickSupplierForm.product_description.trim()) { setQuickSupplierError('Product description is required.'); return; }
+    if (!quickSupplierForm.unit_of_measure.trim()) { setQuickSupplierError('Unit of measure is required.'); return; }
+    if (!quickSupplierForm.unit_price || isNaN(parseFloat(quickSupplierForm.unit_price)) || parseFloat(quickSupplierForm.unit_price) < 0) {
+      setQuickSupplierError('A valid unit price is required.');
       return;
     }
+
     setQuickSupplierLoading(true);
     setQuickSupplierError('');
     try {
-      const sName = quickSupplierName.trim();
       await supplierCatalogueApi.create({
         supplier_name: sName,
-        product_description: 'General Supply',
-        unit_of_measure: 'item',
-        unit_price: 0,
+        product_description: quickSupplierForm.product_description.trim(),
+        unit_of_measure: quickSupplierForm.unit_of_measure.trim(),
+        unit_price: parseFloat(quickSupplierForm.unit_price),
+        notes: quickSupplierForm.notes.trim() || null,
       });
       if (!suppliers.includes(sName)) {
         setSuppliers(prev => [...prev, sName].sort());
       }
-      updateField('supplier_name', sName);
-      if (quickSupplierCode.trim()) updateField('supplier_code', quickSupplierCode.trim());
-      if (quickSupplierEmail.trim()) updateField('supplier_email', quickSupplierEmail.trim());
+      if (editPO) {
+        setEditForm(f => ({ ...f, supplier_name: sName }));
+      } else {
+        updateField('supplier_name', sName);
+      }
       setShowQuickSupplierModal(false);
-      setQuickSupplierName('');
-      setQuickSupplierCode('');
-      setQuickSupplierEmail('');
+      setQuickSupplierForm({
+        supplier_name: '',
+        product_description: '',
+        unit_of_measure: '',
+        unit_price: '',
+        notes: '',
+      });
     } catch (err: unknown) {
       setQuickSupplierError(err instanceof Error ? err.message : 'Failed to add supplier');
     } finally {
@@ -2062,135 +2116,229 @@ export default function PurchaseOrdersPage() {
 
       {/* Quick Add Production Modal */}
       {showQuickProdModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!quickProdLoading) setShowQuickProdModal(false); }} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-slate-900 font-semibold text-base">Add New Production</h3>
-              <button onClick={() => setShowQuickProdModal(false)} className="text-slate-400 hover:text-slate-600">
-                <X size={18} />
-              </button>
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={() => { if (!quickProdLoading) setShowQuickProdModal(false); }}>
+          <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[92vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-5 py-3 border-b border-slate-100 flex-shrink-0">
+              <h2 className="text-slate-900 font-semibold text-sm">New Production</h2>
+              <button onClick={() => setShowQuickProdModal(false)} className="text-slate-400 hover:text-slate-600 transition-colors"><X size={16} /></button>
             </div>
-            {quickProdError && (
-              <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg p-2.5">
-                <AlertCircle size={14} />
-                {quickProdError}
-              </div>
-            )}
-            <div className="space-y-3">
+            <form onSubmit={handleQuickAddProduction} className="px-5 py-4 space-y-3 overflow-y-auto flex-1">
+              {quickProdError && <p className="text-red-600 text-xs bg-red-50 rounded-lg px-3 py-2">{quickProdError}</p>}
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Production Name <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Production Name *</label>
                 <input
-                  type="text"
-                  value={quickProdName}
-                  onChange={(e) => setQuickProdName(e.target.value)}
-                  placeholder="e.g. Star Wars: Season 2"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  placeholder="e.g. Meridian"
+                  value={quickProdForm.name}
+                  onChange={(e) => setQuickProdForm(f => ({ ...f, name: e.target.value }))}
                 />
               </div>
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Contract Type</label>
-                <select
-                  value={quickProdContractType}
-                  onChange={(e) => setQuickProdContractType(e.target.value as 'cost_plus'|'on_a_price')}
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none bg-white"
-                >
-                  <option value="cost_plus">Cost Plus</option>
-                  <option value="on_a_price">On a Price</option>
-                </select>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Production Company</label>
+                  <input
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. Lionsgate UK"
+                    value={quickProdForm.production_company}
+                    onChange={(e) => setQuickProdForm(f => ({ ...f, production_company: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Production Designer</label>
+                  <input
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. Helena Portman"
+                    value={quickProdForm.production_designer}
+                    onChange={(e) => setQuickProdForm(f => ({ ...f, production_designer: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Production Type</label>
+                  <input
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="e.g. Feature Film"
+                    value={quickProdForm.production_type}
+                    onChange={(e) => setQuickProdForm(f => ({ ...f, production_type: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Initial Status</label>
+                  <select
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
+                    value={quickProdForm.status}
+                    onChange={(e) => setQuickProdForm(f => ({ ...f, status: e.target.value as ProductionStatus }))}
+                  >
+                    <option value="pre_production">Pre-Production</option>
+                    <option value="active_build">Active Build</option>
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Start Date</label>
+                  <input
+                    type="date"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={quickProdForm.start_date}
+                    onChange={(e) => setQuickProdForm(f => ({ ...f, start_date: e.target.value }))}
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">End Date</label>
+                  <input
+                    type="date"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    value={quickProdForm.end_date}
+                    onChange={(e) => setQuickProdForm(f => ({ ...f, end_date: e.target.value }))}
+                  />
+                </div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowQuickProdModal(false)}
-                className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={quickProdLoading}
-                onClick={handleQuickAddProduction}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium flex items-center gap-1.5 disabled:opacity-60"
-              >
-                {quickProdLoading && <Loader2 className="animate-spin" size={14} />}
-                Save Production
-              </button>
-            </div>
+
+              {/* Contract Type Selector */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-2">Contract Type *</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { type: 'on_a_price' as ContractType, label: 'On a Price', desc: 'Fixed fee agreed with production. Internal cost tracking only.' },
+                    { type: 'cost_plus' as ContractType, label: 'Cost Plus', desc: 'All costs recharged with margin. Cost report shared with production.' },
+                  ].map(ct => (
+                    <button
+                      key={ct.type}
+                      type="button"
+                      onClick={() => setQuickProdForm(f => ({ ...f, contract_type: ct.type }))}
+                      className={`text-left px-3 py-2 rounded-lg border-2 transition-all ${
+                        quickProdForm.contract_type === ct.type
+                          ? 'border-blue-500 bg-blue-50'
+                          : 'border-slate-200 hover:border-slate-300 bg-white'
+                      }`}
+                    >
+                      <div className="flex items-center justify-between mb-0.5">
+                        <span className="text-xs font-semibold text-slate-800">{ct.label}</span>
+                        {quickProdForm.contract_type === ct.type && <span className="text-[9px] text-blue-600 font-semibold bg-blue-100 px-1 py-0.5 rounded">✓</span>}
+                      </div>
+                      <p className="text-[11px] text-slate-500 leading-snug">{ct.desc}</p>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex items-center justify-end gap-3 pt-2 border-t border-slate-100">
+                <button type="button" onClick={() => setShowQuickProdModal(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Cancel</button>
+                <button type="submit" disabled={quickProdLoading}
+                  className="flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors"
+                >
+                  {quickProdLoading && <Loader2 size={14} className="animate-spin" />}
+                  Create Production
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
 
       {/* Quick Add Supplier Modal */}
       {showQuickSupplierModal && (
-        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => { if (!quickSupplierLoading) setShowQuickSupplierModal(false); }} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 space-y-4">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-slate-900 font-semibold text-base">Add New Supplier</h3>
-              <button onClick={() => setShowQuickSupplierModal(false)} className="text-slate-400 hover:text-slate-600">
+        <div className="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40" onClick={() => { if (!quickSupplierLoading) setShowQuickSupplierModal(false); }}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-slate-900 font-semibold text-base">Add Catalogue Entry</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Add a new supplier product to the price catalogue</p>
+              </div>
+              <button onClick={() => setShowQuickSupplierModal(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
                 <X size={18} />
               </button>
             </div>
-            {quickSupplierError && (
-              <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg p-2.5">
-                <AlertCircle size={14} />
-                {quickSupplierError}
-              </div>
-            )}
-            <div className="space-y-3">
+            <form onSubmit={handleQuickAddSupplier} className="px-6 py-5 space-y-4">
               <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name <span className="text-red-500">*</span></label>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Supplier Name <span className="text-red-500">*</span>
+                </label>
                 <input
                   type="text"
-                  value={quickSupplierName}
-                  onChange={(e) => setQuickSupplierName(e.target.value)}
-                  placeholder="e.g. Travis Perkins"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-500"
+                  value={quickSupplierForm.supplier_name}
+                  onChange={(e) => setQuickSupplierForm(f => ({ ...f, supplier_name: e.target.value }))}
+                  placeholder="e.g. Treeline Timber Co."
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">
+                  Product Description <span className="text-red-500">*</span>
+                </label>
+                <input
+                  type="text"
+                  value={quickSupplierForm.product_description}
+                  onChange={(e) => setQuickSupplierForm(f => ({ ...f, product_description: e.target.value }))}
+                  placeholder="e.g. 18mm Birch Plywood Sheet"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Unit of Measure <span className="text-red-500">*</span>
+                  </label>
                   <input
                     type="text"
-                    value={quickSupplierCode}
-                    onChange={(e) => setQuickSupplierCode(e.target.value)}
-                    placeholder="e.g. SUP-99"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none"
+                    value={quickSupplierForm.unit_of_measure}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, unit_of_measure: e.target.value }))}
+                    placeholder="e.g. sheet, m², litre"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">
+                    Unit Price (£) <span className="text-red-500">*</span>
+                  </label>
                   <input
-                    type="email"
-                    value={quickSupplierEmail}
-                    onChange={(e) => setQuickSupplierEmail(e.target.value)}
-                    placeholder="orders@supplier.com"
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    value={quickSupplierForm.unit_price}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, unit_price: e.target.value }))}
+                    placeholder="0.00"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
               </div>
-            </div>
-            <div className="flex justify-end gap-2 pt-3 border-t border-slate-100">
-              <button
-                type="button"
-                onClick={() => setShowQuickSupplierModal(false)}
-                className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                disabled={quickSupplierLoading}
-                onClick={handleQuickAddSupplier}
-                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-sm rounded-lg font-medium flex items-center gap-1.5 disabled:opacity-60"
-              >
-                {quickSupplierLoading && <Loader2 className="animate-spin" size={14} />}
-                Save Supplier
-              </button>
-            </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+                <textarea
+                  rows={3}
+                  value={quickSupplierForm.notes}
+                  onChange={(e) => setQuickSupplierForm(f => ({ ...f, notes: e.target.value }))}
+                  placeholder="Optional — e.g. price valid until Dec 2025, minimum order 10 units"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                />
+              </div>
+
+              {quickSupplierError && (
+                <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
+                  <AlertCircle size={13} />
+                  {quickSupplierError}
+                </div>
+              )}
+
+              <div className="flex items-center justify-end gap-2 pt-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowQuickSupplierModal(false)}
+                  className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={quickSupplierLoading}
+                  className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
+                >
+                  {quickSupplierLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
+                  Add Entry
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
