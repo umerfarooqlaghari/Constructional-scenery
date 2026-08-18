@@ -844,12 +844,35 @@ const getForecastVariance = async (req, res) => {
   }
 };
 
+// GET /api/productions/:id/documents/:docId/download
+const downloadDocument = async (req, res) => {
+  try {
+    const { rows: [doc] } = await db.query(
+      'SELECT * FROM production_documents WHERE id = $1 AND production_id = $2',
+      [req.params.docId, req.params.id]
+    );
+    if (!doc) return res.status(404).json({ error: 'Document not found' });
+
+    await fileStorage.streamToResponse(
+      doc.file_key || doc.file_url,
+      res,
+      doc.file_name,
+      doc.file_mime_type
+    );
+  } catch (err) {
+    console.error('downloadDocument error:', err);
+    if (!res.headersSent) {
+      res.status(err.status ?? 500).json({ error: err.message });
+    }
+  }
+};
+
 module.exports = {
   getAllProductions, createProduction, getProductionById, updateProduction,
   transitionStatus,
   getArchivePreview, archiveProduction, unarchiveProduction, getAuditLog,
   getSets, createSet, updateSet, patchSet, deleteSet,
   sendHandoverAlerts, runHandoverAlerts,
-  getDocuments, uploadDocument, deleteDocument,
+  getDocuments, uploadDocument, deleteDocument, downloadDocument,
   getForecastVariance,
 };

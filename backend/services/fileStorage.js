@@ -97,4 +97,43 @@ async function getFileBuffer(url) {
   }
 }
 
-module.exports = { validate, store, deleteFile, getFileBuffer, ALLOWED_MIME_TYPES, MAX_FILE_BYTES };
+/**
+ * Stream an S3 file or return object buffer to express res.
+ * @param {string} urlOrKey
+ * @param {import('express').Response} res
+ * @param {string} [filename]
+ * @param {string} [mimeType]
+ */
+async function streamToResponse(urlOrKey, res, filename, mimeType) {
+  if (!urlOrKey) throw new Error('No URL or key provided');
+  const { GetObjectCommand } = require('@aws-sdk/client-s3');
+  
+  let key = urlOrKey;
+  if (urlOrKey.includes('.amazonaws.com/')) {
+    key = urlOrKey.split('.amazonaws.com/')[1];
+  } else if (urlOrKey.startsWith('/')) {
+    key = urlOrKey.slice(1);
+  }
+  key = decodeURIComponent(key);
+
+  const response = await s3.send(new GetObjectCommand({ Bucket: BUCKET, Key: key }));
+
+  const contentType = mimeType || response.ContentType || 'application/octet-stream';
+  res.setHeader('Content-Type', contentType);
+
+  if (filename) {
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(filename)}"`);
+  }
+  if (response.ContentLength) {
+    res.setHeader('Content-Length', response.ContentLength);
+  }
+
+  if (response.Body && typeof response.Body.pipe === 'function') {
+    response.Body.pipe(res);
+  } else {
+    const bytes = await response.Body.transformToByteArray();
+    res.send(Buffer.from(bytes));
+  }
+}
+
+module.exports = { validate, store, deleteFile, getFileBuffer, streamToResponse, ALLOWED_MIME_TYPES, MAX_FILE_BYTES };

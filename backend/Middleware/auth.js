@@ -6,13 +6,18 @@ const { verifyAccessToken } = require('../config/jwt');
  * No DB lookup required — all identity data lives in the token.
  */
 const authenticate = (req, res, next) => {
+  let token = null;
   const authHeader = req.headers.authorization;
 
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Missing or invalid authorization header' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (req.query && req.query.token) {
+    token = req.query.token;
   }
 
-  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Missing or invalid authorization header' });
+  }
 
   try {
     const payload = verifyAccessToken(token);

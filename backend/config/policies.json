@@ -24,6 +24,7 @@
       "GET /api/productions/:id",
       "GET /api/productions/:id/sets",
       "GET /api/productions/:id/documents",
+      "GET /api/productions/:id/documents/:docId/download",
       "GET /api/productions/:id/archive-preview",
       "GET /api/productions/:id/forecast-variance",
       "GET /api/productions/audit-log",
@@ -186,6 +187,7 @@
       "GET /api/productions/:id",
       "GET /api/productions/:id/sets",
       "GET /api/productions/:id/documents",
+      "GET /api/productions/:id/documents/:docId/download",
       "GET /api/productions/:id/archive-preview",
       "GET /api/productions/:id/forecast-variance",
 
@@ -250,6 +252,7 @@
       "PATCH /api/productions/:id/sets/:setId",
       "DELETE /api/productions/:id/sets/:setId",
       "GET /api/productions/:id/documents",
+      "GET /api/productions/:id/documents/:docId/download",
       "POST /api/productions/:id/documents",
       "DELETE /api/productions/:id/documents/:docId",
 

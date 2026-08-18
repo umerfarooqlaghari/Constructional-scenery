@@ -31,8 +31,9 @@ router.patch('/:id/sets/:setId',   requireRole(COORDINATOR), ctrl.patchSet);
 router.delete('/:id/sets/:setId',  requireRole(COORDINATOR), ctrl.deleteSet);
 
 // Documents
-router.get('/:id/documents',              ctrl.getDocuments);
-router.post('/:id/documents',             documentUpload.single('file'), requireRole(COORDINATOR), ctrl.uploadDocument);
-router.delete('/:id/documents/:docId',    requireRole(COORDINATOR), ctrl.deleteDocument);
+router.get('/:id/documents',                  ctrl.getDocuments);
+router.get('/:id/documents/:docId/download',  ctrl.downloadDocument);
+router.post('/:id/documents',                 documentUpload.single('file'), requireRole(COORDINATOR), ctrl.uploadDocument);
+router.delete('/:id/documents/:docId',        requireRole(COORDINATOR), ctrl.deleteDocument);
 
 module.exports = router;

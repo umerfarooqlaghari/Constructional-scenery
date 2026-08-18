@@ -556,16 +556,37 @@ function DocumentsPanel({ productionId, documents, canUpload, userId, canManageA
 
               {/* Actions */}
               <div className="flex items-center gap-1 flex-shrink-0">
-                <a
-                  href={doc.file_url}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  download={doc.file_name}
-                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                <button
+                  type="button"
+                  onClick={async () => {
+                    try {
+                      const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+                      const downloadUrl = `/api/productions/${productionId}/documents/${doc.id}/download?token=${encodeURIComponent(token || '')}`;
+                      const res = await fetch(downloadUrl, {
+                        headers: token ? { Authorization: `Bearer ${token}` } : {},
+                      });
+                      if (!res.ok) {
+                        window.open(doc.file_url, '_blank');
+                        return;
+                      }
+                      const blob = await res.blob();
+                      const blobUrl = window.URL.createObjectURL(blob);
+                      const a = document.createElement('a');
+                      a.href = blobUrl;
+                      a.download = doc.file_name;
+                      document.body.appendChild(a);
+                      a.click();
+                      a.remove();
+                      window.URL.revokeObjectURL(blobUrl);
+                    } catch {
+                      window.open(doc.file_url, '_blank');
+                    }
+                  }}
+                  className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors cursor-pointer"
                   title="Download"
                 >
                   <Upload size={13} className="rotate-180" />
-                </a>
+                </button>
                 {(doc.uploaded_by === userId || canManageAny) && (
                   <button
                     onClick={() => handleDelete(doc)}
