@@ -131,6 +131,7 @@ export type AuthUser = {
   email: string;
   full_name: string;
   role: 'managing_director' | 'construction_accountant' | 'construction_coordinator';
+  avatar_url?: string | null;
 };
 
 // ─── User administration (MD only) ─────────────────────────────────────────────
@@ -154,6 +155,29 @@ export const usersApi = {
       method: 'PATCH',
       body: data,
     }),
+};
+
+// ─── Profile self-service ──────────────────────────────────────────────────────
+export const profileApi = {
+  update: (data: { full_name?: string; email?: string; current_password?: string; new_password?: string }) =>
+    request<{ message: string; user: AuthUser }>('/api/auth/profile', {
+      method: 'PATCH',
+      body: data,
+    }),
+
+  uploadAvatar: (file: File): Promise<{ message: string; avatar_url: string }> => {
+    const formData = new FormData();
+    formData.append('avatar', file);
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+    return fetch('/api/auth/profile/avatar', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: formData,
+    }).then(async r => {
+      if (!r.ok) { const e = await r.json().catch(() => ({ error: 'Upload failed' })); throw new Error(e.error); }
+      return r.json();
+    });
+  },
 };
 
 // ─── Production types ──────────────────────────────────────────────────────────

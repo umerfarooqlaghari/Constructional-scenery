@@ -16,4 +16,9 @@ router.post('/forgot-password',  ctrl.forgotPassword);
 router.post('/verify-otp',       ctrl.verifyOtp);
 router.post('/reset-password',   ctrl.resetPassword);
 
+// ─── Profile self-service ──────────────────────────────────────────────────────
+router.patch('/profile',         authenticate, ctrl.updateProfile);
+router.post('/profile/avatar',   authenticate, ctrl.avatarUpload, ctrl.uploadAvatar);
+
 module.exports = router;
+

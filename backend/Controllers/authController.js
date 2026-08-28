@@ -1,5 +1,7 @@
 const bcrypt = require('bcryptjs');
 const db = require('../config/db');
+const multer = require('multer');
+const { store, deleteFile } = require('../services/fileStorage');
 const {
   signAccessToken,
   generateRefreshToken,
@@ -277,4 +279,118 @@ const resetPassword = async (req, res) => {
   }
 };
 
-module.exports = { signup, login, logout, getMe, refreshToken, forgotPassword, verifyOtp, resetPassword };
+// ─── PATCH /api/auth/profile ──────────────────────────────────────────────────
+// Allows the authenticated user to update their own name, email, and/or password.
+const updateProfile = async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+
+  const { full_name, email, current_password, new_password } = req.body;
+
+  if (!full_name && !email && !new_password)
+    return res.status(400).json({ error: 'Nothing to update' });
+
+  try {
+    const { rows } = await db.query(
+      'SELECT id, email, password_hash, full_name, role, avatar_url FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    const user = rows[0];
+    if (!user) return res.status(404).json({ error: 'User not found' });
+
+    // Password change requires current password verification
+    if (new_password) {
+      if (!current_password)
+        return res.status(400).json({ error: 'current_password is required to change password' });
+      if (new_password.length < 8)
+        return res.status(400).json({ error: 'New password must be at least 8 characters' });
+      const valid = await bcrypt.compare(current_password, user.password_hash);
+      if (!valid)
+        return res.status(400).json({ error: 'Current password is incorrect' });
+    }
+
+    // Check email uniqueness if changing email
+    const newEmail = email ? email.toLowerCase().trim() : user.email;
+    if (email && newEmail !== user.email) {
+      const { rows: existing } = await db.query(
+        'SELECT id FROM users WHERE email = $1 AND id != $2',
+        [newEmail, req.user.id]
+      );
+      if (existing.length) return res.status(400).json({ error: 'Email already in use' });
+    }
+
+    const newFullName     = full_name?.trim() || user.full_name;
+    const newPasswordHash = new_password ? await bcrypt.hash(new_password, 12) : user.password_hash;
+
+    const { rows: updated } = await db.query(
+      `UPDATE users
+       SET full_name = $1, email = $2, password_hash = $3, updated_at = NOW()
+       WHERE id = $4
+       RETURNING id, email, full_name, role, avatar_url`,
+      [newFullName, newEmail, newPasswordHash, req.user.id]
+    );
+
+    // If password changed, revoke all refresh tokens (force re-login on other devices)
+    if (new_password) {
+      await db.query('DELETE FROM refresh_tokens WHERE user_id = $1', [req.user.id]);
+    }
+
+    res.json({ message: 'Profile updated', user: updated[0] });
+  } catch (err) {
+    console.error('updateProfile error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+// ─── POST /api/auth/profile/avatar ────────────────────────────────────────────
+// Multer middleware for avatar — images only, 5 MB max
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+  fileFilter: (_req, file, cb) => {
+    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
+    else cb(Object.assign(new Error('Only JPEG, PNG, or WebP images are allowed'), { status: 400 }));
+  },
+}).single('avatar');
+
+const uploadAvatar = async (req, res) => {
+  if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
+  if (!req.file) return res.status(400).json({ error: 'No image file provided' });
+
+  try {
+    // Fetch old avatar key so we can delete it from S3 after
+    const { rows } = await db.query('SELECT avatar_url FROM users WHERE id = $1', [req.user.id]);
+    const oldUrl = rows[0]?.avatar_url || null;
+
+    // Store new avatar under avatars/ prefix
+    const ext  = req.file.originalname.split('.').pop().toLowerCase();
+    const key  = `avatars/${req.user.id}-${Date.now()}.${ext}`;
+    const fakeFile = { ...req.file, originalname: `avatar.${ext}` };
+    // Override the key by using store with a custom prefix approach
+    const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
+    const BUCKET = process.env.AWS_S3_BUCKET;
+    const REGION = process.env.AWS_REGION || 'us-east-1';
+    const s3 = new S3Client({
+      region: REGION,
+      credentials: { accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY },
+    });
+    await s3.send(new PutObjectCommand({
+      Bucket: BUCKET, Key: key, Body: req.file.buffer, ContentType: req.file.mimetype,
+    }));
+    const avatar_url = `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
+
+    await db.query('UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2', [avatar_url, req.user.id]);
+
+    // Delete old avatar from S3 if it existed
+    if (oldUrl) {
+      const oldKey = oldUrl.includes('.amazonaws.com/') ? oldUrl.split('.amazonaws.com/')[1] : null;
+      if (oldKey) await deleteFile(oldKey);
+    }
+
+    res.json({ message: 'Avatar updated', avatar_url });
+  } catch (err) {
+    console.error('uploadAvatar error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+};
+
+module.exports = { signup, login, logout, getMe, refreshToken, forgotPassword, verifyOtp, resetPassword, updateProfile, avatarUpload, uploadAvatar };
