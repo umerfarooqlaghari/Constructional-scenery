@@ -73,6 +73,7 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
   // ─── Save profile ─────────────────────────────────────────────────────────────
   async function handleSaveProfile(e: React.FormEvent) {
     e.preventDefault();
+    if (!user) return;
     setError('');
     setSuccess('');
     setSaving(true);
