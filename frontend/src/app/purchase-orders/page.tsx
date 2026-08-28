@@ -6,7 +6,8 @@ import { useAuth } from '@/contexts/AuthContext';
 import {
   purchaseOrdersApi,
   productionsApi,
-  supplierCatalogueApi,
+  materialsCatalogueApi,
+  supplierApi,
   type PurchaseOrder,
   type POStatus,
   type Production,
@@ -120,9 +121,9 @@ const DEPARTMENTS = [
 ];
 
 type NewPOForm = {
+  title: string;
   supplier_name: string;
   supplier_email: string;
-  supplier_code: string;
   street_name: string;
   zip_code: string;
   city: string;
@@ -141,9 +142,9 @@ type NewPOForm = {
 };
 
 const EMPTY_FORM: NewPOForm = {
+  title: '',
   supplier_name: '',
   supplier_email: '',
-  supplier_code: '',
   street_name: '',
   zip_code: '',
   city: '',
@@ -184,6 +185,8 @@ export default function PurchaseOrdersPage() {
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
   const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [setsCache, setSetsCache] = useState<Record<string, ProductionSet[]>>({});
+  const [accountCodes, setAccountCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
 
@@ -216,6 +219,8 @@ export default function PurchaseOrdersPage() {
     account_code: '',
     paid_from: '',
     department: '',
+    title: '',
+    supplier_name: '',
   });
 
   const activeFilterCount = Object.values(poFilters).filter((v) => v !== '').length;
@@ -235,15 +240,17 @@ export default function PurchaseOrdersPage() {
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
 
+  const [confirmationModal, setConfirmationModal] = useState<{ id: string; poNumber: string } | null>(null);
+  const [confirmationFile, setConfirmationFile] = useState<File | null>(null);
+  const [newConfirmationFile, setNewConfirmationFile] = useState<File | null>(null);
+  const [confirmationError, setConfirmationError] = useState('');
+
   const [submitConfirmPO, setSubmitConfirmPO] = useState<PurchaseOrder | null>(null);
 
   const [editPO, setEditPO] = useState<PurchaseOrder | null>(null);
   const [editForm, setEditForm] = useState<NewPOForm>(EMPTY_FORM);
   const [editError, setEditError] = useState('');
   const [editLoading, setEditLoading] = useState(false);
-
-  // Sets cache: production_id → sets
-  const [setsCache, setSetsCache] = useState<Record<string, ProductionSet[]>>({});
 
   // Quick Add Production & Supplier modals
   const [showQuickProdModal, setShowQuickProdModal] = useState(false);
@@ -339,7 +346,7 @@ export default function PurchaseOrdersPage() {
     setQuickSupplierLoading(true);
     setQuickSupplierError('');
     try {
-      await supplierCatalogueApi.create({
+      await materialsCatalogueApi.create({
         supplier_name: sName,
         product_description: quickSupplierForm.product_description.trim(),
         unit_of_measure: quickSupplierForm.unit_of_measure.trim(),
@@ -378,8 +385,27 @@ export default function PurchaseOrdersPage() {
   };
 
   useEffect(() => {
-    supplierCatalogueApi.getSuppliers().then(setSuppliers).catch(() => {});
+    supplierApi.getNames().then(setSuppliers).catch(() => {});
+    purchaseOrdersApi.getAccountCodes().then(setAccountCodes).catch(() => {});
+
+    try {
+      const savedDraft = localStorage.getItem('poDraftForm');
+      const savedStep = localStorage.getItem('poDraftStep');
+      if (savedDraft) {
+        setNewForm(JSON.parse(savedDraft));
+        if (savedStep) setNewStep(Number(savedStep) as 1|2|3);
+      }
+    } catch (e) {
+      console.error('Failed to parse draft form', e);
+    }
   }, []);
+
+  // Auto-save draft when newForm or newStep changes
+  useEffect(() => {
+    if (newForm === EMPTY_FORM && newStep === 1) return;
+    localStorage.setItem('poDraftForm', JSON.stringify(newForm));
+    localStorage.setItem('poDraftStep', newStep.toString());
+  }, [newForm, newStep]);
 
   const loadData = useCallback(async () => {
     setLoading(true);
@@ -396,6 +422,8 @@ export default function PurchaseOrdersPage() {
       if (poFilters.account_code)   params.account_code   = poFilters.account_code;
       if (poFilters.paid_from)      params.paid_from      = poFilters.paid_from;
       if (poFilters.department)     params.department     = poFilters.department;
+      if (poFilters.title)          params.title          = poFilters.title;
+      if (poFilters.supplier_name)  params.supplier_name  = poFilters.supplier_name;
 
       const [poList, prodList] = await Promise.all([
         purchaseOrdersApi.list(Object.keys(params).length ? params : undefined),
@@ -426,12 +454,6 @@ export default function PurchaseOrdersPage() {
       po.po_number.toLowerCase().includes(q) ||
       (po.description ?? '').toLowerCase().includes(q);
     return matchStatus && matchSearch;
-  }).sort((a, b) => {
-    const prodA = a.prod_name || a.production_id;
-    const prodB = b.prod_name || b.production_id;
-    const prodCompare = prodA.localeCompare(prodB);
-    if (prodCompare !== 0) return prodCompare;
-    return a.supplier_name.localeCompare(b.supplier_name);
   });
 
   const totalPages = Math.max(1, Math.ceil(filteredPos.length / PAGE_SIZE));
@@ -446,6 +468,18 @@ export default function PurchaseOrdersPage() {
     (p) => p.status === 'submitted' || p.status === 'invoice_received',
   ).length;
   const totalCommitted = pos.reduce((s, p) => s + parseFloat(p.gross_amount || '0'), 0);
+
+  async function handleAction(id: string, key: string, fn: () => Promise<void>, setError: (e: string) => void) {
+    setActionLoading(`${id}:${key}`);
+    setError('');
+    try {
+      await fn();
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Action failed');
+    } finally {
+      setActionLoading(null);
+    }
+  }
 
   async function handleSubmit(id: string) {
     setActionLoading(id + ':submit');
@@ -491,9 +525,9 @@ export default function PurchaseOrdersPage() {
     setEditPO(po);
     const isStandardDept = po.department && DEPARTMENTS.includes(po.department);
     setEditForm({
+      title:          po.title ?? '',
       supplier_name:  po.supplier_name,
       supplier_email: po.supplier_email ?? '',
-      supplier_code:  (po as unknown as Record<string, string>).supplier_code ?? '',
       street_name:    (po as unknown as Record<string, string>).street_name ?? '',
       zip_code:       (po as unknown as Record<string, string>).zip_code ?? '',
       city:           (po as unknown as Record<string, string>).city ?? '',
@@ -516,6 +550,7 @@ export default function PurchaseOrdersPage() {
   async function handleSaveEdit() {
     if (!editPO) return;
     setEditError('');
+    if (!editForm.title.trim()) { setEditError('Title is required.'); return; }
     if (!editForm.supplier_name.trim()) { setEditError('Supplier name is required.'); return; }
     if (!editForm.production_id) { setEditError('Production is required.'); return; }
     if (editForm.department === 'Other' && !editForm.custom_department.trim()) { setEditError('Please enter a custom department.'); return; }
@@ -524,9 +559,9 @@ export default function PurchaseOrdersPage() {
     setEditLoading(true);
     try {
       await purchaseOrdersApi.update(editPO.id, {
+        title:          editForm.title,
         supplier_name:  editForm.supplier_name,
         supplier_email: editForm.supplier_email || null,
-        supplier_code:  editForm.supplier_code  || null,
         street_name:    editForm.street_name    || null,
         zip_code:       editForm.zip_code       || null,
         city:           editForm.city           || null,
@@ -554,9 +589,9 @@ export default function PurchaseOrdersPage() {
   function handleCopyPO(po: PurchaseOrder) {
     setNewForm({
       ...EMPTY_FORM,
+      title:          po.title ?? '',
       supplier_name:  po.supplier_name,
       supplier_email: po.supplier_email ?? '',
-      supplier_code:  (po as unknown as Record<string, string>).supplier_code ?? '',
       street_name:    (po as unknown as Record<string, string>).street_name ?? '',
       zip_code:       (po as unknown as Record<string, string>).zip_code ?? '',
       city:           (po as unknown as Record<string, string>).city ?? '',
@@ -576,6 +611,7 @@ export default function PurchaseOrdersPage() {
 
   async function handleCreatePO() {
     setFormError('');
+    if (!newForm.title.trim()) { setFormError('Title is required.'); return; }
     if (!newForm.supplier_name.trim()) { setFormError('Supplier name is required.'); return; }
     if (!newForm.production_id) { setFormError('Production is required.'); return; }
     if (newForm.department === 'Other' && !newForm.custom_department.trim()) { setFormError('Please enter a custom department.'); return; }
@@ -583,10 +619,10 @@ export default function PurchaseOrdersPage() {
     if (!newForm.gross_amount) { setFormError('Gross amount is required.'); return; }
     setFormLoading(true);
     try {
-      await purchaseOrdersApi.create({
+      const created = await purchaseOrdersApi.create({
+        title:          newForm.title,
         supplier_name:  newForm.supplier_name,
         supplier_email: newForm.supplier_email  || null,
-        supplier_code:  newForm.supplier_code   || null,
         street_name:    newForm.street_name     || null,
         zip_code:       newForm.zip_code        || null,
         city:           newForm.city            || null,
@@ -602,8 +638,20 @@ export default function PurchaseOrdersPage() {
         gross_amount:   newForm.gross_amount,
         paid_from:      newForm.paid_from,
       });
+
+      if (newConfirmationFile) {
+        try {
+          await purchaseOrdersApi.attachConfirmation(created.purchase_order.id, newConfirmationFile);
+        } catch (e) {
+          console.error('Failed to attach confirmation during creation', e);
+        }
+      }
+
+      localStorage.removeItem('poDraftForm');
+      localStorage.removeItem('poDraftStep');
       setShowNewModal(false);
       setNewForm(EMPTY_FORM);
+      setNewConfirmationFile(null);
       await loadData();
     } catch (err: unknown) {
       setFormError(err instanceof Error ? err.message : 'Failed to create PO.');
@@ -825,17 +873,47 @@ export default function PurchaseOrdersPage() {
               <div className="flex gap-2">
                 <button
                   onClick={() => { setShowImportModal(true); setImportFile(null); setImportError(null); setImportResult(null); }}
-                  className="flex items-center justify-center gap-2 bg-slate-100 border border-slate-200 text-slate-700 text-sm rounded-lg px-4 py-2 hover:bg-slate-200 transition-colors font-medium whitespace-nowrap"
+                  className="flex items-center justify-center gap-2 bg-slate-100 text-slate-600 border border-slate-200 text-sm rounded-lg px-4 py-2 hover:bg-white transition-colors font-medium whitespace-nowrap"
                 >
                   <Upload size={14} />
                   Import CSV
                 </button>
+                {localStorage.getItem('poDraftForm') && (
+                  <button
+                    onClick={() => {
+                      localStorage.removeItem('poDraftForm');
+                      localStorage.removeItem('poDraftStep');
+                      setNewForm(EMPTY_FORM);
+                      setNewStep(1);
+                      setFormError('');
+                      setShowNewModal(true);
+                    }}
+                    className="flex items-center justify-center gap-2 bg-white text-slate-600 border border-slate-200 text-sm rounded-lg px-4 py-2 hover:bg-slate-50 transition-colors font-medium whitespace-nowrap"
+                  >
+                    <Plus size={14} />
+                    New Clean Draft
+                  </button>
+                )}
                 <button
-                  onClick={() => { setShowNewModal(true); setFormError(''); setNewForm(EMPTY_FORM); }}
+                  onClick={() => {
+                    const savedDraft = localStorage.getItem('poDraftForm');
+                    if (savedDraft) {
+                      try {
+                        setNewForm(JSON.parse(savedDraft));
+                        const savedStep = localStorage.getItem('poDraftStep');
+                        if (savedStep) setNewStep(Number(savedStep) as 1|2|3);
+                      } catch {}
+                    } else {
+                      setNewForm(EMPTY_FORM);
+                      setNewStep(1);
+                    }
+                    setFormError('');
+                    setShowNewModal(true);
+                  }}
                   className="flex items-center justify-center gap-2 bg-blue-600 text-white text-sm rounded-lg px-4 py-2 hover:bg-blue-700 transition-colors font-medium whitespace-nowrap"
                 >
                   <Plus size={14} />
-                  New PO
+                  {localStorage.getItem('poDraftForm') ? 'Continue Draft PO' : 'New PO'}
                 </button>
               </div>
             )}
@@ -888,16 +966,42 @@ export default function PurchaseOrdersPage() {
                     className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                   />
                 </div>
-                {/* Account Code */}
+                {/* Title */}
                 <div>
-                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Account Code</label>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Title</label>
                   <input
                     type="text"
+                    value={poFilters.title}
+                    onChange={e => { setPoFilters(f => ({ ...f, title: e.target.value })); setPage(1); }}
+                    placeholder="e.g. Wood supplies"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
+                {/* Supplier Name */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Supplier</label>
+                  <input
+                    type="text"
+                    value={poFilters.supplier_name}
+                    onChange={e => { setPoFilters(f => ({ ...f, supplier_name: e.target.value })); setPage(1); }}
+                    placeholder="e.g. Acme Corp"
+                    className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
+                  />
+                </div>
+                {/* Account Code */}
+                <div>
+                  <label className="block text-[10px] font-semibold text-slate-500 uppercase tracking-wide mb-1">Expenditure Type</label>
+                  <input
+                    type="text"
+                    list="account-codes-list"
                     value={poFilters.account_code}
                     onChange={e => { setPoFilters(f => ({ ...f, account_code: e.target.value })); setPage(1); }}
                     placeholder="e.g. MAT-001"
                     className="w-full text-xs border border-slate-200 rounded-lg px-2.5 py-1.5 bg-white text-slate-800 outline-none focus:ring-1 focus:ring-blue-400"
                   />
+                  <datalist id="account-codes-list">
+                    {accountCodes.map(code => <option key={code} value={code} />)}
+                  </datalist>
                 </div>
                 {/* Payment Method */}
                 <div>
@@ -983,7 +1087,7 @@ export default function PurchaseOrdersPage() {
               {activeFilterCount > 0 && (
                 <button
                   onClick={() => {
-                    setPoFilters({ production_id: '', date_from: '', date_to: '', net_amount_min: '', net_amount_max: '', gross_amount_min: '', gross_amount_max: '', set_code: '', account_code: '', paid_from: '', department: '' });
+                    setPoFilters({ production_id: '', date_from: '', date_to: '', net_amount_min: '', net_amount_max: '', gross_amount_min: '', gross_amount_max: '', set_code: '', account_code: '', paid_from: '', department: '', title: '', supplier_name: '' });
                     setPage(1);
                   }}
                   className="flex items-center gap-1.5 text-xs text-red-500 hover:text-red-700 font-medium transition-colors"
@@ -1011,15 +1115,15 @@ export default function PurchaseOrdersPage() {
                   {viewMode === 'purchasing' ? (
                     <>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500">Production</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">Supplier</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500">PO Details</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500">Description</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">Amount</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500">Status</th>
-                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Dept / Set / Account</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Dept / Set / Exp Type</th>
                     </>
                   ) : (
                     <>
-                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Account Code</th>
+                      <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Exp Type</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Set Code</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 text-right">VAT</th>
                       <th className="px-4 py-3 text-xs font-semibold text-slate-500 whitespace-nowrap">Paid From</th>
@@ -1057,10 +1161,11 @@ export default function PurchaseOrdersPage() {
                             <td className="px-4 py-3.5 text-slate-600 text-sm whitespace-nowrap">
                               {po.prod_name ?? po.production_id}
                             </td>
-                            <td className="px-4 py-3.5 max-w-[160px]">
-                              <button onClick={() => setSupplierOverviewModal(po.supplier_name)} className="text-slate-800 font-medium text-sm truncate hover:text-blue-600 hover:underline text-left transition-colors">
-                                {po.supplier_name}
-                              </button>
+                            <td className="px-4 py-3.5">
+                              <p className="text-slate-800 font-semibold text-sm">
+                                {po.title || po.supplier_name}
+                              </p>
+                              {po.title && <p className="text-slate-500 text-xs mt-0.5">{po.supplier_name}</p>}
                             </td>
                             <td className="px-4 py-3.5 text-slate-600 text-xs max-w-[180px] truncate" title={po.description ?? ''}>
                               {po.description ?? '—'}
@@ -1074,8 +1179,8 @@ export default function PurchaseOrdersPage() {
                               </span>
                             </td>
                             <td className="px-4 py-3.5">
-                              {po.set_code && <span className="text-slate-700 text-xs font-mono mr-2" title="Set">{po.set_code}</span>}
-                              {po.account_code && <span className="text-slate-400 text-xs" title="Account">{po.account_code}</span>}
+                              {po.set_code && <span className="font-mono bg-slate-100 px-1.5 py-0.5 rounded text-xs mr-2" title="Set">{po.set_code}</span>}
+                              {po.account_code && <span className="text-slate-400 text-xs" title="Type of Expenditure">{po.account_code}</span>}
                               {!po.set_code && !po.account_code && <span className="text-slate-300 text-xs">—</span>}
                             </td>
                           </>
@@ -1126,6 +1231,19 @@ export default function PurchaseOrdersPage() {
                             <button onClick={() => handleCopyPO(po)} className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors font-medium">
                               <FileText size={11} /> Copy
                             </button>
+                            {/* Download PDF: All roles */}
+                            <button
+                              disabled={!!busy}
+                              onClick={() => handleAction(po.id, 'download-pdf', async () => {
+                                await purchaseOrdersApi.downloadPdf(po.id, po.po_number);
+                              }, setActionError)}
+                              className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors font-medium disabled:opacity-50"
+                            >
+                              {busy && actionLoading === po.id + ':download-pdf'
+                                ? <Loader2 size={11} className="animate-spin" />
+                                : <FileText size={11} />}
+                              PDF
+                            </button>
                             {/* Edit: Coordinator (James) only, draft only */}
                             {isCoordinator && po.status === 'draft' && (
                               <button
@@ -1167,6 +1285,21 @@ export default function PurchaseOrdersPage() {
                                   ? <Loader2 size={11} className="animate-spin" />
                                   : <CheckCircle2 size={11} />}
                                 Approve
+                              </button>
+                            )}
+                            {/* Attach Confirmation: Coordinator + Accountant, any status except draft */}
+                            {(isCoordinator || isAccountant) && po.status !== 'draft' && (
+                              <button
+                                disabled={!!busy}
+                                onClick={() => {
+                                  setConfirmationModal({ id: po.id, poNumber: po.po_number });
+                                  setConfirmationFile(null);
+                                  setConfirmationError('');
+                                }}
+                                className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors font-medium disabled:opacity-50"
+                              >
+                                <Upload size={11} />
+                                Confirm
                               </button>
                             )}
                             {/* Attach Invoice: Coordinator + Accountant, any status except draft */}
@@ -1480,16 +1613,6 @@ export default function PurchaseOrdersPage() {
                           ))}
                         </select>
                       </div>
-                      <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
-                        <input
-                          type="text"
-                          value={newForm.supplier_code}
-                          onChange={(e) => updateField('supplier_code', e.target.value)}
-                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
-                          placeholder="e.g. SUP-001"
-                        />
-                      </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
                         <input
@@ -1568,14 +1691,18 @@ export default function PurchaseOrdersPage() {
                         />
                       </div>
                       <div>
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Account Code</label>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Type of Expenditure</label>
                         <input
                           type="text"
+                          list="account-codes-list"
                           value={newForm.account_code}
                           onChange={(e) => updateField('account_code', e.target.value)}
                           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                           placeholder="e.g. MAT-001"
                         />
+                        <datalist id="account-codes-list">
+                          {accountCodes.map(code => <option key={code} value={code} />)}
+                        </datalist>
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
@@ -1601,7 +1728,17 @@ export default function PurchaseOrdersPage() {
                         )}
                       </div>
                       <div className="sm:col-span-2">
-                        <label className="block text-xs font-medium text-slate-600 mb-1">Description of Goods</label>
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Title <span className="text-red-500">*</span></label>
+                        <input
+                          type="text"
+                          value={newForm.title}
+                          onChange={(e) => updateField('title', e.target.value)}
+                          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
+                          placeholder="e.g. Paint supplies for Stage 1"
+                        />
+                      </div>
+                      <div className="sm:col-span-2">
+                        <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                         <textarea
                           value={newForm.description}
                           onChange={(e) => updateField('description', e.target.value)}
@@ -1684,12 +1821,16 @@ export default function PurchaseOrdersPage() {
                       <p className="text-xs text-slate-500">{[newForm.street_name, newForm.city, newForm.zip_code].filter(Boolean).join(', ') || 'No address provided'}</p>
                     </div>
                     <div className="col-span-2">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Title</p>
+                      <p className="font-medium text-slate-900 mt-1">{newForm.title}</p>
+                    </div>
+                    <div className="col-span-2">
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</p>
                       <p className="mt-1 whitespace-pre-wrap">{newForm.description || '—'}</p>
                     </div>
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Coding</p>
-                      <p className="mt-1">Account: <span className="font-mono">{newForm.account_code || '—'}</span></p>
+                      <p className="mt-1">Exp Type: <span className="font-mono">{newForm.account_code || '—'}</span></p>
                       <p>Set: <span className="font-mono">{newForm.set_code || '—'}</span></p>
                     </div>
                     <div>
@@ -1698,6 +1839,20 @@ export default function PurchaseOrdersPage() {
                       <p>VAT: {fmt(newForm.vat)}</p>
                       <p className="font-bold text-slate-900">Gross: {fmt(newForm.gross_amount)}</p>
                       <p className="text-xs mt-1">Paid From: {PAID_FROM_LABEL[newForm.paid_from] || newForm.paid_from}</p>
+                    </div>
+                    <div className="col-span-2 pt-4 border-t border-slate-200 mt-2">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-2">Order Confirmation (Optional)</p>
+                      <label className="block w-full border border-dashed border-slate-300 rounded-lg p-3 text-center cursor-pointer hover:bg-white transition-colors">
+                        <span className="text-slate-500 text-sm font-medium">
+                          {newConfirmationFile ? newConfirmationFile.name : 'Click to upload confirmation document'}
+                        </span>
+                        <input
+                          type="file"
+                          className="hidden"
+                          accept=".pdf,.png,.jpg,.jpeg"
+                          onChange={e => setNewConfirmationFile(e.target.files?.[0] || null)}
+                        />
+                      </label>
                     </div>
                   </div>
                 </div>
@@ -1737,8 +1892,8 @@ export default function PurchaseOrdersPage() {
                         setFormError('Production and Supplier Name are required.');
                         return;
                       }
-                      if (newStep === 2 && (!newForm.net_amount || !newForm.gross_amount)) {
-                        setFormError('Net amount and Gross amount are required.');
+                      if (newStep === 2 && (!newForm.title.trim() || !newForm.net_amount || !newForm.gross_amount)) {
+                        setFormError('Title, Net amount and Gross amount are required.');
                         return;
                       }
                       setNewStep(s => (s + 1) as 1|2|3);
@@ -1825,6 +1980,61 @@ export default function PurchaseOrdersPage() {
         </div>
       )}
 
+      {/* Attach Confirmation Modal */}
+      {confirmationModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/40" onClick={() => setConfirmationModal(null)} />
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-md">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
+              <div>
+                <h2 className="text-slate-900 font-semibold text-base">Attach Order Confirmation</h2>
+                <p className="text-slate-400 text-xs mt-0.5">{confirmationModal.poNumber}</p>
+              </div>
+              <button
+                onClick={() => setConfirmationModal(null)}
+                className="p-2 text-slate-400 hover:text-slate-600 hover:bg-slate-100 rounded-lg transition-colors"
+              >
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5 space-y-4">
+              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
+                <Upload size={22} className="text-slate-400 mb-2" />
+                <span className="text-slate-500 text-sm font-medium">
+                  {confirmationFile ? confirmationFile.name : 'Click to upload confirmation'}
+                </span>
+                <input type="file" className="hidden" onChange={e => { setConfirmationFile(e.target.files?.[0] || null); setConfirmationError(''); }} />
+              </label>
+              {confirmationError && (
+                <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 p-2 rounded-lg">
+                  <AlertCircle size={13} /> {confirmationError}
+                </div>
+              )}
+              <div className="flex justify-end gap-2 pt-2">
+                <button onClick={() => setConfirmationModal(null)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg transition-colors font-medium">
+                  Cancel
+                </button>
+                <button
+                  disabled={!confirmationFile || !!busy}
+                  onClick={async () => {
+                    if (!confirmationFile) return;
+                    handleAction(confirmationModal.id, 'attach-confirm', async () => {
+                      await purchaseOrdersApi.attachConfirmation(confirmationModal.id, confirmationFile);
+                      setConfirmationModal(null);
+                      await loadData();
+                    }, setConfirmationError);
+                  }}
+                  className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
+                >
+                  {actionLoading === confirmationModal.id + ':attach-confirm' ? <Loader2 size={14} className="animate-spin" /> : <CheckCircle2 size={14} />}
+                  Upload Confirmation
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Edit PO Modal — draft only */}
       {editPO && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto">
@@ -1861,10 +2071,6 @@ export default function PurchaseOrdersPage() {
                         <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
-                  </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Code</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.supplier_code} onChange={e => setEditForm(f => ({ ...f, supplier_code: e.target.value }))} placeholder="e.g. SUP-001" />
                   </div>
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
@@ -1913,9 +2119,12 @@ export default function PurchaseOrdersPage() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
                     <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.set_code} onChange={e => setEditForm(f => ({ ...f, set_code: e.target.value }))} />
                   </div>
-                  <div>
-                    <label className="block text-xs font-medium text-slate-600 mb-1">Account Code</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.account_code} onChange={e => setEditForm(f => ({ ...f, account_code: e.target.value }))} />
+                  <div className="col-span-1">
+                    <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Type of Expenditure</label>
+                    <input list="account-codes-list" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.account_code} onChange={e => setEditForm(f => ({ ...f, account_code: e.target.value }))} />
+                    <datalist id="account-codes-list">
+                      {accountCodes.map(code => <option key={code} value={code} />)}
+                    </datalist>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Department</label>
@@ -1940,6 +2149,10 @@ export default function PurchaseOrdersPage() {
                       />
                     </div>
                   )}
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Title *</label>
+                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.title} onChange={e => setEditForm(f => ({ ...f, title: e.target.value }))} />
+                  </div>
                   <div className="sm:col-span-2">
                     <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
                     <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.description} onChange={e => setEditForm(f => ({ ...f, description: e.target.value }))} />
@@ -2075,7 +2288,16 @@ export default function PurchaseOrdersPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="p-6 space-y-6 text-sm text-slate-700">
+            <div className="px-6 py-5 bg-white space-y-8">
+              <div>
+                <h3 className="text-lg font-bold text-slate-800 mb-1">
+                  {viewFullPO.title || viewFullPO.supplier_name}
+                </h3>
+                {viewFullPO.title && (
+                  <p className="text-sm text-slate-500">{viewFullPO.supplier_name}</p>
+                )}
+                <p className="text-sm text-slate-700 whitespace-pre-wrap mt-2">{viewFullPO.description || 'No description provided'}</p>
+              </div>
               <div className="grid grid-cols-2 gap-y-4 gap-x-6 bg-slate-50 p-5 rounded-xl border border-slate-100">
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Production</p>
@@ -2087,14 +2309,10 @@ export default function PurchaseOrdersPage() {
                   <p className="font-medium text-slate-900 mt-1">{viewFullPO.supplier_name}</p>
                   {viewFullPO.supplier_address && <p className="text-xs text-slate-500">{viewFullPO.supplier_address}</p>}
                 </div>
-                <div className="col-span-2">
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Description</p>
-                  <p className="mt-1 whitespace-pre-wrap">{viewFullPO.description || '—'}</p>
-                </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Coding</p>
-                  <p className="mt-1">Account: <span className="font-mono">{viewFullPO.account_code || '—'}</span></p>
-                  <p>Set: <span className="font-mono">{viewFullPO.set_code || '—'}</span></p>
+                  <p className="mt-1">Exp Type: <span className="font-mono">{viewFullPO.account_code || '—'}</span></p>
+                  <p className="mt-1">Set: <span className="font-mono">{viewFullPO.set_code || '—'}</span></p>
                 </div>
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">Financials</p>
@@ -2342,6 +2560,13 @@ export default function PurchaseOrdersPage() {
           </div>
         </div>
       )}
+
+      {/* Datalist for reusable options */}
+      <datalist id="account-codes-list">
+        {accountCodes.map((code) => (
+          <option key={code} value={code} />
+        ))}
+      </datalist>
     </>
   );
 }

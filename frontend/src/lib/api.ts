@@ -436,9 +436,9 @@ export type POStatus = 'draft' | 'submitted' | 'issued' | 'invoice_received' | '
 export type PurchaseOrder = {
   id: string;
   po_number: string;
+  title: string | null;
   supplier_name: string;
   supplier_email: string | null;
-  supplier_code: string | null;
   supplier_address: string | null;
   street_name: string | null;
   zip_code: string | null;
@@ -467,15 +467,16 @@ export type PurchaseOrder = {
 };
 
 export const purchaseOrdersApi = {
+  getAccountCodes: () => request<string[]>('/api/purchase-orders/account-codes'),
   list: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
     return request<PurchaseOrder[]>(`/api/purchase-orders${qs}`);
   },
   getById: (id: string) => request<PurchaseOrder>(`/api/purchase-orders/${id}`),
   create: (data: Partial<PurchaseOrder>) =>
-    request<PurchaseOrder>('/api/purchase-orders', { method: 'POST', body: data }),
+    request<{ message: string; purchase_order: PurchaseOrder }>('/api/purchase-orders', { method: 'POST', body: data }),
   update: (id: string, data: Partial<PurchaseOrder>) =>
-    request<PurchaseOrder>(`/api/purchase-orders/${id}`, { method: 'PUT', body: data }),
+    request<{ message: string; purchase_order: PurchaseOrder }>(`/api/purchase-orders/${id}`, { method: 'PUT', body: data }),
   submit: (id: string) =>
     request<{ message: string; po: PurchaseOrder }>(`/api/purchase-orders/${id}/submit`, {
       method: 'POST', body: {},
@@ -484,6 +485,22 @@ export const purchaseOrdersApi = {
     request<{ message: string; po: PurchaseOrder }>(`/api/purchase-orders/${id}/approve`, {
       method: 'POST', body: {},
     }),
+  downloadPdf: async (id: string, po_number: string) => {
+    const token = typeof window !== 'undefined' ? localStorage.getItem('cs_token') : null;
+    const res = await fetch(`/api/purchase-orders/${id}/pdf`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (!res.ok) throw new Error('Failed to download PDF');
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `${po_number}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
   attachInvoice: (id: string, formData: FormData) =>
     fetch(`/api/purchase-orders/${id}/attach-invoice`, {
       method: 'POST',
@@ -491,7 +508,27 @@ export const purchaseOrdersApi = {
         Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
       },
       body: formData,
-    }).then(r => r.json()) as Promise<{ message: string; po: PurchaseOrder }>,
+    }).then(async r => {
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error ?? r.statusText);
+      }
+      return r.json() as Promise<{ message: string; purchase_order: PurchaseOrder }>;
+    }),
+  attachConfirmation: (id: string, formData: FormData) =>
+    fetch(`/api/purchase-orders/${id}/attach-confirmation`, {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}`,
+      },
+      body: formData,
+    }).then(async r => {
+      if (!r.ok) {
+        const e = await r.json().catch(() => ({}));
+        throw new Error(e.error ?? r.statusText);
+      }
+      return r.json() as Promise<{ message: string; purchase_order: PurchaseOrder }>;
+    }),
   delete: (id: string) =>
     request<{ message: string }>(`/api/purchase-orders/${id}`, { method: 'DELETE' }),
   import: (formData: FormData) =>
@@ -852,8 +889,8 @@ export const payRunsApi = {
     }),
 };
 
-// ─── Supplier Catalogue types & API ───────────────────────────────────────────
-export type SupplierCatalogueItem = {
+// ─── Materials Catalogue types & API ───────────────────────────────────────────
+export type MaterialsCatalogueItem = {
   id: string;
   supplier_name: string;
   product_description: string;
@@ -863,24 +900,49 @@ export type SupplierCatalogueItem = {
   created_at: string;
   updated_at: string;
 };
-export const supplierCatalogueApi = {
+export const materialsCatalogueApi = {
   list: (params?: Record<string, string>) => {
     const qs = params ? '?' + new URLSearchParams(params).toString() : '';
-    return request<SupplierCatalogueItem[]>(`/api/supplier-catalogue${qs}`);
+    return request<MaterialsCatalogueItem[]>(`/api/materials-catalogue${qs}`);
   },
-  getSuppliers: () => request<string[]>('/api/supplier-catalogue/suppliers'),
-  create: (data: Partial<SupplierCatalogueItem>) =>
-    request<SupplierCatalogueItem>('/api/supplier-catalogue', { method: 'POST', body: data }),
-  update: (id: string, data: Partial<SupplierCatalogueItem>) =>
-    request<SupplierCatalogueItem>(`/api/supplier-catalogue/${id}`, { method: 'PATCH', body: data }),
+  create: (data: Partial<MaterialsCatalogueItem>) =>
+    request<MaterialsCatalogueItem>('/api/materials-catalogue', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<MaterialsCatalogueItem>) =>
+    request<MaterialsCatalogueItem>(`/api/materials-catalogue/${id}`, { method: 'PATCH', body: data }),
   delete: (id: string) =>
-    request<{ message: string }>(`/api/supplier-catalogue/${id}`, { method: 'DELETE' }),
+    request<{ message: string }>(`/api/materials-catalogue/${id}`, { method: 'DELETE' }),
   importCSV: (formData: FormData) =>
-    fetch('/api/supplier-catalogue/import', {
+    fetch('/api/materials-catalogue/import', {
       method: 'POST',
       headers: { Authorization: `Bearer ${typeof window !== 'undefined' ? localStorage.getItem('cs_token') ?? '' : ''}` },
       body: formData,
     }).then(async r => { if (!r.ok) { const e = await r.json().catch(() => ({})); throw new Error((e as { error?: string }).error ?? r.statusText); } return r.json() as Promise<{ imported: number }>; }),
+};
+
+// ─── Suppliers Database API ────────────────────────────────────────────────────
+export type Supplier = {
+  id: string;
+  name: string;
+  email: string | null;
+  street_name: string | null;
+  city: string | null;
+  county: string | null;
+  zip_code: string | null;
+  phone: string | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+};
+export const supplierApi = {
+  list: () => request<Supplier[]>('/api/suppliers'),
+  getNames: () => request<string[]>('/api/suppliers/names'),
+  getById: (id: string) => request<Supplier>(`/api/suppliers/${id}`),
+  create: (data: Partial<Supplier>) =>
+    request<Supplier>('/api/suppliers', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<Supplier>) =>
+    request<Supplier>(`/api/suppliers/${id}`, { method: 'PUT', body: data }),
+  delete: (id: string) =>
+    request<{ message: string }>(`/api/suppliers/${id}`, { method: 'DELETE' }),
 };
 
 // ─── Percentometer new API (versioned ratios + actuals) ────────────────────────

@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, ManyToOne, JoinColumn } from 'typeorm';
 import { Forecast } from './Forecast';
-import { SupplierCatalogue } from './SupplierCatalogue';
+import { MaterialsCatalogue } from './MaterialsCatalogue';
 
 @Entity('forecast_materials_items')
 export class ForecastMaterialsItem {
@@ -14,12 +14,12 @@ export class ForecastMaterialsItem {
   @JoinColumn({ name: 'forecast_id' })
   forecast: Forecast;
 
-  @Column({ type: 'uuid', name: 'supplier_catalogue_id', nullable: true })
-  supplierCatalogueId: string | null;
+  @Column({ type: 'uuid', name: 'materials_catalogue_id', nullable: true })
+  materialsCatalogueId: string | null;
 
-  @ManyToOne(() => SupplierCatalogue, { nullable: true })
-  @JoinColumn({ name: 'supplier_catalogue_id' })
-  supplierCatalogue: SupplierCatalogue | null;
+  @ManyToOne(() => MaterialsCatalogue, { nullable: true })
+  @JoinColumn({ name: 'materials_catalogue_id' })
+  materialsCatalogue: MaterialsCatalogue | null;
 
   @Column({ type: 'text', name: 'supplier_name', nullable: true })
   supplierName: string | null;

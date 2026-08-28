@@ -65,10 +65,12 @@ const generatePoPdf = (po, productionName) => {
 
     // ── Description ──────────────────────────────────────────────────────────────
     y += 35;
-    doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b').text('DESCRIPTION', 50, y);
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b').text('TITLE', 50, y);
+    doc.fontSize(8).font('Helvetica-Bold').fillColor('#64748b').text('DESCRIPTION', 250, y);
     y += 13;
     doc.fontSize(9).font('Helvetica').fillColor('#0f172a')
-       .text(po.description || '—', 50, y, { width: 495 });
+       .text(po.title || '—', 50, y, { width: 190 })
+       .text(po.description || '—', 250, y, { width: 295 });
 
     // ── Financials ───────────────────────────────────────────────────────────────
     y = doc.y + 20;

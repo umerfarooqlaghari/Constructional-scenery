@@ -14,6 +14,9 @@ export class PurchaseOrder {
   @Column({ type: 'text', name: 'po_number', unique: true })
   poNumber: string;
 
+  @Column({ type: 'varchar', length: 255, nullable: true })
+  title: string;
+
   @Column({ type: 'text', name: 'supplier_name' })
   supplierName: string;
 
@@ -62,6 +65,12 @@ export class PurchaseOrder {
 
   @Column({ type: 'text', name: 'invoice_attachment_name', nullable: true })
   invoiceAttachmentName: string | null;
+
+  @Column({ type: 'text', nullable: true })
+  confirmation_attachment_url: string;
+
+  @Column({ type: 'text', nullable: true })
+  confirmation_attachment_name: string;
 
   @Column({ type: 'text', default: PurchaseOrderStatus.DRAFT })
   status: PurchaseOrderStatus;

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback, useRef } from 'react';
 import TopBar from '@/components/TopBar';
 import { useAuth } from '@/contexts/AuthContext';
-import { supplierCatalogueApi, type SupplierCatalogueItem } from '@/lib/api';
+import { materialsCatalogueApi, type MaterialsCatalogueItem, supplierApi } from '@/lib/api';
 import {
   Plus,
   Search,
@@ -77,7 +77,7 @@ function Toast({ message, onClose }: { message: string; onClose: () => void }) {
 }
 
 // ─── Page ──────────────────────────────────────────────────────────────────────
-export default function SupplierCataloguePage() {
+export default function MaterialsCataloguePage() {
   const { user } = useAuth();
   const role = user?.role ?? '';
 
@@ -86,7 +86,7 @@ export default function SupplierCataloguePage() {
   const isReadOnly = false;
 
   // ── Data state ──
-  const [items, setItems] = useState<SupplierCatalogueItem[]>([]);
+  const [items, setItems] = useState<MaterialsCatalogueItem[]>([]);
   const [suppliers, setSuppliers] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -96,13 +96,13 @@ export default function SupplierCataloguePage() {
 
   // ── Add/Edit modal ──
   const [showModal, setShowModal] = useState(false);
-  const [editItem, setEditItem] = useState<SupplierCatalogueItem | null>(null);
+  const [editItem, setEditItem] = useState<MaterialsCatalogueItem | null>(null);
   const [form, setForm] = useState<FormData>(EMPTY_FORM);
   const [formError, setFormError] = useState('');
   const [formLoading, setFormLoading] = useState(false);
 
   // ── Delete state ──
-  const [deleteTarget, setDeleteTarget] = useState<SupplierCatalogueItem | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<MaterialsCatalogueItem | null>(null);
   const [deleteLoading, setDeleteLoading] = useState(false);
 
   // ── CSV Import modal ──
@@ -121,8 +121,8 @@ export default function SupplierCataloguePage() {
     setLoading(true);
     try {
       const [itemList, supplierList] = await Promise.all([
-        supplierCatalogueApi.list(),
-        supplierCatalogueApi.getSuppliers(),
+        materialsCatalogueApi.list(),
+        supplierApi.getNames(), // Needs import if I use supplierApi
       ]);
       setItems(itemList);
       setSuppliers(supplierList);
@@ -160,7 +160,7 @@ export default function SupplierCataloguePage() {
   }
 
   // ── Open edit modal ──
-  function openEdit(item: SupplierCatalogueItem) {
+  function openEdit(item: MaterialsCatalogueItem) {
     setEditItem(item);
     setForm({
       supplier_name: item.supplier_name,
@@ -186,7 +186,7 @@ export default function SupplierCataloguePage() {
 
     setFormLoading(true);
     try {
-      const payload: Partial<SupplierCatalogueItem> = {
+      const payload: Partial<MaterialsCatalogueItem> = {
         supplier_name: form.supplier_name.trim(),
         product_description: form.product_description.trim(),
         unit_of_measure: form.unit_of_measure.trim(),
@@ -195,10 +195,10 @@ export default function SupplierCataloguePage() {
       };
 
       if (editItem) {
-        await supplierCatalogueApi.update(editItem.id, payload);
+        await materialsCatalogueApi.update(editItem.id, payload);
         setToast('Entry updated successfully.');
       } else {
-        await supplierCatalogueApi.create(payload);
+        await materialsCatalogueApi.create(payload);
         setToast('Entry added to catalogue.');
       }
 
@@ -216,7 +216,7 @@ export default function SupplierCataloguePage() {
     if (!deleteTarget) return;
     setDeleteLoading(true);
     try {
-      await supplierCatalogueApi.delete(deleteTarget.id);
+      await materialsCatalogueApi.delete(deleteTarget.id);
       setDeleteTarget(null);
       setToast('Entry removed from catalogue.');
       await loadData();
@@ -236,7 +236,7 @@ export default function SupplierCataloguePage() {
     try {
       const fd = new FormData();
       fd.append('csv', csvFile);
-      const result = await supplierCatalogueApi.importCSV(fd);
+      const result = await materialsCatalogueApi.importCSV(fd);
       setImportResult(result);
       await loadData();
     } catch (err: unknown) {
@@ -258,7 +258,7 @@ export default function SupplierCataloguePage() {
   return (
     <>
       <TopBar
-        title="Supplier & Materials Catalogue"
+        title="Materials Catalogue"
         subtitle={
           loading
             ? 'Loading catalogue…'

@@ -14,6 +14,8 @@ const ACCOUNTANT  = 'construction_accountant';
 router.get('/',                          ctrl.getAllPOs);
 router.get('/export/csv',                ctrl.exportCSV);
 router.get('/export/pdf',                ctrl.exportPDFList);
+router.get('/:id/pdf',                   ctrl.downloadPdf);
+router.get('/account-codes',             ctrl.getAccountCodes);
 router.get('/import/template',           importCtrl.getImportTemplate);
 router.post('/import',                   csvUpload.single('csv'), requireRole(COORDINATOR), importCtrl.importCSV);
 router.post('/',                         requireRole(COORDINATOR), ctrl.createPO);
@@ -24,6 +26,7 @@ router.delete('/:id',                    requireRole(COORDINATOR), ctrl.deletePO
 router.post('/:id/issue',                requireRole(COORDINATOR), ctrl.issuePO);
 router.post('/:id/submit',               requireRole(COORDINATOR), ctrl.submitPO);
 router.post('/:id/attach-invoice',       upload.single('invoice'), requireRole(COORDINATOR, ACCOUNTANT), ctrl.attachInvoice);
+router.post('/:id/attach-confirmation',  upload.single('confirmation'), requireRole(COORDINATOR, ACCOUNTANT), ctrl.attachConfirmation);
 router.get('/:id/invoice/download',      ctrl.downloadInvoice);
 router.delete('/:id/invoice',            requireRole(COORDINATOR), ctrl.deleteInvoice);
 router.post('/:id/approve',              requireRole(ACCOUNTANT), ctrl.approvePO);

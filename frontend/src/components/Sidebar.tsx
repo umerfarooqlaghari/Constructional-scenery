@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
@@ -25,7 +25,8 @@ const NAV_GROUPS = [
       { href: '/purchase-orders',    label: 'Purchase Orders',   icon: ShoppingCart, roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
       { href: '/cost-report',        label: 'Cost Report',       icon: BarChart2,    roles: ['managing_director', 'construction_accountant'] },
       { href: '/pay-runs',           label: 'Pay Runs',          icon: Banknote,     roles: ['managing_director', 'construction_accountant'] },
-      { href: '/supplier-catalogue', label: 'Supplier Catalogue',icon: BookOpen,     roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/materials-catalogue', label: 'Materials Catalogue',icon: BookOpen,     roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/suppliers',          label: 'Supplier Database', icon: BookOpen,     roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
   {

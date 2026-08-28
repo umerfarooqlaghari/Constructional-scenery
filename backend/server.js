@@ -60,7 +60,8 @@ app.get('/', (req, res) => {
       'Module 3: Pay Runs          → /api/pay-runs',
       'Module 4: Cost Reports      → /api/cost-reports',
       'Module 5: Forecasting       → /api/forecasting',
-      'Module 5: Supplier Catalogue→ /api/supplier-catalogue',
+      'Module 5: Materials Catalogue→ /api/materials-catalogue',
+      'Module 5: Supplier Database → /api/suppliers',
       'Module 5: Percentometer     → /api/percentometer',
       'Module 6: Dashboard         → /api/dashboard',
       'Module 7: Productions       → /api/productions',
@@ -86,7 +87,8 @@ app.use('/api/timesheets',     require('./routes/timesheets'));
 app.use('/api/pay-runs',       require('./routes/payRuns'));
 app.use('/api/cost-reports',   require('./routes/costReports'));
 app.use('/api/forecasting',         require('./routes/forecasting'));
-app.use('/api/supplier-catalogue',  require('./routes/supplierCatalogue'));
+app.use('/api/materials-catalogue', require('./routes/materialsCatalogue'));
+app.use('/api/suppliers',           require('./routes/suppliers'));
 app.use('/api/percentometer',       require('./routes/percentometer'));
 app.use('/api/dashboard',           require('./routes/dashboard'));
 app.use('/api/crew-rates',          require('./routes/crewRates'));

@@ -4,8 +4,8 @@ const csv = require('csv-parse/sync');
 const REQUIRED_COLS = ['Supplier Name', 'Product Description', 'Unit of Measure', 'Unit Price'];
 const TEMPLATE_HEADER = 'Supplier Name,Product Description,Unit of Measure,Unit Price,Notes\r\n';
 
-// ─── GET /api/supplier-catalogue ─────────────────────────────────────────────
-// ?supplier=  ?search=  (supplier name autocomplete uses GET /api/supplier-catalogue/suppliers)
+// ─── GET /api/materials-catalogue ─────────────────────────────────────────────
+// ?supplier=  ?search=
 const getCatalogue = async (req, res) => {
   try {
     const conds  = [`deleted_at IS NULL`];
@@ -21,7 +21,7 @@ const getCatalogue = async (req, res) => {
 
     const { rows } = await db.query(
       `SELECT id, supplier_name, product_description, unit_of_measure, unit_price, notes, created_at, updated_at
-       FROM supplier_catalogue
+       FROM materials_catalogue
        WHERE ${conds.join(' AND ')}
        ORDER BY supplier_name, product_description`,
       params
@@ -33,32 +33,15 @@ const getCatalogue = async (req, res) => {
   }
 };
 
-// ─── GET /api/supplier-catalogue/suppliers ────────────────────────────────────
-// Distinct active supplier names — used for autocomplete in forms.
-const getSupplierNames = async (_req, res) => {
-  try {
-    const { rows } = await db.query(
-      `SELECT DISTINCT supplier_name
-       FROM supplier_catalogue
-       WHERE deleted_at IS NULL
-       ORDER BY supplier_name`
-    );
-    res.json(rows.map(r => r.supplier_name));
-  } catch (err) {
-    console.error('getSupplierNames:', err);
-    res.status(500).json({ error: err.message });
-  }
-};
-
-// ─── GET /api/supplier-catalogue/template ─────────────────────────────────────
+// ─── GET /api/materials-catalogue/template ─────────────────────────────────────
 // Returns a blank CSV template for bulk import.
 const getTemplate = (_req, res) => {
   res.setHeader('Content-Type', 'text/csv; charset=utf-8');
-  res.setHeader('Content-Disposition', 'attachment; filename="supplier_catalogue_template.csv"');
+  res.setHeader('Content-Disposition', 'attachment; filename="materials_catalogue_template.csv"');
   res.send(TEMPLATE_HEADER);
 };
 
-// ─── POST /api/supplier-catalogue ────────────────────────────────────────────
+// ─── POST /api/materials-catalogue ────────────────────────────────────────────
 const createEntry = async (req, res) => {
   const { supplier_name, product_description, unit_of_measure, unit_price, notes } = req.body;
   if (!supplier_name || !product_description || !unit_of_measure || !unit_price)
@@ -66,7 +49,7 @@ const createEntry = async (req, res) => {
 
   try {
     const { rows: [row] } = await db.query(
-      `INSERT INTO supplier_catalogue
+      `INSERT INTO materials_catalogue
          (supplier_name, product_description, unit_of_measure, unit_price, notes)
        VALUES ($1,$2,$3,$4,$5)
        RETURNING id, supplier_name, product_description, unit_of_measure, unit_price, notes, created_at, updated_at`,
@@ -79,7 +62,7 @@ const createEntry = async (req, res) => {
   }
 };
 
-// ─── PATCH /api/supplier-catalogue/:id ───────────────────────────────────────
+// ─── PATCH /api/materials-catalogue/:id ───────────────────────────────────────
 const updateEntry = async (req, res) => {
   const allowed = ['supplier_name', 'product_description', 'unit_of_measure', 'unit_price', 'notes'];
   const updates = {};
@@ -94,7 +77,7 @@ const updateEntry = async (req, res) => {
 
   try {
     const { rows: [row] } = await db.query(
-      `UPDATE supplier_catalogue
+      `UPDATE materials_catalogue
        SET ${setClause}, updated_at = NOW()
        WHERE id = $${fields.length + 1} AND deleted_at IS NULL
        RETURNING id, supplier_name, product_description, unit_of_measure, unit_price, notes, updated_at`,
@@ -108,13 +91,13 @@ const updateEntry = async (req, res) => {
   }
 };
 
-// ─── DELETE /api/supplier-catalogue/:id ──────────────────────────────────────
+// ─── DELETE /api/materials-catalogue/:id ──────────────────────────────────────
 // Soft-delete: entry is hidden from list and forecaster dropdown.
 // Any saved forecast row that referenced it retains its snapshotted price.
 const deleteEntry = async (req, res) => {
   try {
     const { rowCount } = await db.query(
-      'UPDATE supplier_catalogue SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
+      'UPDATE materials_catalogue SET deleted_at = NOW() WHERE id = $1 AND deleted_at IS NULL',
       [req.params.id]
     );
     if (!rowCount) return res.status(404).json({ error: 'Catalogue entry not found' });
@@ -125,7 +108,7 @@ const deleteEntry = async (req, res) => {
   }
 };
 
-// ─── POST /api/supplier-catalogue/import ─────────────────────────────────────
+// ─── POST /api/materials-catalogue/import ─────────────────────────────────────
 // Atomic CSV import. Validates all rows before committing — no partial imports.
 // CSV columns: Supplier Name, Product Description, Unit of Measure, Unit Price, Notes (optional)
 const importCSV = async (req, res) => {
@@ -180,7 +163,7 @@ const importCSV = async (req, res) => {
     await client.query('BEGIN');
     for (const r of parsedRows) {
       await client.query(
-        `INSERT INTO supplier_catalogue
+        `INSERT INTO materials_catalogue
            (supplier_name, product_description, unit_of_measure, unit_price, notes)
          VALUES ($1,$2,$3,$4,$5)`,
         [r.supplier_name, r.product_description, r.unit_of_measure, r.unit_price, r.notes]
@@ -197,4 +180,4 @@ const importCSV = async (req, res) => {
   }
 };
 
-module.exports = { getCatalogue, getSupplierNames, getTemplate, createEntry, updateEntry, deleteEntry, importCSV };
+module.exports = { getCatalogue, getTemplate, createEntry, updateEntry, deleteEntry, importCSV };

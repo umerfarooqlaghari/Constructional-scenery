@@ -1,7 +1,7 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn } from 'typeorm';
 
-@Entity('supplier_catalogue')
-export class SupplierCatalogue {
+@Entity('materials_catalogue')
+export class MaterialsCatalogue {
   @PrimaryGeneratedColumn('uuid')
   id: string;
 

@@ -126,6 +126,9 @@ const getProductionById = async (req, res) => {
       : null;
     production.sets_outstanding = production.sets
       .filter(s => !['complete', 'handed_over'].includes(s.completion_status)).length;
+    production.completed_sets = production.sets
+      .filter(s => ['complete', 'handed_over'].includes(s.completion_status)).length;
+    production.total_sets = production.sets.length;
 
     res.json(production);
   } catch (err) {
