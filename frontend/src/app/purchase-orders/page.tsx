@@ -2017,7 +2017,7 @@ export default function PurchaseOrdersPage() {
                   Cancel
                 </button>
                 <button
-                  disabled={!confirmationFile || !!busy}
+                  disabled={!confirmationFile || actionLoading === confirmationModal.id + ':attach-confirm'}
                   onClick={async () => {
                     if (!confirmationFile) return;
                     handleAction(confirmationModal.id, 'attach-confirm', async () => {
