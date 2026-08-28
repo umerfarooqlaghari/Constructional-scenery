@@ -14,6 +14,7 @@ import {
   type ProductionSet,
   type ContractType,
   type ProductionStatus,
+  type Supplier,
 } from '@/lib/api';
 import {
   Plus,
@@ -187,6 +188,7 @@ export default function PurchaseOrdersPage() {
   const [pos, setPos] = useState<PurchaseOrder[]>([]);
   const [productions, setProductions] = useState<Production[]>([]);
   const [suppliers, setSuppliers] = useState<string[]>([]);
+  const [suppliersList, setSuppliersList] = useState<Supplier[]>([]);
   const [setsCache, setSetsCache] = useState<Record<string, ProductionSet[]>>({});
   const [accountCodes, setAccountCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(true);
@@ -273,10 +275,16 @@ export default function PurchaseOrdersPage() {
   const [showQuickSupplierModal, setShowQuickSupplierModal] = useState(false);
   const [quickSupplierForm, setQuickSupplierForm] = useState({
     supplier_name: '',
+    supplier_email: '',
+    phone: '',
+    street_name: '',
+    city: '',
+    county: '',
+    zip_code: '',
+    notes: '',
     product_description: '',
     unit_of_measure: '',
     unit_price: '',
-    notes: '',
   });
   const [quickSupplierLoading, setQuickSupplierLoading] = useState(false);
   const [quickSupplierError, setQuickSupplierError] = useState('');
@@ -339,38 +347,92 @@ export default function PurchaseOrdersPage() {
     e.preventDefault();
     const sName = quickSupplierForm.supplier_name.trim();
     if (!sName) { setQuickSupplierError('Supplier name is required.'); return; }
-    if (!quickSupplierForm.product_description.trim()) { setQuickSupplierError('Product description is required.'); return; }
-    if (!quickSupplierForm.unit_of_measure.trim()) { setQuickSupplierError('Unit of measure is required.'); return; }
-    if (!quickSupplierForm.unit_price || isNaN(parseFloat(quickSupplierForm.unit_price)) || parseFloat(quickSupplierForm.unit_price) < 0) {
-      setQuickSupplierError('A valid unit price is required.');
-      return;
-    }
 
     setQuickSupplierLoading(true);
     setQuickSupplierError('');
     try {
-      await materialsCatalogueApi.create({
-        supplier_name: sName,
-        product_description: quickSupplierForm.product_description.trim(),
-        unit_of_measure: quickSupplierForm.unit_of_measure.trim(),
-        unit_price: parseFloat(quickSupplierForm.unit_price),
-        notes: quickSupplierForm.notes.trim() || null,
+      const sEmail = quickSupplierForm.supplier_email.trim();
+      const sPhone = quickSupplierForm.phone.trim();
+      const sStreet = quickSupplierForm.street_name.trim();
+      const sCity = quickSupplierForm.city.trim();
+      const sCounty = quickSupplierForm.county.trim();
+      const sZip = quickSupplierForm.zip_code.trim();
+      const sNotes = quickSupplierForm.notes.trim();
+      const productDesc = quickSupplierForm.product_description.trim();
+      const uom = quickSupplierForm.unit_of_measure.trim();
+      const priceStr = quickSupplierForm.unit_price.trim();
+
+      const newSupplier = await supplierApi.create({
+        name: sName,
+        email: sEmail || null,
+        phone: sPhone || null,
+        street_name: sStreet || null,
+        city: sCity || null,
+        county: sCounty || null,
+        zip_code: sZip || null,
+        notes: sNotes || null,
       });
-      if (!suppliers.includes(sName)) {
-        setSuppliers(prev => [...prev, sName].sort());
+
+      if (productDesc) {
+        try {
+          await materialsCatalogueApi.create({
+            supplier_name: sName,
+            product_description: productDesc,
+            unit_of_measure: uom || 'Each',
+            unit_price: priceStr ? parseFloat(priceStr) : 0,
+            notes: null,
+          });
+        } catch (catErr) {
+          console.error('Failed to create catalogue entry:', catErr);
+        }
       }
+
+      setSuppliersList(prev => {
+        const filtered = prev.filter(s => s.name?.toLowerCase() !== sName.toLowerCase());
+        return [...filtered, newSupplier].sort((a, b) => a.name.localeCompare(b.name));
+      });
+      setSuppliers(prev => {
+        if (!prev.includes(sName)) {
+          return [...prev, sName].sort((a, b) => a.localeCompare(b));
+        }
+        return prev;
+      });
+
       if (editPO) {
-        setEditForm(f => ({ ...f, supplier_name: sName }));
+        setEditForm(f => ({
+          ...f,
+          supplier_name: sName,
+          supplier_email: sEmail || f.supplier_email,
+          street_name: sStreet || f.street_name,
+          city: sCity || f.city,
+          county: sCounty || f.county,
+          zip_code: sZip || f.zip_code,
+        }));
       } else {
-        updateField('supplier_name', sName);
+        setNewForm(prev => ({
+          ...prev,
+          supplier_name: sName,
+          supplier_email: sEmail,
+          street_name: sStreet,
+          city: sCity,
+          county: sCounty,
+          zip_code: sZip,
+        }));
       }
+
       setShowQuickSupplierModal(false);
       setQuickSupplierForm({
         supplier_name: '',
+        supplier_email: '',
+        phone: '',
+        street_name: '',
+        city: '',
+        county: '',
+        zip_code: '',
+        notes: '',
         product_description: '',
         unit_of_measure: '',
         unit_price: '',
-        notes: '',
       });
     } catch (err: unknown) {
       setQuickSupplierError(err instanceof Error ? err.message : 'Failed to add supplier');
@@ -387,8 +449,42 @@ export default function PurchaseOrdersPage() {
     } catch { /* non-critical */ }
   };
 
+  const loadSuppliersData = useCallback(async () => {
+    try {
+      const [names, list] = await Promise.all([
+        supplierApi.getNames().catch(() => [] as string[]),
+        supplierApi.list().catch(() => [] as Supplier[]),
+      ]);
+      setSuppliersList(list);
+      const allNames = Array.from(new Set([...list.map(s => s.name), ...names])).filter(Boolean).sort((a, b) => a.localeCompare(b));
+      setSuppliers(allNames);
+    } catch {
+      // non-critical
+    }
+  }, []);
+
+  const getSupplierData = useCallback((name: string) => {
+    const trimmed = name?.trim();
+    if (!trimmed) return null;
+    const norm = trimmed.toLowerCase();
+
+    // 1. Check in suppliersList (from Supplier Database)
+    const fromDb = suppliersList.find(s => s.name?.trim().toLowerCase() === norm);
+
+    // 2. Check in existing POs (purchase_orders history)
+    const fromPOs = pos.find(p => p.supplier_name?.trim().toLowerCase() === norm && (p.supplier_email || p.street_name || p.city || p.county || p.zip_code));
+
+    const email = fromDb?.email || fromPOs?.supplier_email || '';
+    const street_name = fromDb?.street_name || fromPOs?.street_name || '';
+    const city = fromDb?.city || fromPOs?.city || '';
+    const county = fromDb?.county || fromPOs?.county || '';
+    const zip_code = fromDb?.zip_code || fromPOs?.zip_code || '';
+
+    return { email, street_name, city, county, zip_code };
+  }, [suppliersList, pos]);
+
   useEffect(() => {
-    supplierApi.getNames().then(setSuppliers).catch(() => {});
+    loadSuppliersData();
     purchaseOrdersApi.getAccountCodes().then(setAccountCodes).catch(() => {});
 
     try {
@@ -401,7 +497,14 @@ export default function PurchaseOrdersPage() {
     } catch (e) {
       console.error('Failed to parse draft form', e);
     }
-  }, []);
+  }, [loadSuppliersData]);
+
+  // Refresh suppliers list whenever New PO or Edit PO modal is opened
+  useEffect(() => {
+    if (showNewModal || !!editPO) {
+      loadSuppliersData();
+    }
+  }, [showNewModal, editPO, loadSuppliersData]);
 
   // Auto-save draft when newForm or newStep changes
   useEffect(() => {
@@ -752,7 +855,33 @@ export default function PurchaseOrdersPage() {
   function updateField(field: keyof NewPOForm, value: string) {
     setNewForm((f) => {
       const updated = { ...f, [field]: value };
-      if (field === 'net_amount') {
+      if (field === 'supplier_name') {
+        if (!value) {
+          updated.supplier_email = '';
+          updated.street_name = '';
+          updated.city = '';
+          updated.county = '';
+          updated.zip_code = '';
+        } else {
+          const data = getSupplierData(value);
+          if (data) {
+            if (data.email) updated.supplier_email = data.email;
+            else if (f.supplier_name) updated.supplier_email = '';
+
+            if (data.street_name) updated.street_name = data.street_name;
+            else if (f.supplier_name) updated.street_name = '';
+
+            if (data.city) updated.city = data.city;
+            else if (f.supplier_name) updated.city = '';
+
+            if (data.county) updated.county = data.county;
+            else if (f.supplier_name) updated.county = '';
+
+            if (data.zip_code) updated.zip_code = data.zip_code;
+            else if (f.supplier_name) updated.zip_code = '';
+          }
+        }
+      } else if (field === 'net_amount') {
         const net = parseFloat(value) || 0;
         updated.vat = (net * 0.20).toFixed(2);
         updated.gross_amount = (net * 1.20).toFixed(2);
@@ -2126,7 +2255,19 @@ export default function PurchaseOrdersPage() {
                     <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Name *</label>
                     <select
                       value={editForm.supplier_name}
-                      onChange={e => setEditForm(f => ({ ...f, supplier_name: e.target.value }))}
+                      onChange={e => {
+                        const val = e.target.value;
+                        const data = getSupplierData(val);
+                        setEditForm(f => ({
+                          ...f,
+                          supplier_name: val,
+                          supplier_email: data?.email ? data.email : f.supplier_email,
+                          street_name: data?.street_name ? data.street_name : f.street_name,
+                          city: data?.city ? data.city : f.city,
+                          county: data?.county ? data.county : f.county,
+                          zip_code: data?.zip_code ? data.zip_code : f.zip_code,
+                        }));
+                      }}
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
                     >
                       <option value="">Select a supplier...</option>
@@ -2542,20 +2683,21 @@ export default function PurchaseOrdersPage() {
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <div>
-                <h2 className="text-slate-900 font-semibold text-base">Add Catalogue Entry</h2>
-                <p className="text-slate-400 text-xs mt-0.5">Add a new supplier product to the price catalogue</p>
+                <h2 className="text-slate-900 font-semibold text-base">Add New Supplier</h2>
+                <p className="text-slate-400 text-xs mt-0.5">Add a new supplier to the database and auto-populate this order</p>
               </div>
               <button onClick={() => setShowQuickSupplierModal(false)} className="p-2 text-slate-400 hover:text-slate-600 rounded-lg transition-colors">
                 <X size={18} />
               </button>
             </div>
-            <form onSubmit={handleQuickAddSupplier} className="px-6 py-5 space-y-4">
+            <form onSubmit={handleQuickAddSupplier} className="px-6 py-5 space-y-4 max-h-[85vh] overflow-y-auto">
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">
                   Supplier Name <span className="text-red-500">*</span>
                 </label>
                 <input
                   type="text"
+                  required
                   value={quickSupplierForm.supplier_name}
                   onChange={(e) => setQuickSupplierForm(f => ({ ...f, supplier_name: e.target.value }))}
                   placeholder="e.g. Treeline Timber Co."
@@ -2563,43 +2705,68 @@ export default function PurchaseOrdersPage() {
                 />
               </div>
 
-              <div>
-                <label className="block text-xs font-medium text-slate-600 mb-1">
-                  Product Description <span className="text-red-500">*</span>
-                </label>
-                <input
-                  type="text"
-                  value={quickSupplierForm.product_description}
-                  onChange={(e) => setQuickSupplierForm(f => ({ ...f, product_description: e.target.value }))}
-                  placeholder="e.g. 18mm Birch Plywood Sheet"
-                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-              </div>
-
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    Unit of Measure <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Supplier Email</label>
                   <input
-                    type="text"
-                    value={quickSupplierForm.unit_of_measure}
-                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, unit_of_measure: e.target.value }))}
-                    placeholder="e.g. sheet, m², litre"
+                    type="email"
+                    value={quickSupplierForm.supplier_email}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, supplier_email: e.target.value }))}
+                    placeholder="orders@supplier.com"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">
-                    Unit Price (£) <span className="text-red-500">*</span>
-                  </label>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Phone</label>
                   <input
-                    type="number"
-                    min="0"
-                    step="0.01"
-                    value={quickSupplierForm.unit_price}
-                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, unit_price: e.target.value }))}
-                    placeholder="0.00"
+                    type="tel"
+                    value={quickSupplierForm.phone}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, phone: e.target.value }))}
+                    placeholder="e.g. +44 20 1234 5678"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Street Name</label>
+                <input
+                  type="text"
+                  value={quickSupplierForm.street_name}
+                  onChange={(e) => setQuickSupplierForm(f => ({ ...f, street_name: e.target.value }))}
+                  placeholder="e.g. 12 Industrial Way"
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">City</label>
+                  <input
+                    type="text"
+                    value={quickSupplierForm.city}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, city: e.target.value }))}
+                    placeholder="e.g. Manchester"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">County</label>
+                  <input
+                    type="text"
+                    value={quickSupplierForm.county}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, county: e.target.value }))}
+                    placeholder="e.g. Greater Manchester"
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Zip / Post Code</label>
+                  <input
+                    type="text"
+                    value={quickSupplierForm.zip_code}
+                    onChange={(e) => setQuickSupplierForm(f => ({ ...f, zip_code: e.target.value }))}
+                    placeholder="e.g. M1 2AB"
                     className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
                   />
                 </div>
@@ -2608,12 +2775,51 @@ export default function PurchaseOrdersPage() {
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
                 <textarea
-                  rows={3}
+                  rows={2}
                   value={quickSupplierForm.notes}
                   onChange={(e) => setQuickSupplierForm(f => ({ ...f, notes: e.target.value }))}
-                  placeholder="Optional — e.g. price valid until Dec 2025, minimum order 10 units"
+                  placeholder="Optional notes or contact details"
                   className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
                 />
+              </div>
+
+              <hr className="border-slate-100" />
+              <div>
+                <h3 className="text-sm font-medium text-slate-800 mb-3">Catalogue Entry (Optional)</h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Product Description</label>
+                    <input
+                      type="text"
+                      value={quickSupplierForm.product_description}
+                      onChange={(e) => setQuickSupplierForm(f => ({ ...f, product_description: e.target.value }))}
+                      placeholder="e.g. 18mm Plywood"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Unit of Measure</label>
+                    <input
+                      type="text"
+                      value={quickSupplierForm.unit_of_measure}
+                      onChange={(e) => setQuickSupplierForm(f => ({ ...f, unit_of_measure: e.target.value }))}
+                      placeholder="e.g. Sheet, Lin M, Each"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Unit Price (£)</label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={quickSupplierForm.unit_price}
+                      onChange={(e) => setQuickSupplierForm(f => ({ ...f, unit_price: e.target.value }))}
+                      placeholder="0.00"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
+                  </div>
+                </div>
               </div>
 
               {quickSupplierError && (
@@ -2637,7 +2843,7 @@ export default function PurchaseOrdersPage() {
                   className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
                 >
                   {quickSupplierLoading ? <Loader2 size={14} className="animate-spin" /> : <Plus size={14} />}
-                  Add Entry
+                  Add Supplier
                 </button>
               </div>
             </form>
