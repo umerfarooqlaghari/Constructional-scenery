@@ -48,9 +48,13 @@ const NON_BECTU_ROLES = [
 ];
 
 const generateCrewNumber = async () => {
-  const { rows } = await db.query('SELECT COUNT(*) AS cnt FROM crew_members');
-  const count = parseInt(rows[0].cnt, 10) || 0;
-  return `CSC-${String(count + 1).padStart(4, '0')}`;
+  const { rows } = await db.query(
+    `SELECT MAX(CAST(SUBSTRING(crew_number FROM 5) AS INTEGER)) AS max_num
+     FROM crew_members
+     WHERE crew_number ~ '^CSC-[0-9]+$'`
+  );
+  const maxNum = parseInt(rows[0].max_num, 10) || 0;
+  return `CSC-${String(maxNum + 1).padStart(4, '0')}`;
 };
 
 // ─── GET /api/crew/trades ─────────────────────────────────────────────────────
