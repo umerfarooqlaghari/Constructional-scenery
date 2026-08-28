@@ -629,6 +629,7 @@ export default function PurchaseOrdersPage() {
 
   function openEdit(po: PurchaseOrder) {
     setEditPO(po);
+    loadSetsForProduction(po.production_id);
     const isStandardDept = po.department && DEPARTMENTS.includes(po.department);
     setEditForm({
       title:          po.title ?? '',
@@ -1840,26 +1841,19 @@ export default function PurchaseOrdersPage() {
                       </div>
                       <div>
                         <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
-                        {setsCache[newForm.production_id]?.length ? (
-                          <select
-                            value={newForm.set_code}
-                            onChange={(e) => updateField('set_code', e.target.value)}
-                            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100 bg-white"
-                          >
-                            <option value="">— No set —</option>
-                            {setsCache[newForm.production_id].filter(s => s.set_number).map(s => (
-                              <option key={s.id} value={s.set_number!}>{s.set_number} — {s.set_name}</option>
-                            ))}
-                          </select>
-                        ) : (
                         <input
                           type="text"
+                          list="new-po-sets-list"
                           value={newForm.set_code}
                           onChange={(e) => updateField('set_code', e.target.value)}
                           className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 outline-none focus:border-blue-400 focus:ring-1 focus:ring-blue-100"
                           placeholder="e.g. S003"
                         />
-                        )}
+                        <datalist id="new-po-sets-list">
+                          {setsCache[newForm.production_id]?.filter(s => s.set_number).map(s => (
+                            <option key={s.id} value={s.set_number!}>{s.set_number} — {s.set_name}</option>
+                          ))}
+                        </datalist>
                       </div>
                       <div className="sm:col-span-2">
                         <label className="block text-xs font-medium text-slate-600 mb-1">Title <span className="text-red-500">*</span></label>
@@ -2314,14 +2308,19 @@ export default function PurchaseOrdersPage() {
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Production *</label>
-                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.production_id} onChange={e => setEditForm(f => ({ ...f, production_id: e.target.value }))}>
+                    <select className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.production_id} onChange={e => { setEditForm(f => ({ ...f, production_id: e.target.value, set_code: '' })); loadSetsForProduction(e.target.value); }}>
                       <option value="">— Select —</option>
                       {productions.map(p => <option key={p.id} value={p.id}>{p.name}</option>)}
                     </select>
                   </div>
                   <div>
                     <label className="block text-xs font-medium text-slate-600 mb-1">Set Code</label>
-                    <input className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.set_code} onChange={e => setEditForm(f => ({ ...f, set_code: e.target.value }))} />
+                    <input list="edit-po-sets-list" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500" value={editForm.set_code} onChange={e => setEditForm(f => ({ ...f, set_code: e.target.value }))} />
+                    <datalist id="edit-po-sets-list">
+                      {setsCache[editForm.production_id]?.filter(s => s.set_number).map(s => (
+                        <option key={s.id} value={s.set_number!}>{s.set_number} — {s.set_name}</option>
+                      ))}
+                    </datalist>
                   </div>
                   <div className="col-span-1">
                     <label className="block text-xs font-medium text-slate-500 mb-1 uppercase tracking-wider">Type of Expenditure</label>
