@@ -1238,7 +1238,7 @@ export default function PurchaseOrdersPage() {
                               disabled={!!busy}
                               onClick={() => handleAction(po.id, 'download-pdf', async () => {
                                 await purchaseOrdersApi.downloadPdf(po.id, po.po_number);
-                              }, (msg) => setActionError({ id: po.id, msg }))}
+                              }, (msg) => setActionError(msg ? { id: po.id, msg } : null))}
                               className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors font-medium disabled:opacity-50"
                             >
                               {busy && actionLoading === po.id + ':download-pdf'
