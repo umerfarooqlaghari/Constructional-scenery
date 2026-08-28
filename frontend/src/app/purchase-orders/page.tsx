@@ -1238,7 +1238,7 @@ export default function PurchaseOrdersPage() {
                               disabled={!!busy}
                               onClick={() => handleAction(po.id, 'download-pdf', async () => {
                                 await purchaseOrdersApi.downloadPdf(po.id, po.po_number);
-                              }, setActionError)}
+                              }, (msg) => setActionError({ id: po.id, msg }))}
                               className="flex items-center gap-1 text-xs px-2.5 py-1 rounded-md bg-rose-50 text-rose-700 hover:bg-rose-100 transition-colors font-medium disabled:opacity-50"
                             >
                               {busy && actionLoading === po.id + ':download-pdf'
@@ -2021,10 +2021,12 @@ export default function PurchaseOrdersPage() {
                   onClick={async () => {
                     if (!confirmationFile) return;
                     handleAction(confirmationModal.id, 'attach-confirm', async () => {
-                      await purchaseOrdersApi.attachConfirmation(confirmationModal.id, confirmationFile);
+                      const formData = new FormData();
+                      formData.append('file', confirmationFile);
+                      await purchaseOrdersApi.attachConfirmation(confirmationModal.id, formData);
                       setConfirmationModal(null);
                       await loadData();
-                    }, setConfirmationError);
+                    }, (msg) => setConfirmationError(msg));
                   }}
                   className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-50"
                 >
