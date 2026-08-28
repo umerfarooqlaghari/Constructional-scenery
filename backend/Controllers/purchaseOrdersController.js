@@ -372,11 +372,12 @@ const submitPO = async (req, res) => {
     if (!po)                    { await client.query('ROLLBACK'); return res.status(404).json({ error: 'Purchase order not found' }); }
     if (po.status !== 'draft')  { await client.query('ROLLBACK'); return res.status(409).json({ error: 'Only draft purchase orders can be submitted' }); }
 
+    const newStatus = po.invoice_attachment_url ? 'invoice_received' : 'submitted';
     const { rows: [updated] } = await client.query(
-      `UPDATE purchase_orders SET status = 'submitted' WHERE id = $1 RETURNING *`,
-      [req.params.id]
+      `UPDATE purchase_orders SET status = $1 WHERE id = $2 RETURNING *`,
+      [newStatus, req.params.id]
     );
-    await logStatusTransition(client, po.id, po.production_id, 'draft', 'submitted', req.user.id);
+    await logStatusTransition(client, po.id, po.production_id, 'draft', newStatus, req.user.id);
 
     await client.query('COMMIT');
 
