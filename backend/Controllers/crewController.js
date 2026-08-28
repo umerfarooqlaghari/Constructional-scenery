@@ -509,22 +509,32 @@ const importCSV = async (req, res) => {
   const knownTrades = new Set(rateRows.map(r => r.trade));
 
   const { rows: existingCrew } = await db.query(
-    `SELECT LOWER(first_name) || '|' || LOWER(last_name) || '|' || COALESCE(date_of_birth::text,'') AS key
-     FROM crew_members WHERE is_active = true`
+    `SELECT email, account_number FROM crew_members WHERE is_active = true`
   );
-  const existingSet = new Set(existingCrew.map(r => r.key));
+  const existingEmails     = new Set(
+    existingCrew.map(r => r.email?.toLowerCase()).filter(Boolean)
+  );
+  const existingAccNumbers = new Set(
+    existingCrew
+      .map(r => { try { return r.account_number ? decrypt(r.account_number) : null; } catch { return null; } })
+      .filter(Boolean)
+  );
 
   const created = [];
   const skipped = [];
 
   for (let idx = 0; idx < records.length; idx++) {
-    const row    = records[idx];
-    const errors = validateImportRow(row, idx, knownTrades, null);
-    const dob    = row['Date of Birth']?.trim() || '';
-    const dupKey = `${row['First Name']?.trim().toLowerCase()}|${row['Last Name']?.trim().toLowerCase()}|${dob}`;
+    const row            = records[idx];
+    const errors         = validateImportRow(row, idx, knownTrades, null);
+    const dob            = row['Date of Birth']?.trim() || '';
+    const rowEmail       = row['Email']?.trim().toLowerCase() || '';
+    const rowAccNumber   = row['Account Number']?.trim() || '';
 
-    if (existingSet.has(dupKey)) {
-      skipped.push({ row: idx + 2, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim(), reason: 'Duplicate (same name & DOB)' });
+    const isDupEmail     = rowEmail && existingEmails.has(rowEmail);
+    const isDupAccNumber = rowAccNumber && existingAccNumbers.has(rowAccNumber);
+    if (isDupEmail || isDupAccNumber) {
+      const dupFields = [isDupEmail ? 'email' : null, isDupAccNumber ? 'account number' : null].filter(Boolean).join(' & ');
+      skipped.push({ row: idx + 2, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim(), reason: `Duplicate (${dupFields} already exists)` });
       continue;
     }
     if (errors.length) {
@@ -566,7 +576,9 @@ const importCSV = async (req, res) => {
         ]
       );
       created.push({ row: idx + 2, crew_number, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim() });
-      existingSet.add(dupKey); // prevent in-batch duplicates
+      // prevent in-batch duplicates for subsequent rows
+      if (rowEmail)     existingEmails.add(rowEmail);
+      if (rowAccNumber) existingAccNumbers.add(rowAccNumber);
     } catch (err) {
       skipped.push({ row: idx + 2, first_name: row['First Name']?.trim(), last_name: row['Last Name']?.trim(), reason: `DB error: ${err.message}` });
     }

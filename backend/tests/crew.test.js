@@ -68,8 +68,8 @@ describe('POST /api/crew', () => {
   };
 
   test('Accountant creates crew — returns 201', async () => {
-    dbMock.respond({ rows: [{ count: '3' }] });
-    dbMock.respond([{ ...SAMPLE_CREW, crew_number: 'CS004' }]);
+    dbMock.respond({ rows: [{ max_num: 3 }] });
+    dbMock.respond([{ ...SAMPLE_CREW, crew_number: 'CSC-0004' }]);
     const res = await request(app)
       .post('/api/crew')
       .set(authHeader('accountant'))
@@ -78,8 +78,8 @@ describe('POST /api/crew', () => {
   });
 
   test('Coordinator creates crew — returns 201', async () => {
-    dbMock.respond({ rows: [{ count: '4' }] });
-    dbMock.respond([{ ...SAMPLE_CREW, crew_number: 'CS005' }]);
+    dbMock.respond({ rows: [{ max_num: 4 }] });
+    dbMock.respond([{ ...SAMPLE_CREW, crew_number: 'CSC-0005' }]);
     const res = await request(app)
       .post('/api/crew')
       .set(authHeader('coordinator'))
@@ -215,9 +215,9 @@ describe('POST /api/crew/import/preview', () => {
 describe('POST /api/crew/import', () => {
   test('creates crew records from valid CSV', async () => {
     dbMock.respond([{ trade: 'Carpenters' }]);   // known trades
-    dbMock.respond([]);                           // existing crew
-    // generateCrewNumber queries
-    dbMock.respond({ rows: [{ count: '0' }] });
+    dbMock.respond([]);                           // existing crew (email + account_number)
+    // generateCrewNumber query
+    dbMock.respond({ rows: [{ max_num: null }] });
     dbMock.respond({ rows: [], rowCount: 1 });    // INSERT
 
     const csv = Buffer.from(
