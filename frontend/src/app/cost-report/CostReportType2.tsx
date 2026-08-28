@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useCallback, useEffect } from 'react';
-import { TrendingUp, TrendingDown, Plus, Trash2, Save, RotateCcw, Loader2, Pencil } from 'lucide-react';
+import { TrendingUp, TrendingDown, Plus, Trash2, Save, RotateCcw, Loader2, Pencil, Check } from 'lucide-react';
 import { costReportExtApi } from '@/lib/api';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -755,11 +755,11 @@ function TabMasterBudget({ budget, productionId, productionSets, globalMarginRat
   const upd = (
     setFn: React.Dispatch<React.SetStateAction<EditLine[]>>,
     key: number, field: keyof EditLine, value: string
-  ) => setFn(prev => prev.map(l => l._key === key ? { ...l, [field]: value } : l));
+  ) => { setSaveOk(false); setFn(prev => prev.map(l => l._key === key ? { ...l, [field]: value } : l)); };
 
   const del = (
     setFn: React.Dispatch<React.SetStateAction<EditLine[]>>, key: number
-  ) => setFn(prev => prev.filter(l => l._key !== key));
+  ) => { setSaveOk(false); setFn(prev => prev.filter(l => l._key !== key)); };
 
   const save = async () => {
     setSaving(true); setSaveMsg(''); setSaveOk(false);
@@ -797,13 +797,24 @@ function TabMasterBudget({ budget, productionId, productionSets, globalMarginRat
   const aboveTotal  = aboveLines.reduce((s, l) => s + calcTotal(l, marginPct), 0);
   const setTotal    = setLines.reduce((s, l) => s + calcTotal(l, marginPct), 0);
 
-  const SaveBtn = ({ bottom = false }: { bottom?: boolean }) => (
-    <button onClick={save} disabled={saving}
-      className={`flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors shadow-sm ${bottom ? 'px-8' : ''}`}>
-      {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-      Save Budget
-    </button>
-  );
+  const SaveBtn = ({ bottom = false }: { bottom?: boolean }) => {
+    if (saveOk) {
+      return (
+        <button disabled
+          className={`flex items-center gap-2 px-5 py-2 bg-emerald-600 text-white text-sm font-semibold rounded-lg shadow-sm ${bottom ? 'px-8' : ''}`}>
+          <Check size={14} />
+          Saved
+        </button>
+      );
+    }
+    return (
+      <button onClick={save} disabled={saving}
+        className={`flex items-center gap-2 px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg hover:bg-blue-700 disabled:opacity-60 transition-colors shadow-sm ${bottom ? 'px-8' : ''}`}>
+        {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+        Save Budget
+      </button>
+    );
+  };
 
   return (
     <div className="space-y-5">
@@ -813,20 +824,20 @@ function TabMasterBudget({ budget, productionId, productionSets, globalMarginRat
         <div className="flex flex-wrap items-end gap-4">
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Contracted Weeks</label>
-            <input type="number" min="0" value={weeks} onChange={e => setWeeks(e.target.value)}
+            <input type="number" min="0" value={weeks} onChange={e => { setWeeks(e.target.value); setSaveOk(false); }}
               className="w-28 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400 text-center font-semibold" />
           </div>
           <div>
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Overall Margin %</label>
             <div className="flex items-center gap-1">
-              <input type="number" min="0" max="100" step="0.5" value={marginPct} onChange={e => setMarginPct(e.target.value)}
+              <input type="number" min="0" max="100" step="0.5" value={marginPct} onChange={e => { setMarginPct(e.target.value); setSaveOk(false); }}
                 className="w-24 border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-400 text-center font-semibold" />
               <span className="text-slate-500 text-sm font-medium">%</span>
             </div>
           </div>
           <div className="flex-1 min-w-48">
             <label className="block text-xs font-semibold text-slate-500 uppercase tracking-wide mb-1">Adjustment / Reallocation Notes</label>
-            <input type="text" value={budgetNotes} onChange={e => setBudgetNotes(e.target.value)}
+            <input type="text" value={budgetNotes} onChange={e => { setBudgetNotes(e.target.value); setSaveOk(false); }}
               placeholder="Budget adjustments, reallocations…"
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-400" />
           </div>
@@ -928,12 +939,12 @@ function TabMasterBudget({ budget, productionId, productionSets, globalMarginRat
               <tr>
                 <td colSpan={10} className="px-4 py-2.5 border-t border-slate-100">
                   <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => setAboveLines(p => [...p, blankAbove()])}
+                    <button onClick={() => { setSaveOk(false); setAboveLines(p => [...p, blankAbove()]); }}
                       className="flex items-center gap-1.5 text-xs text-blue-600 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50">
                       <Plus size={12} /> Add Role
                     </button>
                     {ABOVE_LINE_ROLES.map(role => (
-                      <button key={role} onClick={() => setAboveLines(p => [...p, blankAbove(role)])}
+                      <button key={role} onClick={() => { setSaveOk(false); setAboveLines(p => [...p, blankAbove(role)]); }}
                         className="text-xs text-slate-500 hover:text-blue-600 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-full hover:border-blue-200">
                         + {role}
                       </button>
@@ -1045,12 +1056,12 @@ function TabMasterBudget({ budget, productionId, productionSets, globalMarginRat
               <tr>
                 <td colSpan={9} className="px-4 py-2.5 border-t border-slate-100">
                   <div className="flex flex-wrap items-center gap-2">
-                    <button onClick={() => setSetLines(p => [...p, blankSet()])}
+                    <button onClick={() => { setSaveOk(false); setSetLines(p => [...p, blankSet()]); }}
                       className="flex items-center gap-1.5 text-xs text-blue-600 font-medium px-3 py-1.5 border border-blue-200 rounded-lg hover:bg-blue-50">
                       <Plus size={12} /> Add Budget Line
                     </button>
                     {productionSets.map(s => (
-                      <button key={s.id} onClick={() => setSetLines(p => [...p, blankSet(s.id)])}
+                      <button key={s.id} onClick={() => { setSaveOk(false); setSetLines(p => [...p, blankSet(s.id)]); }}
                         className="text-xs text-slate-500 hover:text-blue-600 px-2.5 py-1 bg-slate-50 border border-slate-200 rounded-full hover:border-blue-200">
                         + {s.set_number}{s.set_name ? ` ${s.set_name}` : ''}
                       </button>
