@@ -28,6 +28,8 @@ import {
   FileText,
   Pencil,
   SlidersHorizontal,
+  Download,
+  Trash2,
 } from 'lucide-react';
 
 const PAGE_SIZE = 20;
@@ -235,7 +237,7 @@ export default function PurchaseOrdersPage() {
   const [viewFullPO, setViewFullPO] = useState<PurchaseOrder | null>(null);
   const [supplierOverviewModal, setSupplierOverviewModal] = useState<string | null>(null);
 
-  const [invoiceModal, setInvoiceModal] = useState<{ id: string; poNumber: string } | null>(null);
+  const [invoiceModal, setInvoiceModal] = useState<PurchaseOrder | null>(null);
   const [invoiceFile, setInvoiceFile] = useState<File | null>(null);
   const [invoiceLoading, setInvoiceLoading] = useState(false);
   const [invoiceError, setInvoiceError] = useState('');
@@ -1310,7 +1312,7 @@ export default function PurchaseOrdersPage() {
                               <button
                                 disabled={!!busy}
                                 onClick={() => {
-                                  setInvoiceModal({ id: po.id, poNumber: po.po_number });
+                                  setInvoiceModal(po);
                                   setInvoiceFile(null);
                                   setInvoiceError('');
                                 }}
@@ -1929,7 +1931,7 @@ export default function PurchaseOrdersPage() {
             <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100">
               <div>
                 <h2 className="text-slate-900 font-semibold text-base">Attach Invoice</h2>
-                <p className="text-slate-400 text-xs mt-0.5">{invoiceModal.poNumber}</p>
+                <p className="text-slate-400 text-xs mt-0.5">{invoiceModal.po_number}</p>
               </div>
               <button
                 onClick={() => setInvoiceModal(null)}
@@ -1939,23 +1941,77 @@ export default function PurchaseOrdersPage() {
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
-              <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
-                <Upload size={22} className="text-slate-400 mb-2" />
-                <span className="text-slate-500 text-sm font-medium">
-                  {invoiceFile ? invoiceFile.name : 'Click to upload invoice'}
-                </span>
-                <span className="text-slate-400 text-xs mt-1">PDF, PNG, JPG up to 25MB</span>
-                <input
-                  type="file"
-                  accept=".pdf,.png,.jpg,.jpeg"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0] ?? null;
-                    setInvoiceFile(f);
-                    setInvoiceError('');
-                  }}
-                />
-              </label>
+              {invoiceModal.invoice_attachment_url ? (
+                <div className="flex flex-col gap-3">
+                  <div className="flex items-center justify-between p-4 bg-slate-50 border border-slate-200 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2 bg-white rounded-lg border border-slate-200">
+                        <FileText size={20} className="text-slate-600" />
+                      </div>
+                      <div className="flex flex-col overflow-hidden max-w-[200px] sm:max-w-[250px]">
+                        <span className="text-sm font-medium text-slate-700 truncate" title={invoiceModal.invoice_attachment_name || 'Attached Invoice'}>
+                          {invoiceModal.invoice_attachment_name || 'Attached Invoice'}
+                        </span>
+                        <span className="text-xs text-slate-400">Already attached</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <button
+                        onClick={async () => {
+                          try {
+                            const res = await purchaseOrdersApi.downloadInvoice(invoiceModal.id);
+                            if (res.url) window.open(res.url, '_blank');
+                          } catch (err: unknown) {
+                            setInvoiceError(err instanceof Error ? err.message : 'Download failed');
+                          }
+                        }}
+                        className="p-1.5 text-blue-600 hover:bg-blue-50 rounded-lg transition-colors"
+                        title="Download Invoice"
+                      >
+                        <Download size={16} />
+                      </button>
+                      <button
+                        disabled={invoiceLoading}
+                        onClick={async () => {
+                          setInvoiceLoading(true);
+                          setInvoiceError('');
+                          try {
+                            await purchaseOrdersApi.deleteInvoice(invoiceModal.id);
+                            setInvoiceModal({ ...invoiceModal, invoice_attachment_url: null, invoice_attachment_name: null } as PurchaseOrder);
+                            await loadData();
+                          } catch (err: unknown) {
+                            setInvoiceError(err instanceof Error ? err.message : 'Delete failed');
+                          } finally {
+                            setInvoiceLoading(false);
+                          }
+                        }}
+                        className="p-1.5 text-red-600 hover:bg-red-50 rounded-lg transition-colors disabled:opacity-50"
+                        title="Remove Invoice"
+                      >
+                        {invoiceLoading ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : (
+                <label className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-slate-200 rounded-xl cursor-pointer hover:border-blue-400 hover:bg-blue-50/30 transition-colors">
+                  <Upload size={22} className="text-slate-400 mb-2" />
+                  <span className="text-slate-500 text-sm font-medium">
+                    {invoiceFile ? invoiceFile.name : 'Click to upload invoice'}
+                  </span>
+                  <span className="text-slate-400 text-xs mt-1">PDF, PNG, JPG up to 25MB</span>
+                  <input
+                    type="file"
+                    accept=".pdf,.png,.jpg,.jpeg"
+                    className="hidden"
+                    onChange={(e) => {
+                      const f = e.target.files?.[0] ?? null;
+                      setInvoiceFile(f);
+                      setInvoiceError('');
+                    }}
+                  />
+                </label>
+              )}
               {invoiceError && (
                 <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                   <AlertCircle size={13} />
@@ -1968,16 +2024,18 @@ export default function PurchaseOrdersPage() {
                 onClick={() => setInvoiceModal(null)}
                 className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
               >
-                Cancel
+                {invoiceModal.invoice_attachment_url ? 'Close' : 'Cancel'}
               </button>
-              <button
-                disabled={!invoiceFile || invoiceLoading}
-                onClick={handleAttachInvoice}
-                className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
-              >
-                {invoiceLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-                Upload Invoice
-              </button>
+              {!invoiceModal.invoice_attachment_url && (
+                <button
+                  disabled={!invoiceFile || invoiceLoading}
+                  onClick={handleAttachInvoice}
+                  className="flex items-center gap-2 px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
+                >
+                  {invoiceLoading ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+                  Upload Invoice
+                </button>
+              )}
             </div>
           </div>
         </div>

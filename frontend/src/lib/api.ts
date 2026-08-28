@@ -515,6 +515,10 @@ export const purchaseOrdersApi = {
       }
       return r.json() as Promise<{ message: string; purchase_order: PurchaseOrder }>;
     }),
+  downloadInvoice: (id: string) =>
+    request<{ url: string; filename: string }>(`/api/purchase-orders/${id}/invoice/download`),
+  deleteInvoice: (id: string) =>
+    request<{ message: string }>(`/api/purchase-orders/${id}/invoice`, { method: 'DELETE' }),
   attachConfirmation: (id: string, formData: FormData) =>
     fetch(`/api/purchase-orders/${id}/attach-confirmation`, {
       method: 'POST',
