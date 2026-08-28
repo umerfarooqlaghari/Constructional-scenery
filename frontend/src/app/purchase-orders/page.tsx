@@ -246,6 +246,7 @@ export default function PurchaseOrdersPage() {
   const [confirmationError, setConfirmationError] = useState('');
 
   const [submitConfirmPO, setSubmitConfirmPO] = useState<PurchaseOrder | null>(null);
+  const [submitConfirmInvoiceFile, setSubmitConfirmInvoiceFile] = useState<File | null>(null);
 
   const [editPO, setEditPO] = useState<PurchaseOrder | null>(null);
   const [editForm, setEditForm] = useState<NewPOForm>(EMPTY_FORM);
@@ -2043,8 +2044,8 @@ export default function PurchaseOrdersPage() {
       {editPO && (
         <div className="fixed inset-0 z-50 flex items-start justify-center p-4 overflow-y-auto">
           <div className="absolute inset-0 bg-black/40" onClick={() => setEditPO(null)} />
-          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl my-8">
-            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 sticky top-0 bg-white rounded-t-2xl z-10">
+          <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col my-8">
+            <div className="flex items-center justify-between px-6 py-5 border-b border-slate-100 bg-white rounded-t-2xl shrink-0">
               <div>
                 <h2 className="text-slate-900 font-semibold text-base">Edit Purchase Order</h2>
                 <p className="text-slate-400 text-xs mt-0.5">{editPO.po_number} — Draft</p>
@@ -2053,7 +2054,7 @@ export default function PurchaseOrdersPage() {
                 <X size={18} />
               </button>
             </div>
-            <div className="px-6 py-5 space-y-5">
+            <div className="px-6 py-5 space-y-5 overflow-y-auto">
               {editError && (
                 <div className="flex items-center gap-2 text-red-600 text-xs bg-red-50 border border-red-100 rounded-lg px-3 py-2">
                   <AlertCircle size={13} />{editError}
@@ -2198,7 +2199,7 @@ export default function PurchaseOrdersPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50">
+            <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl shrink-0">
               <button onClick={() => setEditPO(null)} className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors">
                 Cancel
               </button>
@@ -2218,33 +2219,54 @@ export default function PurchaseOrdersPage() {
       {/* Submit without invoice confirmation modal */}
       {submitConfirmPO && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/40" onClick={() => setSubmitConfirmPO(null)} />
+          <div className="absolute inset-0 bg-black/40" onClick={() => { setSubmitConfirmPO(null); setSubmitConfirmInvoiceFile(null); }} />
           <div className="relative bg-white rounded-2xl shadow-2xl w-full max-w-sm">
             <div className="px-6 pt-6 pb-2">
               <div className="flex items-center justify-center w-12 h-12 rounded-full bg-amber-50 mb-4 mx-auto">
                 <AlertCircle size={24} className="text-amber-500" />
               </div>
-              <h2 className="text-slate-900 font-semibold text-base text-center">Submit Purchase Order without an invoice</h2>
+              <h2 className="text-slate-900 font-semibold text-base text-center">Submit Purchase Order</h2>
               <p className="text-slate-500 text-sm text-center mt-2">
-                No invoice is attached to <span className="font-medium">{submitConfirmPO.po_number}</span>. Are you sure you want to submit?
+                No invoice is attached to <span className="font-medium">{submitConfirmPO.po_number}</span>. Are you sure you want to submit? Or you can attach an invoice now.
               </p>
+              
+              <div className="mt-4 border border-slate-200 rounded-xl p-4 bg-slate-50">
+                <label className="block text-xs font-semibold text-slate-700 mb-2">Attach Invoice (Optional)</label>
+                <input
+                  type="file"
+                  accept=".pdf,.jpg,.jpeg,.png"
+                  onChange={(e) => setSubmitConfirmInvoiceFile(e.target.files?.[0] || null)}
+                  className="w-full text-sm file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+              </div>
+
             </div>
             <div className="flex items-center justify-end gap-2 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
               <button
-                onClick={() => setSubmitConfirmPO(null)}
+                onClick={() => { setSubmitConfirmPO(null); setSubmitConfirmInvoiceFile(null); }}
                 className="px-4 py-2 text-sm text-slate-600 border border-slate-200 rounded-lg hover:bg-white transition-colors"
               >
                 Cancel
               </button>
               <button
+                disabled={actionLoading === submitConfirmPO.id + ':submit'}
                 onClick={() => {
                   const id = submitConfirmPO.id;
-                  setSubmitConfirmPO(null);
-                  handleSubmit(id);
+                  handleAction(id, 'submit', async () => {
+                    if (submitConfirmInvoiceFile) {
+                      const formData = new FormData();
+                      formData.append('invoice', submitConfirmInvoiceFile);
+                      await purchaseOrdersApi.attachInvoice(id, formData);
+                    }
+                    await purchaseOrdersApi.submit(id);
+                    setSubmitConfirmPO(null);
+                    setSubmitConfirmInvoiceFile(null);
+                    await loadData();
+                  }, (msg) => setActionError(msg ? { id, msg } : null));
                 }}
-                className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium"
+                className="px-5 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors font-medium disabled:opacity-60"
               >
-                Yes, Submit
+                {actionLoading === submitConfirmPO.id + ':submit' ? <Loader2 size={14} className="animate-spin" /> : 'Yes, Submit'}
               </button>
             </div>
           </div>
