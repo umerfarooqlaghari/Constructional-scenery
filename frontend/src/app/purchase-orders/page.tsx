@@ -641,7 +641,9 @@ export default function PurchaseOrdersPage() {
 
       if (newConfirmationFile) {
         try {
-          await purchaseOrdersApi.attachConfirmation(created.purchase_order.id, newConfirmationFile);
+          const formData = new FormData();
+          formData.append('file', newConfirmationFile);
+          await purchaseOrdersApi.attachConfirmation(created.purchase_order.id, formData);
         } catch (e) {
           console.error('Failed to attach confirmation during creation', e);
         }
