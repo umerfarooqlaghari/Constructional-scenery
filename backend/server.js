@@ -10,27 +10,46 @@ const { checkPolicy  } = require('./Middleware/roleCheck');
 const app = express();
 
 // ─── CORS + BODY PARSER ───────────────────────────────────────────────────────
-const allowedOrigins = process.env.CLIENT_URL
-  ? process.env.CLIENT_URL.split(',').map((s) => s.trim())
-  : null; // null = allow all localhost in dev
+const allowedOrigins = (process.env.CLIENT_URL || '')
+  .split(',')
+  .map((s) => s.trim().replace(/\/+$/, ''))
+  .filter(Boolean);
 
 app.use(cors({
   origin: (origin, callback) => {
-    // Allow requests with no origin (Postman, server-to-server)
+    // Allow requests with no origin (Postman, server-to-server, curl)
     if (!origin) return callback(null, true);
+
+    const cleanOrigin = origin.trim().replace(/\/+$/, '');
+
     // Always allow localhost, 127.0.0.1, and local network IPs (e.g. 192.168.x.x)
-    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(origin)) {
+    if (/^https?:\/\/(localhost|127\.0\.0\.1|192\.168\.\d+\.\d+|10\.\d+\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/.test(cleanOrigin)) {
       return callback(null, true);
     }
-    // In production CLIENT_URL must be set
-    if (allowedOrigins) {
-      if (allowedOrigins.includes(origin)) {
+
+    // Always allow Vercel domains (*.vercel.app), Render domains (*.onrender.com), and constructscenery domains
+    if (/^https?:\/\/([a-zA-Z0-9-]+\.)*(vercel\.app|onrender\.com|constructscenery\.co\.uk)(:\d+)?$/.test(cleanOrigin)) {
+      return callback(null, true);
+    }
+
+    // Check custom configured CLIENT_URL
+    if (allowedOrigins.length > 0) {
+      if (allowedOrigins.includes(cleanOrigin) || allowedOrigins.includes('*')) {
         return callback(null, true);
       }
     }
-    return callback(new Error('Not allowed by CORS'), false);
+
+    // In non-production, default allow
+    if (process.env.NODE_ENV !== 'production' && allowedOrigins.length === 0) {
+      return callback(null, true);
+    }
+
+    console.warn(`[CORS] Blocked request from origin: ${origin}`);
+    return callback(null, false);
   },
   credentials: true,
+  methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'X-Requested-With', 'Accept', 'Origin'],
 }));
 app.use(express.json({ limit: '25mb' }));
 app.use(express.urlencoded({ extended: true, limit: '25mb' }));
