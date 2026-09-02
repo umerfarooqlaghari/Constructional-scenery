@@ -1,3 +1,4 @@
+require('dotenv').config();
 const { Pool, types } = require('pg');
 types.setTypeParser(1082, (val) => val);
 
@@ -5,14 +6,14 @@ types.setTypeParser(1082, (val) => val);
 // Parse the DATABASE_URL manually so that pg-connection-string never sees
 // the sslmode=verify-full query param (which makes pg try to load a local CA
 // cert file that doesn't exist, hanging the SSL handshake indefinitely).
-const raw = process.env.DATABASE_URL || 'postgres://localhost/postgres';
+const raw = (process.env.DATABASE_URL || 'postgres://localhost/postgres').replace(/^["']|["']$/g, '');
 const u   = new URL(raw);
 
 const pool = new Pool({
   host:     u.hostname,
   port:     parseInt(u.port, 10) || 5432,
   user:     u.username,
-  password: u.password,
+  password: decodeURIComponent(u.password),
   database: u.pathname.replace(/^\//, ''),
   ssl:      { rejectUnauthorized: false },
   max:                     10,

@@ -719,6 +719,7 @@ export type CostReport = {
   metrics: {
     total_supplier_costs: number;
     total_labour_costs: number;
+    total_hire_costs?: number;
     total_costs_to_date: number;
     total_invoiced_to_production: number;
     current_profit: number;
@@ -963,6 +964,7 @@ export type Supplier = {
 };
 export const supplierApi = {
   list: () => request<Supplier[]>('/api/suppliers'),
+  getAll: () => request<{ suppliers: Supplier[] }>('/api/suppliers'),
   getNames: () => request<string[]>('/api/suppliers/names'),
   getById: (id: string) => request<Supplier>(`/api/suppliers/${id}`),
   create: (data: Partial<Supplier>) =>
@@ -972,6 +974,7 @@ export const supplierApi = {
   delete: (id: string) =>
     request<{ message: string }>(`/api/suppliers/${id}`, { method: 'DELETE' }),
 };
+export const suppliersApi = supplierApi;
 
 // ─── Percentometer new API (versioned ratios + actuals) ────────────────────────
 export type PercentometerActualsRow = {
@@ -1123,4 +1126,112 @@ export const costReportExtApi = {
     request<unknown>(`/api/cost-reports/${productionId}/budget`, { method: 'POST', body: data }),
 };
 
+// ─── Module 8: Assets & Hire Equipment ───────────────────────────────────────
+
+export type VehicleComplianceStatus = 'compliant' | 'due_soon' | 'overdue' | 'none';
+
+export interface VehicleComplianceInfo {
+  date: string | null;
+  days_remaining: number | null;
+  status: VehicleComplianceStatus;
+  label: string;
+}
+
+export interface Vehicle {
+  id: string;
+  registration_number: string;
+  make: string;
+  model: string;
+  year_of_manufacture: number | null;
+  number_plate: string | null;
+  colour: string | null;
+  vehicle_type: string | null;
+  owner_assigned_to: string | null;
+  notes: string | null;
+  mot_expiry_date: string | null;
+  insurance_renewal_date: string | null;
+  tax_renewal_date: string | null;
+  mot_compliance?: VehicleComplianceInfo;
+  insurance_compliance?: VehicleComplianceInfo;
+  tax_compliance?: VehicleComplianceInfo;
+  overall_status?: VehicleComplianceStatus;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface HireEquipment {
+  id: string;
+  equipment_type: string;
+  supplier_id: string | null;
+  supplier_name: string;
+  supplier_official_name?: string | null;
+  description: string | null;
+  production_id: string;
+  production_name?: string;
+  production_status?: string;
+  hire_start_date: string;
+  weekly_hire_rate: number;
+  return_date: string | null;
+  status: 'active' | 'returned';
+  notes: string | null;
+  days_hired?: number;
+  weeks_hired?: number;
+  total_cost?: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface AssetsHireSummary {
+  total_vehicles: number;
+  deadlines_due_soon: number;
+  deadlines_overdue: number;
+  mot_due_count: number;
+  insurance_due_count: number;
+  tax_due_count: number;
+  active_hires_count: number;
+  total_hires_count: number;
+  active_weekly_run_rate: number;
+  total_hire_cost_to_date: number;
+}
+
+export const vehiclesApi = {
+  getAll: (params?: { search?: string; status?: string; vehicle_type?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => !!v) as [string, string][]).toString() : '';
+    return request<{ vehicles: Vehicle[] }>(`/api/vehicles${qs}`);
+  },
+  getById: (id: string) =>
+    request<{ vehicle: Vehicle }>(`/api/vehicles/${id}`),
+  create: (data: Partial<Vehicle>) =>
+    request<{ message: string; vehicle: Vehicle }>('/api/vehicles', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<Vehicle>) =>
+    request<{ message: string; vehicle: Vehicle }>(`/api/vehicles/${id}`, { method: 'PUT', body: data }),
+  delete: (id: string) =>
+    request<{ message: string }>(`/api/vehicles/${id}`, { method: 'DELETE' }),
+  triggerComplianceCheck: () =>
+    request<{ message: string; sent: number; skipped: number }>('/api/vehicles/compliance-check', { method: 'POST' }),
+};
+
+export const hireEquipmentApi = {
+  getAll: (params?: { production_id?: string; status?: string; supplier_name?: string; search?: string }) => {
+    const qs = params ? '?' + new URLSearchParams(Object.entries(params).filter(([, v]) => !!v) as [string, string][]).toString() : '';
+    return request<{ hire_equipment: HireEquipment[] }>(`/api/hire-equipment${qs}`);
+  },
+  getById: (id: string) =>
+    request<{ hire_equipment: HireEquipment }>(`/api/hire-equipment/${id}`),
+  create: (data: Partial<HireEquipment>) =>
+    request<{ message: string; hire_equipment: HireEquipment }>('/api/hire-equipment', { method: 'POST', body: data }),
+  update: (id: string, data: Partial<HireEquipment>) =>
+    request<{ message: string; hire_equipment: HireEquipment }>(`/api/hire-equipment/${id}`, { method: 'PUT', body: data }),
+  return: (id: string, data: { return_date?: string; notes?: string }) =>
+    request<{ message: string; hire_equipment: HireEquipment }>(`/api/hire-equipment/${id}/return`, { method: 'POST', body: data }),
+  delete: (id: string) =>
+    request<{ message: string }>(`/api/hire-equipment/${id}`, { method: 'DELETE' }),
+};
+
+export const assetsHireApi = {
+  getSummary: () =>
+    request<{ summary: AssetsHireSummary }>('/api/assets-hire/summary'),
+};
+
 export default request;
+

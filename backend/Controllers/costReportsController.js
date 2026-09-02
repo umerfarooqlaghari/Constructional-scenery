@@ -114,6 +114,7 @@ const getType1Report = async (req, res) => {
         total_costs_to_date:              totalCosts,
         total_supplier_costs:             metrics.total_supplier_costs,
         total_labour_costs:               metrics.total_labour_costs,
+        total_hire_costs:                 metrics.total_hire_costs,
         amounts_invoiced_to_production:   totalInvoiced,
         current_profit:                   totalInvoiced - totalCosts,
         profit_pct_of_turnover:           totalInvoiced > 0
@@ -176,8 +177,9 @@ const getCostReport = async (req, res) => {
       contract_type: production.contract_type,
       as_at_date:    as_at_date || new Date().toISOString().split('T')[0],
       metrics: {
-        total_supplier_costs:          metrics.total_supplier_costs ?? metrics.total_supplier_costs,
+        total_supplier_costs:          metrics.total_supplier_costs,
         total_labour_costs:            metrics.total_labour_costs,
+        total_hire_costs:              metrics.total_hire_costs,
         total_costs_to_date:           metrics.total_costs_to_date,
         total_invoiced_to_production:  metrics.total_invoiced ?? null,
         current_profit:                metrics.current_profit ?? null,

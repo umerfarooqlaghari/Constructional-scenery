@@ -7,11 +7,12 @@
  *   await sendEmail({ to: 'user@example.com', subject: 'Hello', html: '<p>Hi</p>' });
  */
 
+require('dotenv').config();
 const nodemailer = require('nodemailer');
 const { SESv2Client, SendEmailCommand } = require('@aws-sdk/client-sesv2');
 
 const sesClient = new SESv2Client({
-  region: process.env.AWS_REGION || 'us-east-1',
+  region: process.env.AWS_REGION || 'eu-north-1',
   credentials: {
     accessKeyId:     process.env.AWS_ACCESS_KEY_ID,
     secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
@@ -193,6 +194,88 @@ const templates = {
           </div>
           <div style="background:#f8fafc;padding:10px 24px;border-top:1px solid #e2e8f0">
             <p style="color:#94a3b8;font-size:11px;margin:0">Construct Scenery Limited &nbsp;·&nbsp; Automated alert &nbsp;·&nbsp; Do not reply</p>
+          </div>
+        </div>
+      `,
+    };
+  },
+
+  /**
+   * Vehicle compliance deadline alert — MOT, Insurance, Tax (VED)
+   */
+  vehicleComplianceAlert: (vehicle, deadlineLabel, expiryDate, daysRemaining) => {
+    const formattedDate = expiryDate
+      ? new Date(expiryDate).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' })
+      : expiryDate;
+
+    const isOverdue = daysRemaining < 0;
+    const isDueToday = daysRemaining === 0;
+    const dotColor = isOverdue ? '#ef4444' : daysRemaining <= 14 ? '#f59e0b' : '#3b82f6';
+    const urgencyLabel = isOverdue
+      ? `${Math.abs(daysRemaining)} Days Overdue`
+      : isDueToday
+      ? 'Due Today'
+      : `${daysRemaining} Days Remaining`;
+
+    const appUrl = process.env.APP_URL || 'https://frontend-csldatabase.vercel.app';
+    const deepLink = `${appUrl}/assets-hire`;
+
+    return {
+      subject: `Vehicle Compliance Alert: ${vehicle.registration_number} — ${deadlineLabel} due (${urgencyLabel})`,
+      html: `
+        <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;background:#fff;border:1px solid #e2e8f0;border-radius:8px;overflow:hidden">
+          <div style="background:#0f172a;padding:16px 24px">
+            <span style="color:#fff;font-size:18px;font-weight:700;letter-spacing:1px">Construct Scenery</span>
+            <span style="color:#94a3b8;font-size:11px;margin-left:10px">Fleet Compliance Register</span>
+          </div>
+          <div style="padding:24px">
+            <div style="display:flex;align-items:flex-start;gap:12px;margin-bottom:20px">
+              <span style="color:${dotColor};font-size:20px;line-height:1">⚠️</span>
+              <div>
+                <h3 style="color:#0f172a;margin:0 0 6px;font-size:16px">${deadlineLabel} Notice: ${urgencyLabel}</h3>
+                <p style="color:#475569;font-size:14px;margin:0">
+                  The <strong>${deadlineLabel}</strong> for vehicle <strong>${vehicle.registration_number}</strong> (${vehicle.make} ${vehicle.model}) is due on <strong>${formattedDate}</strong>.
+                </p>
+              </div>
+            </div>
+
+            <table style="width:100%;border-collapse:collapse;margin:20px 0;background:#f8fafc;border-radius:6px;overflow:hidden">
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:10px 14px;font-size:13px;color:#64748b;width:35%">Registration Number</td>
+                <td style="padding:10px 14px;font-size:13px;color:#0f172a;font-weight:600">${vehicle.registration_number}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:10px 14px;font-size:13px;color:#64748b">Make & Model</td>
+                <td style="padding:10px 14px;font-size:13px;color:#0f172a">${vehicle.make} ${vehicle.model} ${vehicle.year_of_manufacture ? `(${vehicle.year_of_manufacture})` : ''}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:10px 14px;font-size:13px;color:#64748b">Vehicle Type</td>
+                <td style="padding:10px 14px;font-size:13px;color:#0f172a">${vehicle.vehicle_type || '—'}</td>
+              </tr>
+              <tr style="border-bottom:1px solid #e2e8f0">
+                <td style="padding:10px 14px;font-size:13px;color:#64748b">Assigned To</td>
+                <td style="padding:10px 14px;font-size:13px;color:#0f172a">${vehicle.owner_assigned_to || '—'}</td>
+              </tr>
+              <tr>
+                <td style="padding:10px 14px;font-size:13px;color:#64748b">Deadline Date</td>
+                <td style="padding:10px 14px;font-size:13px;color:#b91c1c;font-weight:700">${formattedDate} (${urgencyLabel})</td>
+              </tr>
+            </table>
+
+            <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:6px;padding:12px 16px;margin-bottom:20px">
+              <p style="color:#1e40af;font-size:13px;margin:0">
+                Please arrange for the necessary renewal/inspection and update the vehicle record in the Assets & Hire module.
+              </p>
+            </div>
+
+            <div style="text-align:center">
+              <a href="${deepLink}" style="display:inline-block;background:#2563eb;color:#ffffff;text-decoration:none;font-size:13px;font-weight:600;padding:10px 20px;border-radius:6px">
+                Open Assets & Hire Register &rarr;
+              </a>
+            </div>
+          </div>
+          <div style="background:#f8fafc;padding:12px 24px;border-top:1px solid #e2e8f0">
+            <p style="color:#94a3b8;font-size:11px;margin:0">Construct Scenery Limited · Automated Fleet Alert · info@constructscenery.co.uk</p>
           </div>
         </div>
       `,

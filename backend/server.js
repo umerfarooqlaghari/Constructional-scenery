@@ -94,6 +94,9 @@ app.use('/api/dashboard',           require('./routes/dashboard'));
 app.use('/api/crew-rates',          require('./routes/crewRates'));
 app.use('/api/settings',            require('./routes/settings'));
 app.use('/api/users',               require('./routes/users'));
+app.use('/api/vehicles',            require('./routes/vehicles'));
+app.use('/api/hire-equipment',      require('./routes/hireEquipment'));
+app.use('/api/assets-hire',         require('./routes/assetsHire'));
 
 // ─── 404 ──────────────────────────────────────────────────────────────────────
 app.use((req, res) => {
@@ -118,6 +121,17 @@ const db   = require('./config/db');
 const PORT = process.env.PORT || 5000;
 
 async function start() {
+  const server = app.listen(PORT, '0.0.0.0', () => {
+    console.log(`
+╔══════════════════════════════════════╗
+║       Deepsian API — Running          ║
+║  Port  : ${PORT}                          ║
+║  Auth  : JWT (bcrypt + pg)           ║
+║  Policy: OPA-style policies.json     ║
+╚══════════════════════════════════════╝
+    `);
+  });
+
   // Ensure any columns that might be missing from older DB instances exist
   // before the server accepts requests.
   try {
@@ -129,17 +143,6 @@ async function start() {
   } catch (err) {
     console.error('⚠️  Schema guard failed (is_active):', err.message);
   }
-
-  app.listen(PORT, () => {
-    console.log(`
-╔══════════════════════════════════════╗
-║       Deepsian API — Running          ║
-║  Port  : ${PORT}                          ║
-║  Auth  : JWT (bcrypt + pg)           ║
-║  Policy: OPA-style policies.json     ║
-╚══════════════════════════════════════╝
-    `);
-  });
 
   // ── Daily handover alert cron — 07:00 UTC every day ──────────────────────────
   const { runHandoverAlerts } = require('./Controllers/productionsController');
@@ -153,6 +156,22 @@ async function start() {
     }
   }, { timezone: 'UTC' });
   console.log('✅ Cron: handover alerts scheduled at 07:00 UTC daily');
+
+  // ── Daily vehicle compliance reminder cron — 07:15 UTC every day ─────────────
+  const { runVehicleComplianceAlerts } = require('./Controllers/assetsHireController');
+  cron.schedule('15 7 * * *', async () => {
+    console.log(`[CRON] Running vehicle compliance alerts — ${new Date().toISOString()}`);
+    try {
+      const result = await runVehicleComplianceAlerts();
+      console.log(`[CRON] Vehicle compliance alerts: sent=${result.sent} skipped=${result.skipped}`);
+    } catch (err) {
+      console.error('[CRON] Vehicle compliance alerts failed:', err.message);
+    }
+  }, { timezone: 'UTC' });
+  console.log('✅ Cron: vehicle compliance alerts scheduled at 07:15 UTC daily');
+  return server;
 }
 
 start();
+
+module.exports = { app, start };

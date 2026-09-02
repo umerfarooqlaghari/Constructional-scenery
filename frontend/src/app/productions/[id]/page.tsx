@@ -13,6 +13,7 @@ import {
   ProductionStatus, ContractType, SetStatus,
 } from '@/lib/api';
 import { useAuth } from '@/contexts/AuthContext';
+import ProductionHireEquipmentPanel from '@/components/ProductionHireEquipmentPanel';
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -1465,6 +1466,13 @@ export default function ProductionDetailPage() {
             })()}
           </div>
         </div>
+
+        {/* Hire Equipment Tracker (Module 8) */}
+        <ProductionHireEquipmentPanel
+          productionId={id}
+          productionName={production.name}
+          canManage={canEdit && !isArchived}
+        />
 
         {/* Documents */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm overflow-hidden">

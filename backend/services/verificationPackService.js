@@ -11,7 +11,13 @@
  *   - Missing file → placeholder page with error note
  */
 
-const { PDFDocument, StandardFonts, rgb } = require('pdf-lib');
+let pdfLib = null;
+const getPdfLib = () => {
+  if (!pdfLib) {
+    pdfLib = require('pdf-lib');
+  }
+  return pdfLib;
+};
 const { generateTimesheetPdf }            = require('./timesheetPdfService');
 const path                                = require('path');
 const fs                                  = require('fs').promises;
@@ -38,6 +44,7 @@ const getExt = (filename) => (filename || '').toLowerCase().split('.').pop();
 
 // Draw a centred placeholder box on a blank A4 page
 const addPlaceholderPage = (doc, boldFont, font, ts, message) => {
+  const { rgb } = getPdfLib();
   const page = doc.addPage(A4);
   const [pageW, pageH] = A4;
   const boxX = 50, boxY = pageH / 2 - 70, boxW = pageW - 100, boxH = 140;
@@ -75,6 +82,7 @@ const addPlaceholderPage = (doc, boldFont, font, ts, message) => {
  * @returns {{ pdfBytes: Uint8Array, timesheetPageCount: number, invoicePageCount: number, crewCount: number }}
  */
 const generateVerificationPack = async (timesheets, productionName) => {
+  const { PDFDocument, StandardFonts } = getPdfLib();
   const merged     = await PDFDocument.create();
   const font       = await merged.embedFont(StandardFonts.Helvetica);
   const boldFont   = await merged.embedFont(StandardFonts.HelveticaBold);

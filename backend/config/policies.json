@@ -71,6 +71,11 @@
       "GET /api/timesheets/export/csv",
       "GET /api/timesheets/export/pdf",
       "GET /api/users",
+      "GET /api/vehicles",
+      "GET /api/vehicles/:id",
+      "GET /api/hire-equipment",
+      "GET /api/hire-equipment/:id",
+      "GET /api/assets-hire/summary",
       "PATCH /api/cost-reports/:productionId/po-billing/:sourceId",
       "PATCH /api/forecasting/forecasts/:id",
       "PATCH /api/forecasting/forecasts/:id/link",
@@ -92,11 +97,19 @@
       "POST /api/productions",
       "POST /api/suppliers",
       "POST /api/users",
+      "POST /api/vehicles",
+      "POST /api/vehicles/compliance-check",
+      "POST /api/hire-equipment",
+      "POST /api/hire-equipment/:id/return",
       "PUT /api/cost-reports/:productionId/margins-reference",
       "PUT /api/cost-reports/:productionId/weekly-pl/:weekEndingDate",
       "PUT /api/forecasting/catalogue/:id",
       "PUT /api/forecasting/percentometer/ratios",
-      "PUT /api/suppliers/:id"
+      "PUT /api/suppliers/:id",
+      "PUT /api/vehicles/:id",
+      "PUT /api/hire-equipment/:id",
+      "DELETE /api/vehicles/:id",
+      "DELETE /api/hire-equipment/:id"
     ]
   },
   "construction_accountant": {
@@ -165,6 +178,11 @@
       "GET /api/timesheets/export/csv",
       "GET /api/timesheets/export/pdf",
       "GET /api/timesheets/verification-pack/:weekEndingDate/:productionId",
+      "GET /api/vehicles",
+      "GET /api/vehicles/:id",
+      "GET /api/hire-equipment",
+      "GET /api/hire-equipment/:id",
+      "GET /api/assets-hire/summary",
       "PATCH /api/cost-reports/:productionId/po-billing/:sourceId",
       "PATCH /api/crew-rates/:id",
       "PATCH /api/forecasting/forecasts/:id",
@@ -217,7 +235,7 @@
     ]
   },
   "construction_coordinator": {
-    "description": "Full read/write on Purchase Orders, Productions (incl. set tracker), and Crew Database. No access to Pay Run, Cost Report financials, Forecasting, or Warren's Dashboard.",
+    "description": "Full read/write on Purchase Orders, Productions (incl. set tracker), Crew Database, and Assets & Hire Equipment. No access to Pay Run, Cost Report financials, Forecasting, or Warren's Dashboard.",
     "routes": [
       "DELETE /api/crew/:id",
       "DELETE /api/crew/:id/documents/:docId",
@@ -227,6 +245,8 @@
       "DELETE /api/purchase-orders/:id",
       "DELETE /api/purchase-orders/:id/invoice",
       "DELETE /api/suppliers/:id",
+      "DELETE /api/vehicles/:id",
+      "DELETE /api/hire-equipment/:id",
       "GET /api/auth/me",
       "GET /api/crew",
       "GET /api/crew-rates",
@@ -258,6 +278,11 @@
       "GET /api/suppliers/names",
       "GET /api/timesheets",
       "GET /api/timesheets/:id",
+      "GET /api/vehicles",
+      "GET /api/vehicles/:id",
+      "GET /api/hire-equipment",
+      "GET /api/hire-equipment/:id",
+      "GET /api/assets-hire/summary",
       "PATCH /api/materials-catalogue/:id",
       "PATCH /api/productions/:id/sets/:setId",
       "PATCH /api/settings/:key",
@@ -284,11 +309,17 @@
       "POST /api/purchase-orders/:id/submit",
       "POST /api/purchase-orders/import",
       "POST /api/suppliers",
+      "POST /api/vehicles",
+      "POST /api/vehicles/compliance-check",
+      "POST /api/hire-equipment",
+      "POST /api/hire-equipment/:id/return",
       "PUT /api/crew/:id",
       "PUT /api/productions/:id",
       "PUT /api/productions/:id/sets/:setId",
       "PUT /api/purchase-orders/:id",
-      "PUT /api/suppliers/:id"
+      "PUT /api/suppliers/:id",
+      "PUT /api/vehicles/:id",
+      "PUT /api/hire-equipment/:id"
     ]
   }
 }

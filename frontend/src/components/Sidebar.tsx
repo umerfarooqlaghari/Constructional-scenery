@@ -5,7 +5,7 @@ import { usePathname } from 'next/navigation';
 import {
   LayoutDashboard, Clapperboard, ShoppingCart, Users, ClipboardList,
   BarChart2, ChevronRight, LogOut, CreditCard,
-  Banknote, BookOpen, Upload, ShieldCheck,
+  Banknote, BookOpen, Upload, ShieldCheck, Truck,
 } from 'lucide-react';
 import { useAuth } from '@/contexts/AuthContext';
 
@@ -17,6 +17,7 @@ const NAV_GROUPS = [
       { href: '/dashboard',   label: 'Dashboard',   icon: LayoutDashboard, roles: ['managing_director'] },
       { href: '/overview',    label: 'Overview',    icon: LayoutDashboard, roles: ['construction_accountant', 'construction_coordinator'] },
       { href: '/productions', label: 'Productions', icon: Clapperboard,    roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
+      { href: '/assets-hire', label: 'Assets & Hire', icon: Truck,          roles: ['managing_director', 'construction_accountant', 'construction_coordinator'] },
     ],
   },
   {

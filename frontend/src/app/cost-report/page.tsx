@@ -1,4 +1,4 @@
-﻿'use client';
+'use client';
 
 import { useState, useEffect, useCallback, Fragment } from 'react';
 import TopBar from '@/components/TopBar';
@@ -605,15 +605,15 @@ function CostReportContent() {
         {!isCostPlus && <div className="space-y-4 md:space-y-5">
 
         {/* Metric cards */}
-        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-7 gap-4">
           {loading ? (
-            Array.from({ length: 6 }).map((_, i) => <SkeletonCard key={i} />)
+            Array.from({ length: 7 }).map((_, i) => <SkeletonCard key={i} />)
           ) : m ? (
             <>
               <div className="bg-white rounded-xl border border-slate-200 px-4 py-4 shadow-sm">
                 <p className="text-slate-500 text-xs font-medium leading-tight">Total Costs to Date</p>
                 <p className="text-slate-900 text-xl font-bold mt-1">{fmtGBP(m.total_costs_to_date)}</p>
-                <p className="text-slate-400 text-[10px] mt-0.5">supplier + labour</p>
+                <p className="text-slate-400 text-[10px] mt-0.5">supplier + labour + hire</p>
               </div>
               <div className="bg-white rounded-xl border border-slate-200 px-4 py-4 shadow-sm">
                 <p className="text-slate-500 text-xs font-medium leading-tight">Total Invoiced to Production</p>
@@ -649,6 +649,11 @@ function CostReportContent() {
                 <p className="text-slate-500 text-xs font-medium leading-tight">Labour Costs</p>
                 <p className="text-slate-900 text-xl font-bold mt-1">{fmtGBP(m.total_labour_costs)}</p>
                 <p className="text-slate-400 text-[10px] mt-0.5">verified timesheets</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 px-4 py-4 shadow-sm">
+                <p className="text-slate-500 text-xs font-medium leading-tight">Hire Equipment</p>
+                <p className="text-slate-900 text-xl font-bold mt-1">{fmtGBP((m as any).total_hire_costs || 0)}</p>
+                <p className="text-slate-400 text-[10px] mt-0.5">plant & tool hire</p>
               </div>
             </>
           ) : null}

@@ -100,10 +100,34 @@ const getLabourCosts = async (productionId, filters = {}, db) => {
   return rows;
 };
 
+// ─── Read: hire equipment costs ──────────────────────────────────────────────
+const getHireCosts = async (productionId, db) => {
+  const { rows } = await db.query(
+    `SELECT * FROM hire_equipment WHERE production_id = $1 ORDER BY hire_start_date DESC`,
+    [productionId]
+  );
+  return rows.map(item => {
+    const start = new Date(item.hire_start_date);
+    const end = item.return_date ? new Date(item.return_date) : new Date();
+    start.setHours(0, 0, 0, 0);
+    end.setHours(0, 0, 0, 0);
+    const diffDays = Math.max(0, Math.round((end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)));
+    const weeksHired = diffDays === 0 ? 1 : Math.ceil(diffDays / 7);
+    const rate = parseFloat(item.weekly_hire_rate || 0);
+    const totalCost = Number((rate * weeksHired).toFixed(2));
+    return {
+      ...item,
+      days_hired: diffDays,
+      weeks_hired: weeksHired,
+      total_cost: totalCost,
+    };
+  });
+};
+
 // ─── Read: aggregated summary metrics ────────────────────────────────────────
-// Supplier + labour totals and invoiced-to-production total.
+// Supplier + labour + hire equipment totals and invoiced-to-production total.
 const getSummaryMetrics = async (productionId, db) => {
-  const [{ rows: [costs] }, { rows: [invoiced] }] = await Promise.all([
+  const [{ rows: [costs] }, { rows: [invoiced] }, hireItems] = await Promise.all([
     db.query(
       `SELECT
          COALESCE(SUM(CASE WHEN entry_type = 'supplier' THEN gross_amount ELSE 0 END), 0) AS total_supplier,
@@ -120,16 +144,19 @@ const getSummaryMetrics = async (productionId, db) => {
        WHERE production_id = $1`,
       [productionId]
     ),
+    getHireCosts(productionId, db),
   ]);
 
-  const totalCosts    = parseFloat(costs.total_costs);
-  const totalInvoiced = parseFloat(invoiced.total_invoiced);
-  const profit        = totalInvoiced - totalCosts;
+  const totalHireCosts = hireItems.reduce((acc, h) => acc + h.total_cost, 0);
+  const totalCosts     = parseFloat(costs.total_costs) + totalHireCosts;
+  const totalInvoiced  = parseFloat(invoiced.total_invoiced);
+  const profit         = totalInvoiced - totalCosts;
 
   return {
     total_supplier_costs: parseFloat(costs.total_supplier),
     total_labour_costs:   parseFloat(costs.total_labour),
-    total_costs_to_date:  totalCosts,
+    total_hire_costs:     Number(totalHireCosts.toFixed(2)),
+    total_costs_to_date:  Number(totalCosts.toFixed(2)),
     total_invoiced:       totalInvoiced,
     current_profit:       profit,
     profit_pct:           totalInvoiced > 0 ? (profit / totalInvoiced) * 100 : 0,
@@ -141,27 +168,38 @@ const getSummaryMetrics = async (productionId, db) => {
 // Returns cost totals as of asAtDate — identical to a live query run that day.
 // Powers the date-specific export feature across both report types.
 const getAsAtSnapshot = async (productionId, asAtDate, db) => {
-  const { rows: [snap] } = await db.query(
-    `SELECT
-       COALESCE(SUM(CASE WHEN entry_type = 'supplier' THEN gross_amount ELSE 0 END), 0) AS total_supplier,
-       COALESCE(SUM(CASE WHEN entry_type = 'labour'   THEN gross_amount ELSE 0 END), 0) AS total_labour,
-       COALESCE(SUM(gross_amount), 0)                                                    AS total_costs
-     FROM cost_report_entries
-     WHERE production_id = $1
-       AND date          <= $2
-       AND deleted_at    IS NULL`,
-    [productionId, asAtDate]
-  );
+  const [{ rows: [snap] }, hireItems] = await Promise.all([
+    db.query(
+      `SELECT
+         COALESCE(SUM(CASE WHEN entry_type = 'supplier' THEN gross_amount ELSE 0 END), 0) AS total_supplier,
+         COALESCE(SUM(CASE WHEN entry_type = 'labour'   THEN gross_amount ELSE 0 END), 0) AS total_labour,
+         COALESCE(SUM(gross_amount), 0)                                                    AS total_costs
+       FROM cost_report_entries
+       WHERE production_id = $1
+         AND date          <= $2
+         AND deleted_at    IS NULL`,
+      [productionId, asAtDate]
+    ),
+    getHireCosts(productionId, db),
+  ]);
+
+  // Filter hires that started on or before asAtDate
+  const totalHireCosts = hireItems
+    .filter(h => h.hire_start_date <= asAtDate)
+    .reduce((acc, h) => acc + h.total_cost, 0);
+
+  const totalCosts = parseFloat(snap.total_costs) + totalHireCosts;
 
   return {
     as_at_date:           asAtDate,
     total_supplier_costs: parseFloat(snap.total_supplier),
     total_labour_costs:   parseFloat(snap.total_labour),
-    total_costs_to_date:  parseFloat(snap.total_costs),
+    total_hire_costs:     Number(totalHireCosts.toFixed(2)),
+    total_costs_to_date:  Number(totalCosts.toFixed(2)),
   };
 };
 
 module.exports = {
   recordSupplierCost, softDeleteEntry,
-  getSupplierCosts, getLabourCosts, getSummaryMetrics, getAsAtSnapshot,
+  getSupplierCosts, getLabourCosts, getHireCosts, getSummaryMetrics, getAsAtSnapshot,
 };
