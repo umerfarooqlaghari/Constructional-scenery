@@ -84,15 +84,22 @@ export default function SettingsModal({ open, onClose }: SettingsModalProps) {
       if (email.trim().toLowerCase() !== user.email.toLowerCase()) changes.email = email.trim();
 
       // Upload avatar first if a new one was picked
+      let newAvatarUrl: string | undefined = undefined;
       if (avatarFile) {
-        const { avatar_url } = await profileApi.uploadAvatar(avatarFile);
-        updateUser({ avatar_url });
+        const res = await profileApi.uploadAvatar(avatarFile);
+        newAvatarUrl = res.avatar_url;
+        updateUser({ avatar_url: res.avatar_url });
+        setAvatarPreview(res.avatar_url);
         setAvatarFile(null);
       }
 
       if (Object.keys(changes).length > 0) {
         const { user: updated } = await profileApi.update(changes);
-        updateUser({ full_name: updated.full_name, email: updated.email, avatar_url: updated.avatar_url ?? undefined });
+        updateUser({
+          full_name: updated.full_name,
+          email: updated.email,
+          avatar_url: newAvatarUrl ?? updated.avatar_url ?? undefined,
+        });
       }
 
       setSuccess('Profile updated successfully');

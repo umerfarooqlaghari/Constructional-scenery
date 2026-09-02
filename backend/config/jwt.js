@@ -12,7 +12,7 @@ const REFRESH_EXPIRY_MS = REFRESH_DAYS * 24 * 60 * 60 * 1000;
  */
 const signAccessToken = (user) =>
   jwt.sign(
-    { id: user.id, email: user.email, role: user.role, full_name: user.full_name },
+    { id: user.id, email: user.email, role: user.role, full_name: user.full_name, avatar_url: user.avatar_url || null },
     SECRET,
     { expiresIn: ACCESS_EXPIRY }
   );

@@ -54,7 +54,7 @@ const login = async (req, res) => {
 
   try {
     const { rows } = await db.query(
-      'SELECT id, email, password_hash, full_name, role, is_active FROM users WHERE email = $1',
+      'SELECT id, email, password_hash, full_name, role, avatar_url, is_active FROM users WHERE email = $1',
       [email.toLowerCase().trim()]
     );
     const user = rows[0];
@@ -79,7 +79,7 @@ const login = async (req, res) => {
       access_token,
       refresh_token,
       expires_in: 3600,
-      user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role },
+      user: { id: user.id, email: user.email, full_name: user.full_name, role: user.role, avatar_url: user.avatar_url || null },
     });
   } catch (err) {
     console.error('login error:', err);
@@ -106,11 +106,20 @@ const logout = async (req, res) => {
 };
 
 // ─── GET /api/auth/me ──────────────────────────────────────────────────────────
-// Returns the authenticated user's identity from the JWT payload (no DB hit)
-const getMe = (req, res) => {
+// Returns the authenticated user's fresh profile from the database
+const getMe = async (req, res) => {
   if (!req.user) return res.status(401).json({ error: 'Unauthorized' });
-  const { id, email, role, full_name } = req.user;
-  res.json({ user: { id, email, role, full_name } });
+  try {
+    const { rows } = await db.query(
+      'SELECT id, email, role, full_name, avatar_url FROM users WHERE id = $1',
+      [req.user.id]
+    );
+    if (!rows.length) return res.status(404).json({ error: 'User not found' });
+    res.json({ user: rows[0] });
+  } catch (err) {
+    console.error('getMe error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
 };
 
 // ─── POST /api/auth/refresh ────────────────────────────────────────────────────
@@ -124,7 +133,7 @@ const refreshToken = async (req, res) => {
   try {
     const { rows } = await db.query(
       `SELECT rt.token, rt.user_id,
-              u.id, u.email, u.full_name, u.role
+              u.id, u.email, u.full_name, u.role, u.avatar_url
        FROM   refresh_tokens rt
        JOIN   users u ON u.id = rt.user_id
        WHERE  rt.token = $1
@@ -138,7 +147,7 @@ const refreshToken = async (req, res) => {
     // Rotate — delete old token first
     await db.query('DELETE FROM refresh_tokens WHERE token = $1', [refresh_token]);
 
-    const user = { id: record.id, email: record.email, full_name: record.full_name, role: record.role };
+    const user = { id: record.id, email: record.email, full_name: record.full_name, role: record.role, avatar_url: record.avatar_url || null };
     const new_access_token  = signAccessToken(user);
     const new_refresh_token = generateRefreshToken();
     const new_expires_at    = refreshExpiresAt();
@@ -152,6 +161,7 @@ const refreshToken = async (req, res) => {
       access_token:  new_access_token,
       refresh_token: new_refresh_token,
       expires_in:    3600,
+      user,
     });
   } catch (err) {
     console.error('refreshToken error:', err);
@@ -342,13 +352,13 @@ const updateProfile = async (req, res) => {
 };
 
 // ─── POST /api/auth/profile/avatar ────────────────────────────────────────────
-// Multer middleware for avatar — images only, 5 MB max
+// Multer middleware for avatar — images only, 10 MB max
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
-  limits: { fileSize: 5 * 1024 * 1024 },
+  limits: { fileSize: 10 * 1024 * 1024 },
   fileFilter: (_req, file, cb) => {
-    if (['image/jpeg', 'image/png', 'image/webp'].includes(file.mimetype)) cb(null, true);
-    else cb(Object.assign(new Error('Only JPEG, PNG, or WebP images are allowed'), { status: 400 }));
+    if (file.mimetype.startsWith('image/')) cb(null, true);
+    else cb(Object.assign(new Error('Only image files (JPEG, PNG, WebP, GIF, HEIC) are allowed'), { status: 400 }));
   },
 }).single('avatar');
 
@@ -358,38 +368,52 @@ const uploadAvatar = async (req, res) => {
 
   try {
     // Fetch old avatar key so we can delete it from S3 after
-    const { rows } = await db.query('SELECT avatar_url FROM users WHERE id = $1', [req.user.id]);
-    const oldUrl = rows[0]?.avatar_url || null;
+    const { rows: existingRows } = await db.query('SELECT avatar_url FROM users WHERE id = $1', [req.user.id]);
+    const oldUrl = existingRows[0]?.avatar_url || null;
 
     // Store new avatar under avatars/ prefix
-    const ext  = req.file.originalname.split('.').pop().toLowerCase();
-    const key  = `avatars/${req.user.id}-${Date.now()}.${ext}`;
-    const fakeFile = { ...req.file, originalname: `avatar.${ext}` };
-    // Override the key by using store with a custom prefix approach
+    const ext = (req.file.originalname.split('.').pop() || 'png').toLowerCase();
+    const key = `avatars/${req.user.id}-${Date.now()}.${ext}`;
+
     const { S3Client, PutObjectCommand } = require('@aws-sdk/client-s3');
-    const BUCKET = process.env.AWS_S3_BUCKET;
-    const REGION = process.env.AWS_REGION || 'us-east-1';
+    const BUCKET = process.env.AWS_S3_BUCKET || 'deepsiant-assets-prod';
+    const REGION = process.env.AWS_REGION || 'eu-north-1';
     const s3 = new S3Client({
       region: REGION,
-      credentials: { accessKeyId: process.env.AWS_ACCESS_KEY_ID, secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY },
+      credentials: {
+        accessKeyId: process.env.AWS_ACCESS_KEY_ID,
+        secretAccessKey: process.env.AWS_SECRET_ACCESS_KEY,
+      },
     });
+
     await s3.send(new PutObjectCommand({
-      Bucket: BUCKET, Key: key, Body: req.file.buffer, ContentType: req.file.mimetype,
+      Bucket: BUCKET,
+      Key: key,
+      Body: req.file.buffer,
+      ContentType: req.file.mimetype || 'image/jpeg',
     }));
+
     const avatar_url = `https://${BUCKET}.s3.${REGION}.amazonaws.com/${key}`;
 
-    await db.query('UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2', [avatar_url, req.user.id]);
+    const { rows: [updatedUser] } = await db.query(
+      'UPDATE users SET avatar_url = $1, updated_at = NOW() WHERE id = $2 RETURNING id, email, full_name, role, avatar_url',
+      [avatar_url, req.user.id]
+    );
 
-    // Delete old avatar from S3 if it existed
+    // Delete old avatar from S3 asynchronously if it existed
     if (oldUrl) {
-      const oldKey = oldUrl.includes('.amazonaws.com/') ? oldUrl.split('.amazonaws.com/')[1] : null;
-      if (oldKey) await deleteFile(oldKey);
+      try {
+        const oldKey = oldUrl.includes('.amazonaws.com/') ? oldUrl.split('.amazonaws.com/')[1] : null;
+        if (oldKey) await deleteFile(oldKey);
+      } catch (delErr) {
+        console.warn('Could not delete old avatar:', delErr.message);
+      }
     }
 
-    res.json({ message: 'Avatar updated', avatar_url });
+    res.json({ message: 'Avatar updated', avatar_url, user: updatedUser });
   } catch (err) {
     console.error('uploadAvatar error:', err);
-    res.status(500).json({ error: 'Server error' });
+    res.status(500).json({ error: err.message || 'Server error' });
   }
 };
 

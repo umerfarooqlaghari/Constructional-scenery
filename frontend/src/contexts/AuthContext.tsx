@@ -23,7 +23,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const stored = localStorage.getItem('cs_user');
     const token  = localStorage.getItem('cs_token');
     if (stored && token) {
-      try { setUser(JSON.parse(stored)); } catch { clearAuth(); }
+      try {
+        const parsed = JSON.parse(stored);
+        setUser(parsed);
+        // Background sync latest user data (including avatar_url) from backend
+        authApi.me().then(res => {
+          if (res?.user) {
+            setUser(res.user);
+            localStorage.setItem('cs_user', JSON.stringify(res.user));
+          }
+        }).catch(() => {});
+      } catch {
+        clearAuth();
+      }
     }
     setLoading(false);
   }, []);
